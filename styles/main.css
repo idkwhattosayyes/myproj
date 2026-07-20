@@ -86,3 +86,40 @@ button {
   color: #6b7280;
   padding: 2rem 0;
 }
+
+/* Buttons (shared across modules) */
+.btn {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 0.9rem;
+}
+
+.btn:hover {
+  background: #f3f4f6;
+}
+
+.btn-primary {
+  background: #0969da;
+  border-color: #0969da;
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: #0757ba;
+}
+
+.btn-danger {
+  color: #b91c1c;
+  border-color: #f3c4c4;
+}
+
+.btn-danger:hover {
+  background: #fef2f2;
+}
+
+.btn-small {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+}
