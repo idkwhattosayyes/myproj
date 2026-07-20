@@ -81,7 +81,7 @@ function wireHeaderActions(container, config, state) {
 }
 
 function isRealFolderId(id) {
-  return id && id !== "all" && id !== "unfiled";
+  return id && id !== "all" && id !== "unfiled" && id !== "favorites";
 }
 
 function renderFolders(container, config, state) {
@@ -89,6 +89,7 @@ function renderFolders(container, config, state) {
 
   bodyEl.innerHTML = `
     <ul class="folder-list">
+      <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">${t("panel.favorites")}</li>
       <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
       <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
       ${state.folders
@@ -109,6 +110,26 @@ function renderFolders(container, config, state) {
       state.selectedItemId = null;
       render(container, config, state);
     });
+
+    // Избранное доступно только для настоящих папок (не для псевдо-папок
+    // "Все"/"Без папки"/"Избранное") — на них ПКМ показывает общее меню фона.
+    if (isRealFolderId(el.dataset.folderId)) {
+      el.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const folder = state.folders.find((f) => f.id === el.dataset.folderId);
+        showContextMenu(event.clientX, event.clientY, [
+          {
+            label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
+            onClick: async () => {
+              await itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite });
+              state.folders = await itemsService.listFolders(config.section);
+              render(container, config, state);
+            },
+          },
+        ]);
+      });
+    }
   });
 
   bodyEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
@@ -146,23 +167,28 @@ function renderList(container, config, state) {
   const bodyEl = container.querySelector('[data-role="list-body"]');
   const titleEl = container.querySelector('[data-role="list-title"]');
   const items = getFilteredItems(state);
+  // В разделе "Избранное" папки не являются заметками — показываем их
+  // отдельными строками-ссылками сверху, клик по ним просто переключает
+  // на эту папку в обычном виде (у папки нет собственного контента).
+  const favFolders = state.selectedFolderId === "favorites" ? state.folders.filter((f) => f.isFavorite) : [];
+  const isEmpty = !favFolders.length && !items.length;
 
   titleEl.textContent = getListTitle(state);
 
   bodyEl.innerHTML = `
     <ul class="item-list">
-      ${
-        items.length
-          ? items
-              .map(
-                (item) => `
+      ${favFolders
+        .map((folder) => `<li class="item-list-row" data-jump-folder-id="${folder.id}">${escapeHtml(folder.name)}</li>`)
+        .join("")}
+      ${items
+        .map(
+          (item) => `
         <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}">
           ${escapeHtml(item.title || t("panel.untitled"))}
         </li>`
-              )
-              .join("")
-          : `<li class="placeholder">${t("panel.empty")}</li>`
-      }
+        )
+        .join("")}
+      ${isEmpty ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
     </ul>
   `;
 
@@ -171,16 +197,41 @@ function renderList(container, config, state) {
       state.selectedItemId = el.dataset.itemId;
       render(container, config, state);
     });
+
+    el.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const item = state.items.find((i) => i.id === el.dataset.itemId);
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
+          onClick: async () => {
+            await itemsService.updateItem(item.id, { isFavorite: !item.isFavorite });
+            state.items = await itemsService.listItems(config.section);
+            render(container, config, state);
+          },
+        },
+      ]);
+    });
+  });
+
+  bodyEl.querySelectorAll("[data-jump-folder-id]").forEach((el) => {
+    el.addEventListener("click", () => {
+      state.selectedFolderId = el.dataset.jumpFolderId;
+      state.selectedItemId = null;
+      render(container, config, state);
+    });
   });
 }
 
 function getFilteredItems(state) {
+  if (state.selectedFolderId === "favorites") return state.items.filter((item) => item.isFavorite);
   if (state.selectedFolderId === "unfiled") return state.items.filter((item) => !item.folderId);
   if (state.selectedFolderId === "all") return state.items;
   return state.items.filter((item) => item.folderId === state.selectedFolderId);
 }
 
 function getListTitle(state) {
+  if (state.selectedFolderId === "favorites") return t("panel.favorites");
   if (state.selectedFolderId === "all") return t("panel.all");
   if (state.selectedFolderId === "unfiled") return t("panel.unfiled");
   const folder = state.folders.find((f) => f.id === state.selectedFolderId);

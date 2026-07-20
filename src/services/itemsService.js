@@ -12,6 +12,10 @@ export async function createFolder(section, name) {
   return storage.createFolder(folder);
 }
 
+export async function updateFolder(id, patch) {
+  return storage.updateFolder(id, patch);
+}
+
 export async function deleteFolder(section, id) {
   const items = await storage.getItems(section);
   const affected = items.filter((item) => item.folderId === id);

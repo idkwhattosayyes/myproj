@@ -7,6 +7,7 @@ export function createFolderModel({ name = "", section }) {
     id: generateId(),
     name,
     section,
+    isFavorite: false,
   };
 }
 
@@ -18,6 +19,7 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     content,
     folderId,
     section,
+    isFavorite: false,
     createdAt: now,
     updatedAt: now,
   };
