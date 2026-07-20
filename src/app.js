@@ -13,9 +13,11 @@ const routes = {
 const view = document.getElementById("app-view");
 const navLinks = document.querySelectorAll(".app-nav-link");
 
-function getRouteFromHash() {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  return routes[hash] ? hash : DEFAULT_ROUTE;
+function parseHash() {
+  const [routePart, ...rest] = window.location.hash.replace(/^#\/?/, "").split("/");
+  const route = routes[routePart] ? routePart : DEFAULT_ROUTE;
+  const param = rest.join("/") || null;
+  return { route, param };
 }
 
 function setActiveNavLink(route) {
@@ -25,10 +27,10 @@ function setActiveNavLink(route) {
 }
 
 async function renderRoute() {
-  const route = getRouteFromHash();
+  const { route, param } = parseHash();
   setActiveNavLink(route);
   view.innerHTML = "";
-  await routes[route](view);
+  await routes[route](view, param);
 }
 
 window.addEventListener("hashchange", renderRoute);
