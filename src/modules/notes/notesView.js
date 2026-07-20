@@ -4,6 +4,7 @@ import { getBacklinks } from "../../services/linksService.js";
 import { renderNoteEditor } from "./noteEditor.js";
 import { renderNoteReader } from "./noteReader.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
+import { openConfirm, openPrompt } from "../../utils/modal.js";
 
 let state = null;
 
@@ -117,7 +118,8 @@ function renderFolderTree(container) {
   treeEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
-      if (!confirm("Удалить папку? Заметки останутся и станут «Без папки».")) return;
+      const ok = await openConfirm({ message: "Удалить папку? Заметки останутся и станут «Без папки»." });
+      if (!ok) return;
       const folderId = btn.dataset.deleteFolder;
       await notesService.deleteFolder(folderId);
       state.folders = await notesService.listFolders();
@@ -184,7 +186,7 @@ function wireSidebarActions(container) {
   });
 
   container.querySelector('[data-action="new-folder"]').addEventListener("click", async () => {
-    const name = prompt("Название папки:");
+    const name = await openPrompt({ message: "Название папки:" });
     if (!name || !name.trim()) return;
     const parentId = isRealFolderId(state.selectedFolderId) ? state.selectedFolderId : null;
     await notesService.createFolder({ name: name.trim(), parentId });
@@ -344,7 +346,8 @@ function renderNoteDetail(mainEl, note, container) {
   });
 
   mainEl.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-    if (!confirm("Удалить заметку безвозвратно?")) return;
+    const ok = await openConfirm({ message: "Удалить заметку безвозвратно?" });
+    if (!ok) return;
     await notesService.deleteNote(note.id);
     state.notes = await notesService.listNotes();
     state.selectedNoteId = null;
@@ -353,7 +356,7 @@ function renderNoteDetail(mainEl, note, container) {
 
   mainEl.querySelector('[data-action="edit-tags"]').addEventListener("click", async () => {
     const current = (note.tags || []).join(", ");
-    const input = prompt("Теги через запятую:", current);
+    const input = await openPrompt({ message: "Теги через запятую:", defaultValue: current });
     if (input === null) return;
     const tags = input
       .split(",")

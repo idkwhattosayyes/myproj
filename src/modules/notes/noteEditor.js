@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../utils/dom.js";
+import { openAlert } from "../../utils/modal.js";
 
 export function renderNoteEditor(container, note, { onSave, onCancel, allNotes }) {
   container.innerHTML = `
@@ -30,11 +31,11 @@ export function renderNoteEditor(container, note, { onSave, onCancel, allNotes }
   const pickerResults = container.querySelector('[data-role="link-picker-results"]');
   let pendingSelection = null;
 
-  container.querySelector('[data-action="insert-link"]').addEventListener("click", () => {
+  container.querySelector('[data-action="insert-link"]').addEventListener("click", async () => {
     const start = contentInput.selectionStart;
     const end = contentInput.selectionEnd;
     if (start === end) {
-      alert("Сначала выделите текст в заметке, который станет ссылкой.");
+      await openAlert({ message: "Сначала выделите текст в заметке, который станет ссылкой." });
       return;
     }
     pendingSelection = { start, end, text: contentInput.value.slice(start, end) };

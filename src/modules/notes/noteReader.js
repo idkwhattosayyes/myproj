@@ -1,5 +1,6 @@
 import { escapeHtml } from "../../utils/dom.js";
 import { renderContentHtml } from "../../services/linksService.js";
+import { openConfirm } from "../../utils/modal.js";
 
 export function renderNoteReader(container, note, { onHighlight, onRemoveHighlight, onOpenLink, notesById, backlinks }) {
   container.innerHTML = `
@@ -23,8 +24,9 @@ export function renderNoteReader(container, note, { onHighlight, onRemoveHighlig
   });
 
   contentEl.querySelectorAll("mark[data-highlight-id]").forEach((markEl) => {
-    markEl.addEventListener("click", () => {
-      if (confirm("Убрать выделение?")) onRemoveHighlight(markEl.dataset.highlightId);
+    markEl.addEventListener("click", async () => {
+      const ok = await openConfirm({ message: "Убрать выделение?" });
+      if (ok) onRemoveHighlight(markEl.dataset.highlightId);
     });
   });
 
