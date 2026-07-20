@@ -17,8 +17,22 @@ function getButtonDefs() {
     bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList") },
     orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList") },
     checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl) },
-    textColor: { label: "A", title: t("editor.textColor"), isColor: true, apply: (color) => document.execCommand("foreColor", false, color) },
-    highlight: { label: "▮", title: t("editor.highlight"), isColor: true, apply: (color) => document.execCommand("hiliteColor", false, color) },
+    textColor: {
+      label: "A",
+      title: t("editor.textColor"),
+      isColor: true,
+      apply: (color) => document.execCommand("foreColor", false, color),
+      // Сбрасывает цвет текста обратно к обычному — иначе применённый foreColor
+      // ничем не убрать после закрытия поповера.
+      reset: () => document.execCommand("foreColor", false, "#1f2328"),
+    },
+    highlight: {
+      label: "▮",
+      title: t("editor.highlight"),
+      isColor: true,
+      apply: (color) => document.execCommand("hiliteColor", false, color),
+      reset: () => document.execCommand("hiliteColor", false, "transparent"),
+    },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
   };
 }
@@ -41,6 +55,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   const contentEl = document.createElement("div");
   contentEl.className = "rte-content";
   contentEl.contentEditable = "true";
+  contentEl.spellcheck = false;
   contentEl.innerHTML = content || "";
 
   buttons.forEach((key) => {
@@ -158,6 +173,22 @@ function toggleColorPopover(btn, def, editorEl, onChange) {
 
   const popover = document.createElement("div");
   popover.className = "rte-color-popover";
+
+  // Отдельная опция сброса — без неё применённый цвет/заливку нечем убрать.
+  const resetSwatch = document.createElement("button");
+  resetSwatch.type = "button";
+  resetSwatch.className = "rte-color-swatch rte-color-swatch--reset";
+  resetSwatch.title = t("editor.removeColor");
+  resetSwatch.textContent = "✕";
+  resetSwatch.addEventListener("mousedown", (event) => event.preventDefault());
+  resetSwatch.addEventListener("click", (event) => {
+    event.stopPropagation();
+    def.reset();
+    popover.remove();
+    editorEl.focus();
+    onChange(editorEl.innerHTML);
+  });
+  popover.appendChild(resetSwatch);
 
   COLORS.forEach((color) => {
     const swatch = document.createElement("button");

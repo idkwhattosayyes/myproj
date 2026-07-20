@@ -63,6 +63,17 @@
   transform: scale(1.15);
 }
 
+.rte-color-swatch--reset {
+  background: #ffffff;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.rte-color-swatch--reset:hover {
+  color: #b91c1c;
+}
+
 .rte-content {
   min-height: 340px;
   padding: 0.85rem 1rem;
