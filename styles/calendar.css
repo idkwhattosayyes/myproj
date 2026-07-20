@@ -248,6 +248,29 @@
   color: #b91c1c;
 }
 
+.day-entry-type-switch {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.day-entry-type-btn {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.day-entry-type-btn:hover { background: #f3f4f6; }
+
+.day-entry-type-btn.is-active {
+  background: #33507e;
+  border-color: #33507e;
+  color: #ffffff;
+}
+
 .day-entry-form {
   display: flex;
   flex-wrap: wrap;

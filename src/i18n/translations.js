@@ -24,6 +24,9 @@ export const translations = {
     "calendar.close": "Close",
     "calendar.timeFrom": "From",
     "calendar.timeTo": "To",
+    "calendar.typeNote": "Note",
+    "calendar.typeTodo": "To-do",
+    "calendar.save": "Save",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -94,6 +97,9 @@ export const translations = {
     "calendar.close": "Закрыть",
     "calendar.timeFrom": "От",
     "calendar.timeTo": "До",
+    "calendar.typeNote": "Заметка",
+    "calendar.typeTodo": "To-do",
+    "calendar.save": "Сохранить",
 
     "panel.folders": "Папки",
     "panel.all": "Все",

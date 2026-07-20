@@ -12,6 +12,7 @@ export async function renderCalendarView(container) {
     year: now.getFullYear(),
     month: now.getMonth(),
     selectedDate: null,
+    dayEntryType: "todo", // "note" | "todo" — какой тип записи создаётся формой ниже
   };
   await render(container);
 }
@@ -169,7 +170,7 @@ async function renderDayPanel(container) {
                 .map(
                   (entry) => `
           <li class="day-entry ${entry.done ? "is-done" : ""}" data-entry-id="${entry.id}">
-            <input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>
+            ${entry.type === "note" ? "" : `<input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>`}
             ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
             <span class="day-entry-title">${escapeHtml(entry.title)}</span>
             <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
@@ -179,6 +180,10 @@ async function renderDayPanel(container) {
             : `<li class="placeholder">${t("calendar.empty")}</li>`
         }
       </ul>
+      <div class="day-entry-type-switch">
+        <button type="button" class="day-entry-type-btn ${state.dayEntryType === "note" ? "is-active" : ""}" data-entry-type="note">${t("calendar.typeNote")}</button>
+        <button type="button" class="day-entry-type-btn ${state.dayEntryType === "todo" ? "is-active" : ""}" data-entry-type="todo">${t("calendar.typeTodo")}</button>
+      </div>
       <form class="day-entry-form" data-role="entry-form" novalidate>
         <div class="day-entry-form-times">
           <label class="day-entry-time-label">
@@ -191,7 +196,7 @@ async function renderDayPanel(container) {
           </label>
         </div>
         <input type="text" class="day-entry-input" placeholder="${t("calendar.addPlaceholder")}" data-role="entry-input">
-        <button type="submit" class="btn btn-primary btn-small">${t("calendar.add")}</button>
+        <button type="submit" class="btn btn-primary btn-small">${state.dayEntryType === "note" ? t("calendar.save") : t("calendar.add")}</button>
       </form>
     </div>
   `;
@@ -201,17 +206,37 @@ async function renderDayPanel(container) {
     render(container);
   });
 
-  panelEl.querySelectorAll("[data-entry-id]").forEach((row) => {
-    const entryId = row.dataset.entryId;
-    row.querySelector('[data-role="entry-check"]').addEventListener("change", async (event) => {
-      await calendarEntriesService.toggleDone(entryId, event.target.checked);
+  panelEl.querySelectorAll("[data-entry-type]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.dayEntryType = btn.dataset.entryType;
       renderDayPanel(container);
     });
+  });
+
+  panelEl.querySelectorAll("[data-entry-id]").forEach((row) => {
+    const entryId = row.dataset.entryId;
+    // У заметок (в отличие от to-do) нет чекбокса — его просто не рендерим.
+    const checkbox = row.querySelector('[data-role="entry-check"]');
+    if (checkbox) {
+      checkbox.addEventListener("change", async (event) => {
+        await calendarEntriesService.toggleDone(entryId, event.target.checked);
+        renderDayPanel(container);
+      });
+    }
     row.querySelector('[data-action="delete-entry"]').addEventListener("click", async () => {
       await calendarEntriesService.deleteEntry(entryId);
       await renderDayPanel(container);
       await refreshDayMarker(container, state.selectedDate);
     });
+  });
+
+  const titleInput = panelEl.querySelector('[data-role="entry-input"]');
+  // Заметка добавляется только явной кнопкой — Enter в поле названия не должен
+  // отправлять форму, в отличие от To-do, где Enter — обычный быстрый способ добавить пункт.
+  titleInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && state.dayEntryType === "note") {
+      event.preventDefault();
+    }
   });
 
   panelEl.querySelector('[data-role="entry-form"]').addEventListener("submit", async (event) => {
@@ -223,6 +248,7 @@ async function renderDayPanel(container) {
     if (!title) return;
     await calendarEntriesService.createEntry(state.selectedDate, {
       title,
+      type: state.dayEntryType,
       startTime: startInput.value,
       endTime: endInput.value,
     });
