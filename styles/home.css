@@ -1,28 +1,32 @@
 .home {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  position: relative;
   background: #fbfbf9;
 }
 
-/* Контейнер фиксированного размера — кружки позиционируются абсолютно
-   внутри него по углам воображаемой окружности, с ручным сдвигом у
-   каждого, чтобы группа не выглядела строгим симметричным рядом. */
-.home-circles {
-  position: relative;
-  width: clamp(320px, 58vw, 460px);
-  height: clamp(320px, 58vw, 460px);
+/* Линии-указатели от каждого кружка к центру экрана, под кружками по z-index. */
+.home-lines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
 }
 
+.home-lines line {
+  /* Фон главной страницы светлый — белая линия на нём не видна, поэтому
+     используем тёмный полупрозрачный оттенок вместо буквально белого. */
+  stroke: rgba(34, 48, 59, 0.35);
+  stroke-width: 1;
+}
+
+/* Позиции задаются инлайн-стилем в JS (случайно, без пересечений, при каждом
+   заходе на главную) — здесь только визуальное оформление кружка. */
 .home-circle {
-  position: absolute;
+  position: fixed;
   --scale: 1;
-  width: clamp(120px, 16vw, 172px);
-  height: clamp(120px, 16vw, 172px);
-  transform: translate(-50%, -50%) translate(var(--tx, 0px), var(--ty, 0px)) scale(var(--scale));
+  transform: translate(-50%, -50%) scale(var(--scale));
   border-radius: 50%;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,35 +53,11 @@
   outline-offset: 4px;
 }
 
-.home-circle--tasks {
-  top: 30%;
-  left: 26%;
-  --tx: -8px;
-  --ty: -16px;
-  background: #cfe1f0;
-}
-
-.home-circle--documents {
-  top: 20%;
-  left: 70%;
-  --tx: 14px;
-  --ty: -4px;
-  background: #cfe8de;
-}
-
-.home-circle--calendar {
-  top: 70%;
-  left: 76%;
-  --tx: 8px;
-  --ty: 14px;
-  background: #dcd8ee;
-}
+.home-circle--tasks { background: #cfe1f0; }
+.home-circle--documents { background: #cfe8de; }
+.home-circle--calendar { background: #dcd8ee; }
 
 .home-circle--ai {
-  top: 76%;
-  left: 28%;
-  --tx: -14px;
-  --ty: 10px;
   background: #d8dbe1;
   color: #55606b;
 }
