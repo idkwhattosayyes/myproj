@@ -1,1 +1,132 @@
-/* Стили сворачиваемых панелей (папки/список) — наполняются на шаге "Задачи" */
+.panel-layout {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d8dbdf;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.panel-folders { width: 220px; }
+.panel-list { width: 240px; }
+
+.panel.is-collapsed { width: 44px; }
+
+.panel.is-collapsed .panel-body,
+.panel.is-collapsed .panel-title,
+.panel.is-collapsed [data-action="new-item"] {
+  display: none;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #eef1f4;
+}
+
+.panel-toggle {
+  border: none;
+  background: none;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+  color: #4b5563;
+}
+
+.panel-toggle:hover { background: #f3f4f6; }
+
+.panel-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.panel-body { padding: 0.6rem; }
+
+.panel-detail {
+  background: #ffffff;
+  border: 1px solid #d8dbdf;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  min-height: 440px;
+}
+
+.folder-list,
+.item-list {
+  list-style: none;
+}
+
+.folder-item,
+.item-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.folder-item:hover,
+.item-list-row:hover {
+  background: #f3f4f6;
+}
+
+.folder-item.is-active,
+.item-list-row.is-active {
+  background: #dbeafe;
+  font-weight: 600;
+}
+
+.folder-delete {
+  border: none;
+  background: none;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.folder-delete:hover { color: #b91c1c; }
+
+/* Контекстное меню (ПКМ по панели папок) */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: #ffffff;
+  border: 1px solid #d8dbdf;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+  padding: 0.3rem;
+  min-width: 170px;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.context-menu-item:hover { background: #f3f4f6; }
+
+@media (max-width: 780px) {
+  .panel-layout { grid-template-columns: 1fr; }
+  .panel-folders,
+  .panel-list {
+    width: 100%;
+  }
+  .panel.is-collapsed { width: 100%; }
+}

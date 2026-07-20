@@ -1,6 +1,6 @@
 const STORAGE_KEYS = {
-  notes: "app:notes",
   folders: "app:folders",
+  items: "app:items",
   diaryEntries: "app:diaryEntries",
 };
 
@@ -18,35 +18,9 @@ function touch(item) {
 }
 
 export const localStorageAdapter = {
-  // Notes
-  async getNotes() {
-    return readCollection(STORAGE_KEYS.notes);
-  },
-  async getNote(id) {
-    return readCollection(STORAGE_KEYS.notes).find((note) => note.id === id) ?? null;
-  },
-  async createNote(note) {
-    const notes = readCollection(STORAGE_KEYS.notes);
-    notes.push(note);
-    writeCollection(STORAGE_KEYS.notes, notes);
-    return note;
-  },
-  async updateNote(id, patch) {
-    const notes = readCollection(STORAGE_KEYS.notes);
-    const index = notes.findIndex((note) => note.id === id);
-    if (index === -1) return null;
-    notes[index] = touch({ ...notes[index], ...patch });
-    writeCollection(STORAGE_KEYS.notes, notes);
-    return notes[index];
-  },
-  async deleteNote(id) {
-    const notes = readCollection(STORAGE_KEYS.notes).filter((note) => note.id !== id);
-    writeCollection(STORAGE_KEYS.notes, notes);
-  },
-
-  // Folders
-  async getFolders() {
-    return readCollection(STORAGE_KEYS.folders);
+  // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
+  async getFolders(section) {
+    return readCollection(STORAGE_KEYS.folders).filter((folder) => folder.section === section);
   },
   async createFolder(folder) {
     const folders = readCollection(STORAGE_KEYS.folders);
@@ -67,7 +41,33 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.folders, folders);
   },
 
-  // Diary entries (one per date)
+  // Items (общая коллекция, отфильтрованная по section: "tasks" | "documents")
+  async getItems(section) {
+    return readCollection(STORAGE_KEYS.items).filter((item) => item.section === section);
+  },
+  async getItem(id) {
+    return readCollection(STORAGE_KEYS.items).find((item) => item.id === id) ?? null;
+  },
+  async createItem(item) {
+    const items = readCollection(STORAGE_KEYS.items);
+    items.push(item);
+    writeCollection(STORAGE_KEYS.items, items);
+    return item;
+  },
+  async updateItem(id, patch) {
+    const items = readCollection(STORAGE_KEYS.items);
+    const index = items.findIndex((item) => item.id === id);
+    if (index === -1) return null;
+    items[index] = touch({ ...items[index], ...patch });
+    writeCollection(STORAGE_KEYS.items, items);
+    return items[index];
+  },
+  async deleteItem(id) {
+    const items = readCollection(STORAGE_KEYS.items).filter((item) => item.id !== id);
+    writeCollection(STORAGE_KEYS.items, items);
+  },
+
+  // Diary entries (один на дату) — данные не трогаем, UI на них больше не ссылается
   async getDiaryEntries() {
     return readCollection(STORAGE_KEYS.diaryEntries);
   },

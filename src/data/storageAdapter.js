@@ -6,15 +6,15 @@ import { localStorageAdapter } from "./localStorageAdapter.js";
  * (services/*) не менялся при смене хранилища.
  *
  * @typedef {Object} StorageAdapter
- * @property {() => Promise<Object[]>} getNotes
- * @property {(id: string) => Promise<Object|null>} getNote
- * @property {(note: Object) => Promise<Object>} createNote
- * @property {(id: string, patch: Object) => Promise<Object|null>} updateNote
- * @property {(id: string) => Promise<void>} deleteNote
- * @property {() => Promise<Object[]>} getFolders
+ * @property {(section: string) => Promise<Object[]>} getFolders
  * @property {(folder: Object) => Promise<Object>} createFolder
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateFolder
  * @property {(id: string) => Promise<void>} deleteFolder
+ * @property {(section: string) => Promise<Object[]>} getItems
+ * @property {(id: string) => Promise<Object|null>} getItem
+ * @property {(item: Object) => Promise<Object>} createItem
+ * @property {(id: string, patch: Object) => Promise<Object|null>} updateItem
+ * @property {(id: string) => Promise<void>} deleteItem
  * @property {() => Promise<Object[]>} getDiaryEntries
  * @property {(date: string) => Promise<Object|null>} getDiaryEntryByDate
  * @property {(date: string, content: string) => Promise<Object>} upsertDiaryEntry

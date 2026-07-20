@@ -2,34 +2,22 @@ function generateId() {
   return crypto.randomUUID();
 }
 
-export function createNoteModel({ title = "", content = "", folderId = null, tags = [] } = {}) {
+export function createFolderModel({ name = "", section }) {
+  return {
+    id: generateId(),
+    name,
+    section,
+  };
+}
+
+export function createItemModel({ title = "", content = "", folderId = null, section }) {
   const now = new Date().toISOString();
   return {
     id: generateId(),
     title,
     content,
     folderId,
-    tags,
-    highlights: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-export function createFolderModel({ name = "", parentId = null } = {}) {
-  return {
-    id: generateId(),
-    name,
-    parentId,
-  };
-}
-
-export function createDiaryEntryModel({ date, content = "" } = {}) {
-  const now = new Date().toISOString();
-  return {
-    id: generateId(),
-    date,
-    content,
+    section,
     createdAt: now,
     updatedAt: now,
   };
