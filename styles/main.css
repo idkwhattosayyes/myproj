@@ -43,45 +43,27 @@ button {
 }
 
 /* Layout */
-.app-header {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-  padding: 0.75rem 1.5rem;
-  background: #ffffff;
-  border-bottom: 1px solid #d8dbdf;
-}
-
-.app-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.app-nav {
-  display: flex;
-  gap: 1.25rem;
-}
-
-.app-nav-link {
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  color: #1f2328;
-  font-weight: 500;
-}
-
-.app-nav-link:hover {
-  background: #eef1f4;
-  text-decoration: none;
-}
-
-.app-nav-link.is-active {
-  background: #0969da;
-  color: #ffffff;
-}
-
 .app-view {
   width: 100%;
   padding: 1.5rem;
+}
+
+.app-view--home {
+  padding: 0;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  color: #4b5563;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.back-link:hover {
+  color: #1f2328;
 }
 
 .placeholder {

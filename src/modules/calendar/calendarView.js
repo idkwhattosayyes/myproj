@@ -1,4 +1,3 @@
-import * as calendarService from "../../services/calendarService.js";
 import { getMonthMatrix, getWeekdayLabels, todayISO, MONTH_NAMES } from "../../utils/date.js";
 
 let state = null;
@@ -8,7 +7,6 @@ export async function renderCalendarView(container) {
   state = {
     year: now.getFullYear(),
     month: now.getMonth(),
-    markedDates: await calendarService.getMarkedDates(),
   };
   render(container);
 }
@@ -18,6 +16,7 @@ function render(container) {
   const today = todayISO();
 
   container.innerHTML = `
+    <a href="#/" class="back-link">← На главную</a>
     <div class="calendar">
       <div class="calendar-toolbar">
         <button type="button" class="btn" data-action="prev">←</button>
@@ -34,9 +33,8 @@ function render(container) {
         ${days
           .map(
             (day) => `
-          <div class="calendar-day ${day.inCurrentMonth ? "" : "is-outside"} ${day.iso === today ? "is-today" : ""}" data-date="${day.iso}">
+          <div class="calendar-day ${day.inCurrentMonth ? "" : "is-outside"} ${day.iso === today ? "is-today" : ""}">
             <span class="calendar-day-number">${day.date.getDate()}</span>
-            ${state.markedDates.has(day.iso) ? '<span class="calendar-day-marker" title="Есть запись в дневнике"></span>' : ""}
           </div>`
           )
           .join("")}
@@ -51,12 +49,6 @@ function render(container) {
     state.year = now.getFullYear();
     state.month = now.getMonth();
     render(container);
-  });
-
-  container.querySelectorAll("[data-date]").forEach((el) => {
-    el.addEventListener("click", () => {
-      window.location.hash = `#/diary/${el.dataset.date}`;
-    });
   });
 }
 

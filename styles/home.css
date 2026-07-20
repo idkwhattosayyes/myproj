@@ -1,0 +1,78 @@
+.home {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #fbfbf9;
+}
+
+.home-circles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(1.5rem, 4vw, 3rem);
+}
+
+.home-circle {
+  position: relative;
+  width: clamp(120px, 16vw, 172px);
+  height: clamp(120px, 16vw, 172px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 1rem;
+  color: #22303b;
+  font-weight: 600;
+  font-size: 1.05rem;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(34, 48, 59, 0.1);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  cursor: pointer;
+}
+
+.home-circle:hover,
+.home-circle:focus-visible {
+  transform: scale(1.06);
+  box-shadow: 0 16px 32px rgba(34, 48, 59, 0.18);
+  text-decoration: none;
+}
+
+.home-circle:focus-visible {
+  outline: 2px solid #33507e;
+  outline-offset: 4px;
+}
+
+.home-circle--tasks { background: #cfe1f0; }
+.home-circle--documents { background: #cfe8de; }
+.home-circle--calendar { background: #dcd8ee; }
+
+.home-circle--ai {
+  background: #d8dbe1;
+  color: #55606b;
+}
+
+.home-circle-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  background: rgba(20, 24, 30, 0.6);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.home-circle--ai:hover .home-circle-overlay,
+.home-circle--ai:focus-visible .home-circle-overlay {
+  opacity: 1;
+}
