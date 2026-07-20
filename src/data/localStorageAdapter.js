@@ -18,10 +18,22 @@ function touch(item) {
   return { ...item, updatedAt: new Date().toISOString() };
 }
 
+// Задачи и Документы теперь используют общий пул данных — различаются только
+// доступными кнопками тулбара (config.toolbarButtons), а не хранением. Обе
+// section-метки считаются алиасами друг друга при чтении, поэтому папка/заметка,
+// созданная в одном разделе, сразу видна и в другом — без миграции уже
+// сохранённых записей.
+const TASK_DOC_SECTIONS = ["tasks", "documents"];
+
+function matchesSection(entitySection, querySection) {
+  if (TASK_DOC_SECTIONS.includes(querySection)) return TASK_DOC_SECTIONS.includes(entitySection);
+  return entitySection === querySection;
+}
+
 export const localStorageAdapter = {
   // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getFolders(section) {
-    return readCollection(STORAGE_KEYS.folders).filter((folder) => folder.section === section);
+    return readCollection(STORAGE_KEYS.folders).filter((folder) => matchesSection(folder.section, section));
   },
   async createFolder(folder) {
     const folders = readCollection(STORAGE_KEYS.folders);
@@ -44,7 +56,7 @@ export const localStorageAdapter = {
 
   // Items (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getItems(section) {
-    return readCollection(STORAGE_KEYS.items).filter((item) => item.section === section);
+    return readCollection(STORAGE_KEYS.items).filter((item) => matchesSection(item.section, section));
   },
   async getItem(id) {
     return readCollection(STORAGE_KEYS.items).find((item) => item.id === id) ?? null;
