@@ -22,6 +22,8 @@ export const translations = {
     "calendar.add": "Add",
     "calendar.empty": "Nothing here yet.",
     "calendar.close": "Close",
+    "calendar.timeFrom": "From",
+    "calendar.timeTo": "To",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -90,6 +92,8 @@ export const translations = {
     "calendar.add": "Добавить",
     "calendar.empty": "Здесь пока пусто.",
     "calendar.close": "Закрыть",
+    "calendar.timeFrom": "От",
+    "calendar.timeTo": "До",
 
     "panel.folders": "Папки",
     "panel.all": "Все",

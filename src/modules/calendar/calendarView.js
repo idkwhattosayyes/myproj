@@ -170,6 +170,7 @@ async function renderDayPanel(container) {
                   (entry) => `
           <li class="day-entry ${entry.done ? "is-done" : ""}" data-entry-id="${entry.id}">
             <input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>
+            ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
             <span class="day-entry-title">${escapeHtml(entry.title)}</span>
             <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
           </li>`
@@ -178,7 +179,17 @@ async function renderDayPanel(container) {
             : `<li class="placeholder">${t("calendar.empty")}</li>`
         }
       </ul>
-      <form class="day-entry-form" data-role="entry-form">
+      <form class="day-entry-form" data-role="entry-form" novalidate>
+        <div class="day-entry-form-times">
+          <label class="day-entry-time-label">
+            ${t("calendar.timeFrom")}
+            <input type="time" class="day-entry-time" data-role="entry-start">
+          </label>
+          <label class="day-entry-time-label">
+            ${t("calendar.timeTo")}
+            <input type="time" class="day-entry-time" data-role="entry-end">
+          </label>
+        </div>
         <input type="text" class="day-entry-input" placeholder="${t("calendar.addPlaceholder")}" data-role="entry-input">
         <button type="submit" class="btn btn-primary btn-small">${t("calendar.add")}</button>
       </form>
@@ -206,10 +217,18 @@ async function renderDayPanel(container) {
   panelEl.querySelector('[data-role="entry-form"]').addEventListener("submit", async (event) => {
     event.preventDefault();
     const input = panelEl.querySelector('[data-role="entry-input"]');
+    const startInput = panelEl.querySelector('[data-role="entry-start"]');
+    const endInput = panelEl.querySelector('[data-role="entry-end"]');
     const title = input.value.trim();
     if (!title) return;
-    await calendarEntriesService.createEntry(state.selectedDate, title);
+    await calendarEntriesService.createEntry(state.selectedDate, {
+      title,
+      startTime: startInput.value,
+      endTime: endInput.value,
+    });
     input.value = "";
+    startInput.value = "";
+    endInput.value = "";
     await renderDayPanel(container);
     await refreshDayMarker(container, state.selectedDate);
   });
@@ -228,6 +247,11 @@ async function refreshDayMarker(container, iso) {
   } else if (!hasEntries && marker) {
     marker.remove();
   }
+}
+
+function formatTimeRange(entry) {
+  if (entry.startTime && entry.endTime) return `${entry.startTime}–${entry.endTime}`;
+  return entry.startTime || entry.endTime;
 }
 
 function formatDateLabel(iso) {

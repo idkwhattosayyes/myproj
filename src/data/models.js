@@ -25,11 +25,14 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
   };
 }
 
-export function createCalendarEntryModel({ date, title = "" }) {
+export function createCalendarEntryModel({ date, title = "", type = "todo", startTime = "", endTime = "" }) {
   return {
     id: generateId(),
     date,
     title,
+    type, // "note" | "todo"
+    startTime,
+    endTime,
     done: false,
     createdAt: new Date().toISOString(),
   };

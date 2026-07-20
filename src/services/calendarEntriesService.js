@@ -12,8 +12,8 @@ export async function listAllDates() {
   return storage.getAllCalendarEntryDates();
 }
 
-export async function createEntry(date, title) {
-  const entry = createCalendarEntryModel({ date, title });
+export async function createEntry(date, { title, type, startTime, endTime }) {
+  const entry = createCalendarEntryModel({ date, title, type, startTime, endTime });
   return storage.createCalendarEntry(entry);
 }
 
