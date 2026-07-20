@@ -1,6 +1,8 @@
+import { renderPanelSection } from "../shared/panelSection.js";
+
 export async function renderDocumentsView(container) {
-  container.innerHTML = `
-    <a href="#/" class="back-link">← На главную</a>
-    <p class="placeholder">Раздел «Документы» — в разработке.</p>
-  `;
+  await renderPanelSection(container, {
+    section: "documents",
+    toolbarButtons: ["bold", "italic", "underline", "h1", "h2", "bulletList", "orderedList"],
+  });
 }
