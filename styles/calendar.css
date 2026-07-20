@@ -235,6 +235,14 @@
 
 .day-entry-title {
   flex: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  margin: -0.1rem -0.3rem;
+}
+
+.day-entry-title:hover {
+  background: #f3f4f6;
 }
 
 .day-entry-delete {
@@ -246,6 +254,17 @@
 
 .day-entry-delete:hover {
   color: #b91c1c;
+}
+
+.day-entry--editing {
+  gap: 0.4rem;
+}
+
+.day-entry-edit-input {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
 }
 
 .day-entry-type-switch {

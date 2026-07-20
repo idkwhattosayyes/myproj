@@ -21,6 +21,10 @@ export async function toggleDone(id, done) {
   return storage.updateCalendarEntry(id, { done });
 }
 
+export async function updateEntry(id, patch) {
+  return storage.updateCalendarEntry(id, patch);
+}
+
 export async function deleteEntry(id) {
   return storage.deleteCalendarEntry(id);
 }

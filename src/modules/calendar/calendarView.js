@@ -1,6 +1,6 @@
 import { getMonthMatrix, todayISO, todayDMY } from "../../utils/date.js";
 import { t } from "../../i18n/i18n.js";
-import { escapeHtml } from "../../utils/dom.js";
+import { escapeHtml, escapeAttr } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
 
 let state = null;
@@ -13,6 +13,7 @@ export async function renderCalendarView(container) {
     month: now.getMonth(),
     selectedDate: null,
     dayEntryType: "todo", // "note" | "todo" — какой тип записи создаётся формой ниже
+    editingEntryId: null, // id записи, которая сейчас редактируется инлайн в списке
   };
   await render(container);
 }
@@ -156,6 +157,11 @@ async function renderDayPanel(container) {
   }
 
   const entries = await calendarEntriesService.listForDate(state.selectedDate);
+  // Переключение дня могло оставить editingEntryId висящим на записи, которой
+  // здесь больше нет — сбрасываем, иначе список молча не покажет форму правки.
+  if (state.editingEntryId && !entries.some((entry) => entry.id === state.editingEntryId)) {
+    state.editingEntryId = null;
+  }
 
   panelEl.innerHTML = `
     <div class="day-panel-inner">
@@ -166,17 +172,7 @@ async function renderDayPanel(container) {
       <ul class="day-entry-list">
         ${
           entries.length
-            ? entries
-                .map(
-                  (entry) => `
-          <li class="day-entry ${entry.done ? "is-done" : ""}" data-entry-id="${entry.id}">
-            ${entry.type === "note" ? "" : `<input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>`}
-            ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
-            <span class="day-entry-title">${escapeHtml(entry.title)}</span>
-            <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
-          </li>`
-                )
-                .join("")
+            ? entries.map((entry) => (entry.id === state.editingEntryId ? renderEditRow(entry) : renderEntryRow(entry))).join("")
             : `<li class="placeholder">${t("calendar.empty")}</li>`
         }
       </ul>
@@ -215,6 +211,27 @@ async function renderDayPanel(container) {
 
   panelEl.querySelectorAll("[data-entry-id]").forEach((row) => {
     const entryId = row.dataset.entryId;
+
+    if (row.classList.contains("day-entry--editing")) {
+      row.querySelector('[data-action="save-entry"]').addEventListener("click", async () => {
+        const title = row.querySelector('[data-role="edit-title"]').value.trim();
+        if (!title) return;
+        await calendarEntriesService.updateEntry(entryId, {
+          title,
+          startTime: row.querySelector('[data-role="edit-start"]').value,
+          endTime: row.querySelector('[data-role="edit-end"]').value,
+        });
+        state.editingEntryId = null;
+        await renderDayPanel(container);
+        await refreshDayMarker(container, state.selectedDate);
+      });
+      row.querySelector('[data-action="cancel-edit"]').addEventListener("click", () => {
+        state.editingEntryId = null;
+        renderDayPanel(container);
+      });
+      return;
+    }
+
     // У заметок (в отличие от to-do) нет чекбокса — его просто не рендерим.
     const checkbox = row.querySelector('[data-role="entry-check"]');
     if (checkbox) {
@@ -223,6 +240,10 @@ async function renderDayPanel(container) {
         renderDayPanel(container);
       });
     }
+    row.querySelector('[data-role="entry-title"]').addEventListener("click", () => {
+      state.editingEntryId = entryId;
+      renderDayPanel(container);
+    });
     row.querySelector('[data-action="delete-entry"]').addEventListener("click", async () => {
       await calendarEntriesService.deleteEntry(entryId);
       await renderDayPanel(container);
@@ -273,6 +294,29 @@ async function refreshDayMarker(container, iso) {
   } else if (!hasEntries && marker) {
     marker.remove();
   }
+}
+
+function renderEntryRow(entry) {
+  return `
+    <li class="day-entry ${entry.done ? "is-done" : ""}" data-entry-id="${entry.id}">
+      ${entry.type === "note" ? "" : `<input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>`}
+      ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
+      <span class="day-entry-title" data-role="entry-title" title="${t("calendar.editEntry")}">${escapeHtml(entry.title)}</span>
+      <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
+    </li>`;
+}
+
+// Инлайн-форма правки — та же строка списка, только с полями вместо текста;
+// тип записи (note/todo) при правке не меняется, редактируются лишь текст и время.
+function renderEditRow(entry) {
+  return `
+    <li class="day-entry day-entry--editing" data-entry-id="${entry.id}">
+      <input type="time" class="day-entry-time" data-role="edit-start" value="${escapeAttr(entry.startTime || "")}">
+      <input type="time" class="day-entry-time" data-role="edit-end" value="${escapeAttr(entry.endTime || "")}">
+      <input type="text" class="day-entry-edit-input" data-role="edit-title" value="${escapeAttr(entry.title)}">
+      <button type="button" class="btn btn-primary btn-small" data-action="save-entry">${t("calendar.save")}</button>
+      <button type="button" class="btn btn-small" data-action="cancel-edit">${t("modal.cancel")}</button>
+    </li>`;
 }
 
 function formatTimeRange(entry) {

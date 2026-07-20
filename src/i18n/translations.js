@@ -27,6 +27,7 @@ export const translations = {
     "calendar.typeNote": "Note",
     "calendar.typeTodo": "To-do",
     "calendar.save": "Save",
+    "calendar.editEntry": "Click to edit",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -100,6 +101,7 @@ export const translations = {
     "calendar.typeNote": "Заметка",
     "calendar.typeTodo": "To-do",
     "calendar.save": "Сохранить",
+    "calendar.editEntry": "Нажмите, чтобы изменить",
 
     "panel.folders": "Папки",
     "panel.all": "Все",
