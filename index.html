@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Заметки · Дневник · Календарь</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/notes.css">
+  <link rel="stylesheet" href="styles/diary.css">
+  <link rel="stylesheet" href="styles/calendar.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">Личный кабинет</h1>
+    <nav class="app-nav">
+      <a href="#/notes" class="app-nav-link" data-route="notes">Заметки</a>
+      <a href="#/diary" class="app-nav-link" data-route="diary">Дневник</a>
+      <a href="#/calendar" class="app-nav-link" data-route="calendar">Календарь</a>
+    </nav>
+  </header>
+
+  <main id="app-view" class="app-view">
+    <!-- Сюда рендерится текущий модуль -->
+  </main>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

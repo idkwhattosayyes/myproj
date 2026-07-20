@@ -1,0 +1,88 @@
+/* Reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #1f2328;
+  background: #f6f7f9;
+  line-height: 1.5;
+}
+
+a {
+  color: #0969da;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Layout */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0.75rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #d8dbdf;
+}
+
+.app-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.app-nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.app-nav-link {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  color: #1f2328;
+  font-weight: 500;
+}
+
+.app-nav-link:hover {
+  background: #eef1f4;
+  text-decoration: none;
+}
+
+.app-nav-link.is-active {
+  background: #0969da;
+  color: #ffffff;
+}
+
+.app-view {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.placeholder {
+  color: #6b7280;
+  padding: 2rem 0;
+}

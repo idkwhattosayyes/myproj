@@ -1,0 +1,9 @@
+{
+  "name": "myproj",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Личный веб-app: Заметки, Дневник, Календарь (vanilla HTML/CSS/JS)",
+  "scripts": {
+    "dev": "npx --yes serve . -l 5173"
+  }
+}
