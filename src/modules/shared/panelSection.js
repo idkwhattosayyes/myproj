@@ -58,14 +58,17 @@ function render(container, config, state) {
 }
 
 function wireHeaderActions(container, config, state) {
+  // Сворачивание/разворачивание переключает класс на уже существующем узле
+  // (без полного render), иначе CSS-transition нечего анимировать — элемент
+  // пересоздавался бы сразу в целевом состоянии.
   container.querySelector('[data-action="toggle-folders"]').addEventListener("click", () => {
     state.foldersCollapsed = !state.foldersCollapsed;
-    render(container, config, state);
+    container.querySelector(".panel-folders").classList.toggle("is-collapsed", state.foldersCollapsed);
   });
 
   container.querySelector('[data-action="toggle-list"]').addEventListener("click", () => {
     state.listCollapsed = !state.listCollapsed;
-    render(container, config, state);
+    container.querySelector(".panel-list").classList.toggle("is-collapsed", state.listCollapsed);
   });
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {

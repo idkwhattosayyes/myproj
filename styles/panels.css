@@ -10,18 +10,38 @@
   border: 1px solid #d8dbdf;
   border-radius: 8px;
   overflow: hidden;
+  transition: width 0.22s ease;
 }
 
 .panel-folders { width: 220px; }
 .panel-list { width: 240px; }
 
-.panel.is-collapsed { width: 44px; }
+/* Свёрнутая панель — тонкая полоска-полоса, сама являющаяся кликабельным
+   элементом для разворачивания (вместо квадратной кнопки с иконкой). */
+.panel.is-collapsed { width: 8px; }
 
 .panel.is-collapsed .panel-body,
 .panel.is-collapsed .panel-title,
 .panel.is-collapsed [data-action="new-item"] {
   display: none;
 }
+
+.panel.is-collapsed .panel-header {
+  padding: 0;
+  height: 100%;
+  border-bottom: none;
+}
+
+.panel.is-collapsed .panel-toggle {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font-size: 0;
+  border-radius: 0;
+  background: #d8dbdf;
+}
+
+.panel.is-collapsed .panel-toggle:hover { background: #b6bcc4; }
 
 .panel-header {
   display: flex;
