@@ -1,5 +1,5 @@
 import * as itemsService from "../../services/itemsService.js";
-import { renderRichTextEditor } from "./richTextEditor.js";
+import { createRichTextEditor } from "./richTextEditor.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml } from "../../utils/dom.js";
@@ -193,13 +193,15 @@ function renderDetail(container, config, state) {
     return;
   }
 
+  // Порядок в детали заметки: тулбар сверху -> название -> текст.
   detailEl.innerHTML = `
     <div class="item-detail">
-      <div class="item-detail-toolbar">
+      <div data-role="toolbar-host"></div>
+      <div class="item-detail-titlebar">
         <input type="text" class="item-title-input" data-role="title-input">
         <button type="button" class="btn btn-danger btn-small" data-action="delete-item">${t("panel.delete")}</button>
       </div>
-      <div data-role="editor-host"></div>
+      <div data-role="content-host"></div>
     </div>
   `;
 
@@ -221,15 +223,22 @@ function renderDetail(container, config, state) {
     }, 400);
   }
 
-  const titleInput = detailEl.querySelector('[data-role="title-input"]');
-  titleInput.value = item.title;
-  titleInput.addEventListener("input", () => scheduleSave({ title: titleInput.value }));
-
-  const editorHost = detailEl.querySelector('[data-role="editor-host"]');
-  renderRichTextEditor(editorHost, {
+  const { toolbarEl, contentEl } = createRichTextEditor({
     content: item.content,
     buttons: config.toolbarButtons,
     onChange: (html) => scheduleSave({ content: html }),
+  });
+  detailEl.querySelector('[data-role="toolbar-host"]').appendChild(toolbarEl);
+  detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
+
+  const titleInput = detailEl.querySelector('[data-role="title-input"]');
+  titleInput.value = item.title;
+  titleInput.addEventListener("input", () => scheduleSave({ title: titleInput.value }));
+  titleInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    contentEl.focus();
+    placeCaretAtStart(contentEl);
   });
 
   detailEl.querySelector('[data-action="delete-item"]').addEventListener("click", async () => {
@@ -241,4 +250,13 @@ function renderDetail(container, config, state) {
     state.selectedItemId = null;
     render(container, config, state);
   });
+}
+
+function placeCaretAtStart(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
 }

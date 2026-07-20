@@ -43,6 +43,8 @@ export const translations = {
     "editor.bulletList": "Bullet list",
     "editor.orderedList": "Numbered list",
     "editor.checklist": "Checklist",
+    "editor.textColor": "Text color",
+    "editor.highlight": "Highlight color",
 
     "modal.yes": "Yes",
     "modal.cancel": "Cancel",
@@ -92,6 +94,8 @@ export const translations = {
     "editor.bulletList": "Маркированный список",
     "editor.orderedList": "Нумерованный список",
     "editor.checklist": "Чек-лист",
+    "editor.textColor": "Цвет текста",
+    "editor.highlight": "Цвет выделения",
 
     "modal.yes": "Да",
     "modal.cancel": "Отмена",

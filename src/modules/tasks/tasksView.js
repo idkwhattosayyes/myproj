@@ -3,6 +3,6 @@ import { renderPanelSection } from "../shared/panelSection.js";
 export async function renderTasksView(container) {
   await renderPanelSection(container, {
     section: "tasks",
-    toolbarButtons: ["bold", "underline", "bulletList", "checklist"],
+    toolbarButtons: ["bold", "underline", "textColor", "highlight", "bulletList", "checklist"],
   });
 }
