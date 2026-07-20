@@ -1,1 +1,69 @@
-/* Стили модуля "Календарь" — наполняются на шаге реализации модуля */
+.calendar {
+  background: #ffffff;
+  border: 1px solid #d8dbdf;
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-title {
+  flex: 1;
+  text-align: center;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.8rem;
+  color: #6b7280;
+  padding: 0.4rem 0;
+  text-transform: uppercase;
+}
+
+.calendar-day {
+  position: relative;
+  min-height: 80px;
+  border: 1px solid #eef1f4;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+
+.calendar-day:hover {
+  background: #f9fafb;
+}
+
+.calendar-day.is-outside {
+  color: #c3c8cf;
+}
+
+.calendar-day.is-today .calendar-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: #0969da;
+  color: #ffffff;
+  border-radius: 50%;
+}
+
+.calendar-day-marker {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0969da;
+}
