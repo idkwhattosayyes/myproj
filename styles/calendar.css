@@ -1,3 +1,12 @@
+/* Текущая дата цифрами — над кружками месяцев и над кружками дней. */
+.calendar-today-date {
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+
 /* ===== Months view: 12 circles ===== */
 .months-toolbar {
   display: flex;
@@ -42,6 +51,12 @@
 .month-circle:focus-visible {
   outline: 2px solid #33507e;
   outline-offset: 3px;
+}
+
+.month-circle.is-current {
+  background: #33507e;
+  color: #ffffff;
+  font-weight: 700;
 }
 
 @media (max-width: 640px) {

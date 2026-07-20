@@ -1,4 +1,4 @@
-import { getMonthMatrix, todayISO } from "../../utils/date.js";
+import { getMonthMatrix, todayISO, todayDMY } from "../../utils/date.js";
 import { t } from "../../i18n/i18n.js";
 import { escapeHtml } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
@@ -26,9 +26,12 @@ async function render(container) {
 
 function renderMonthsView(container) {
   const months = t("calendar.months");
+  const now = new Date();
+  const isCurrentYear = state.year === now.getFullYear();
 
   container.innerHTML = `
     <a href="#/" class="back-link">${t("nav.backHome")}</a>
+    <div class="calendar-today-date">${todayDMY()}</div>
     <div class="months-toolbar">
       <button type="button" class="btn" data-action="prev-year">←</button>
       <h2 class="months-title">${state.year}</h2>
@@ -38,7 +41,7 @@ function renderMonthsView(container) {
       ${months
         .map(
           (name, index) => `
-        <button type="button" class="month-circle" data-month="${index}">
+        <button type="button" class="month-circle ${isCurrentYear && index === now.getMonth() ? "is-current" : ""}" data-month="${index}">
           <span>${name}</span>
         </button>`
         )
@@ -78,6 +81,7 @@ async function renderMonthView(container) {
     </div>
     <div class="month-view ${state.selectedDate ? "is-day-open" : ""}" data-role="month-view">
       <div class="day-grid-wrap">
+        <div class="calendar-today-date">${todayDMY()}</div>
         <div class="calendar-toolbar">
           <button type="button" class="btn" data-action="prev-month">←</button>
           <h2 class="calendar-title">${months[state.month]} ${state.year}</h2>

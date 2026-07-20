@@ -9,6 +9,14 @@ export function todayISO() {
   return toISODate(new Date());
 }
 
+/** Текущая дата в формате ДД.ММ.ГГГГ — для шапки экранов календаря. */
+export function todayDMY() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${day}.${month}.${now.getFullYear()}`;
+}
+
 /** Сетка из 42 дней (6 недель, Пн-старт), включая хвосты соседних месяцев. */
 export function getMonthMatrix(year, month) {
   const firstDay = new Date(year, month, 1);
