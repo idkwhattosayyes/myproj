@@ -5,18 +5,18 @@ const COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"
 
 function getButtonDefs() {
   return {
-    bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold") },
-    italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic") },
-    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: () => document.execCommand("underline") },
-    strikethrough: { label: "S", title: t("editor.strikethrough"), command: () => document.execCommand("strikeThrough") },
-    h1: { label: "H1", title: t("editor.h1"), command: () => document.execCommand("formatBlock", false, "H1") },
-    h2: { label: "H2", title: t("editor.h2"), command: () => document.execCommand("formatBlock", false, "H2") },
-    alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft") },
-    alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter") },
-    alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight") },
-    bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList") },
-    orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList") },
-    checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl) },
+    bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
+    italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
+    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: () => document.execCommand("underline"), isActive: () => document.queryCommandState("underline") },
+    strikethrough: { label: "S", title: t("editor.strikethrough"), command: () => document.execCommand("strikeThrough"), isActive: () => document.queryCommandState("strikeThrough") },
+    h1: { label: "H1", title: t("editor.h1"), command: () => document.execCommand("formatBlock", false, "H1"), isActive: (editorEl) => isFormatBlock(editorEl, "h1") },
+    h2: { label: "H2", title: t("editor.h2"), command: () => document.execCommand("formatBlock", false, "H2"), isActive: (editorEl) => isFormatBlock(editorEl, "h2") },
+    alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
+    alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
+    alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
+    bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList"), isActive: () => document.queryCommandState("insertUnorderedList") },
+    orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList"), isActive: () => document.queryCommandState("insertOrderedList") },
+    checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl), isActive: (editorEl) => isInsideChecklist(editorEl) },
     textColor: {
       label: "A",
       title: t("editor.textColor"),
@@ -25,6 +25,7 @@ function getButtonDefs() {
       // Сбрасывает цвет текста обратно к обычному — иначе применённый foreColor
       // ничем не убрать после закрытия поповера.
       reset: () => document.execCommand("foreColor", false, "#1f2328"),
+      isActive: (editorEl) => isColorActive(editorEl, "color"),
     },
     highlight: {
       label: "▮",
@@ -32,9 +33,36 @@ function getButtonDefs() {
       isColor: true,
       apply: (color) => document.execCommand("hiliteColor", false, color),
       reset: () => document.execCommand("hiliteColor", false, "transparent"),
+      isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
   };
+}
+
+// Тег блока текущего выделения (formatBlock) — для подсветки H1/H2 в тулбаре.
+function isFormatBlock(editorEl, tagName) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return false;
+  let node = selection.getRangeAt(0).commonAncestorContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return false;
+  return !!(node.closest && node.closest(tagName));
+}
+
+// Активность textColor/highlight определяем по computed-стилю в точке курсора,
+// т.к. queryCommandState не поддерживает произвольные значения foreColor/hiliteColor.
+function isColorActive(editorEl, cssProp) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return false;
+  let node = selection.getRangeAt(0).startContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return false;
+
+  const value = window.getComputedStyle(node)[cssProp];
+  if (cssProp === "backgroundColor") {
+    return !!value && value !== "rgba(0, 0, 0, 0)" && value !== "transparent";
+  }
+  return value !== window.getComputedStyle(editorEl).color;
 }
 
 /**
@@ -58,6 +86,16 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   contentEl.spellcheck = false;
   contentEl.innerHTML = content || "";
 
+  // Подсвечивает кнопки, чьё форматирование активно в текущем выделении/позиции
+  // курсора (bold в жирном тексте, highlight на закрашенном фрагменте и т.д.).
+  function refreshToolbarState() {
+    toolbarEl.querySelectorAll(".rte-btn").forEach((btn) => {
+      const btnDef = buttonDefs[btn.dataset.command];
+      if (!btnDef || !btnDef.isActive) return;
+      btn.classList.toggle("is-active", !!btnDef.isActive(contentEl));
+    });
+  }
+
   buttons.forEach((key) => {
     const def = buttonDefs[key];
     if (!def) return;
@@ -72,7 +110,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     btn.addEventListener("mousedown", (event) => event.preventDefault());
 
     if (def.isColor) {
-      btn.addEventListener("click", () => toggleColorPopover(btn, def, contentEl, onChange));
+      btn.addEventListener("click", () => toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState));
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -80,6 +118,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
         await def.command(contentEl);
         contentEl.focus();
         onChange(contentEl.innerHTML);
+        refreshToolbarState();
       });
     }
 
@@ -118,6 +157,12 @@ export function createRichTextEditor({ content, buttons, onChange }) {
       onChange(contentEl.innerHTML);
     }
   });
+
+  // Курсор/выделение двигаются кликом мыши или клавиатурой без гарантии
+  // "input"-события — обновляем состояние кнопок по обоим путям и на фокус.
+  contentEl.addEventListener("mouseup", refreshToolbarState);
+  contentEl.addEventListener("keyup", refreshToolbarState);
+  contentEl.addEventListener("focus", refreshToolbarState);
 
   return { toolbarEl, contentEl };
 }
@@ -163,7 +208,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function toggleColorPopover(btn, def, editorEl, onChange) {
+function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
   const existing = btn.querySelector(".rte-color-popover");
   if (existing) {
     existing.remove();
@@ -187,6 +232,7 @@ function toggleColorPopover(btn, def, editorEl, onChange) {
     popover.remove();
     editorEl.focus();
     onChange(editorEl.innerHTML);
+    refreshToolbarState();
   });
   popover.appendChild(resetSwatch);
 
@@ -202,6 +248,7 @@ function toggleColorPopover(btn, def, editorEl, onChange) {
       popover.remove();
       editorEl.focus();
       onChange(editorEl.innerHTML);
+      refreshToolbarState();
     });
     popover.appendChild(swatch);
   });

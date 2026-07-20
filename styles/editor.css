@@ -33,6 +33,15 @@
 
 .rte-btn:hover { background: #f3f4f6; }
 
+/* Активное состояние — курсор внутри жирного/подчёркнутого/закрашенного и
+   т.п. текста. inset box-shadow вместо border, чтобы не сдвигать layout. */
+.rte-btn.is-active {
+  background: #dbeafe;
+  box-shadow: inset 0 0 0 2px #33507e;
+}
+
+.rte-btn.is-active:hover { background: #cfe1f0; }
+
 .rte-btn[data-command="textColor"] { border-bottom: 3px solid #e03131; }
 .rte-btn[data-command="highlight"] { background: #fff3a3; }
 .rte-btn[data-command="highlight"]:hover { background: #ffe873; }
