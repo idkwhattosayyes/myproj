@@ -2,6 +2,7 @@ const STORAGE_KEYS = {
   folders: "app:folders",
   items: "app:items",
   diaryEntries: "app:diaryEntries",
+  calendarEntries: "app:calendarEntries",
 };
 
 function readCollection(key) {
@@ -91,5 +92,31 @@ export const localStorageAdapter = {
   async deleteDiaryEntry(id) {
     const entries = readCollection(STORAGE_KEYS.diaryEntries).filter((entry) => entry.id !== id);
     writeCollection(STORAGE_KEYS.diaryEntries, entries);
+  },
+
+  // Calendar entries — лёгкие пункты списка на конкретную дату (не rich-text)
+  async getCalendarEntries(date) {
+    return readCollection(STORAGE_KEYS.calendarEntries).filter((entry) => entry.date === date);
+  },
+  async getAllCalendarEntryDates() {
+    return [...new Set(readCollection(STORAGE_KEYS.calendarEntries).map((entry) => entry.date))];
+  },
+  async createCalendarEntry(entry) {
+    const entries = readCollection(STORAGE_KEYS.calendarEntries);
+    entries.push(entry);
+    writeCollection(STORAGE_KEYS.calendarEntries, entries);
+    return entry;
+  },
+  async updateCalendarEntry(id, patch) {
+    const entries = readCollection(STORAGE_KEYS.calendarEntries);
+    const index = entries.findIndex((entry) => entry.id === id);
+    if (index === -1) return null;
+    entries[index] = { ...entries[index], ...patch };
+    writeCollection(STORAGE_KEYS.calendarEntries, entries);
+    return entries[index];
+  },
+  async deleteCalendarEntry(id) {
+    const entries = readCollection(STORAGE_KEYS.calendarEntries).filter((entry) => entry.id !== id);
+    writeCollection(STORAGE_KEYS.calendarEntries, entries);
   },
 };

@@ -19,6 +19,11 @@ import { localStorageAdapter } from "./localStorageAdapter.js";
  * @property {(date: string) => Promise<Object|null>} getDiaryEntryByDate
  * @property {(date: string, content: string) => Promise<Object>} upsertDiaryEntry
  * @property {(id: string) => Promise<void>} deleteDiaryEntry
+ * @property {(date: string) => Promise<Object[]>} getCalendarEntries
+ * @property {() => Promise<string[]>} getAllCalendarEntryDates
+ * @property {(entry: Object) => Promise<Object>} createCalendarEntry
+ * @property {(id: string, patch: Object) => Promise<Object|null>} updateCalendarEntry
+ * @property {(id: string) => Promise<void>} deleteCalendarEntry
  */
 
 // Единственное место, которое нужно поменять при переходе на Supabase.

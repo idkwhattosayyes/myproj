@@ -16,6 +16,11 @@ export const translations = {
       "July", "August", "September", "October", "November", "December",
     ],
     "calendar.weekdaysShort": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "calendar.backToMonths": "← Months",
+    "calendar.addPlaceholder": "Add a task or note…",
+    "calendar.add": "Add",
+    "calendar.empty": "Nothing here yet.",
+    "calendar.close": "Close",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -74,6 +79,11 @@ export const translations = {
       "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
     ],
     "calendar.weekdaysShort": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+    "calendar.backToMonths": "← Месяцы",
+    "calendar.addPlaceholder": "Добавить задачу или заметку…",
+    "calendar.add": "Добавить",
+    "calendar.empty": "Здесь пока пусто.",
+    "calendar.close": "Закрыть",
 
     "panel.folders": "Папки",
     "panel.all": "Все",

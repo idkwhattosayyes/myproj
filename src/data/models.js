@@ -22,3 +22,13 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     updatedAt: now,
   };
 }
+
+export function createCalendarEntryModel({ date, title = "" }) {
+  return {
+    id: generateId(),
+    date,
+    title,
+    done: false,
+    createdAt: new Date().toISOString(),
+  };
+}

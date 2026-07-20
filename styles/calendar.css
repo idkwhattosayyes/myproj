@@ -1,8 +1,87 @@
-.calendar {
+/* ===== Months view: 12 circles ===== */
+.months-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.months-title {
+  min-width: 4ch;
+  text-align: center;
+}
+
+.month-circles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.75rem;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.month-circle {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: none;
+  background: #cfe1f0;
+  color: #22303b;
+  font-weight: 600;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 16px rgba(34, 48, 59, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.month-circle:hover,
+.month-circle:focus-visible {
+  transform: scale(1.06);
+  box-shadow: 0 14px 28px rgba(34, 48, 59, 0.16);
+}
+
+.month-circle:focus-visible {
+  outline: 2px solid #33507e;
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .month-circles {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.1rem;
+  }
+}
+
+/* ===== Month view: nav + day circles + sliding day panel ===== */
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.calendar-nav .back-link {
+  margin-bottom: 0;
+}
+
+.back-link--button {
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.day-grid-wrap {
   background: #ffffff;
   border: 1px solid #d8dbdf;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1.25rem;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  transform-origin: top center;
+}
+
+.month-view.is-day-open .day-grid-wrap {
+  transform: scale(0.82) translateY(-8px);
+  opacity: 0.82;
 }
 
 .calendar-toolbar {
@@ -17,53 +96,151 @@
   text-align: center;
 }
 
-.calendar-weekdays,
-.calendar-grid {
+.day-weekdays,
+.day-circles {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
 }
 
-.calendar-weekday {
+.day-weekday {
   text-align: center;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #6b7280;
-  padding: 0.4rem 0;
+  padding-bottom: 0.3rem;
   text-transform: uppercase;
 }
 
-.calendar-day {
+.day-circle {
   position: relative;
-  min-height: 80px;
-  border: 1px solid #eef1f4;
-  padding: 0.4rem;
+  width: clamp(34px, 6vw, 56px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: none;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.day-circle:hover {
+  background: #e5e7eb;
+}
+
+.day-circle.is-outside {
+  color: #c3c8cf;
+  background: transparent;
+}
+
+.day-circle.is-today {
+  background: #33507e;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.day-circle.is-selected {
+  box-shadow: 0 0 0 2px #33507e;
+}
+
+.day-circle-marker {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e8590c;
+}
+
+.day-circle.is-today .day-circle-marker {
+  background: #ffffff;
+}
+
+/* Day panel — скрыт по умолчанию, плавно раскрывается снизу */
+.day-panel {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+}
+
+.month-view.is-day-open .day-panel {
+  max-height: 480px;
+  opacity: 1;
+  margin-top: 1rem;
+}
+
+.day-panel-inner {
+  background: #ffffff;
+  border: 1px solid #d8dbdf;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.day-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.day-panel-close {
+  border: none;
+  background: none;
+  font-size: 1rem;
+  color: #6b7280;
   cursor: pointer;
 }
 
-.calendar-day:hover {
-  background: #f9fafb;
+.day-panel-close:hover {
+  color: #1f2328;
 }
 
-.calendar-day.is-outside {
-  color: #c3c8cf;
+.day-entry-list {
+  list-style: none;
+  margin-bottom: 0.9rem;
 }
 
-.calendar-day.is-today .calendar-day-number {
-  display: inline-flex;
+.day-entry {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  background: #0969da;
-  color: #ffffff;
-  border-radius: 50%;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #eef1f4;
 }
 
-.calendar-day-marker {
-  position: absolute;
-  bottom: 0.5rem;
-  left: 0.5rem;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #0969da;
+.day-entry.is-done .day-entry-title {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.day-entry-title {
+  flex: 1;
+}
+
+.day-entry-delete {
+  border: none;
+  background: none;
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+.day-entry-delete:hover {
+  color: #b91c1c;
+}
+
+.day-entry-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.day-entry-input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
 }
