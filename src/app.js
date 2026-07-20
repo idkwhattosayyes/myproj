@@ -3,6 +3,7 @@ import { renderTasksView } from "./modules/tasks/tasksView.js";
 import { renderDocumentsView } from "./modules/documents/documentsView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang, setLang, t } from "./i18n/i18n.js";
+import { getBorderEnabled, setBorderEnabled } from "./settings/borderSetting.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -40,6 +41,7 @@ function renderLangSwitcher() {
     btn.addEventListener("click", async () => {
       setLang(getLang() === "en" ? "ru" : "en");
       renderLangSwitcher();
+      renderBorderToggle();
       await renderRoute();
     });
   }
@@ -48,8 +50,31 @@ function renderLangSwitcher() {
   document.documentElement.lang = getLang();
 }
 
+function applyBorderSetting() {
+  document.body.classList.toggle("borders-disabled", !getBorderEnabled());
+}
+
+function renderBorderToggle() {
+  let label = document.getElementById("border-toggle");
+  if (!label) {
+    label = document.createElement("label");
+    label.id = "border-toggle";
+    label.className = "border-toggle";
+    label.innerHTML = `<input type="checkbox"><span></span>`;
+    document.body.appendChild(label);
+    label.querySelector("input").addEventListener("change", (event) => {
+      setBorderEnabled(event.target.checked);
+      applyBorderSetting();
+    });
+  }
+  label.querySelector("input").checked = getBorderEnabled();
+  label.querySelector("span").textContent = t("settings.toggleBorders");
+}
+
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
+  applyBorderSetting();
   renderLangSwitcher();
+  renderBorderToggle();
   renderRoute();
 });

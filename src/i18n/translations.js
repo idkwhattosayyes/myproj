@@ -1,6 +1,7 @@
 export const translations = {
   en: {
     "app.langSwitch": "Switch to Russian",
+    "settings.toggleBorders": "Panel borders",
 
     "nav.backHome": "← Home",
 
@@ -64,6 +65,7 @@ export const translations = {
   },
   ru: {
     "app.langSwitch": "Переключить на английский",
+    "settings.toggleBorders": "Обводка панелей",
 
     "nav.backHome": "← На главную",
 

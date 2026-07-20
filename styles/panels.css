@@ -59,6 +59,13 @@
   min-height: 440px;
 }
 
+/* Обводка отключается переключателем в шапке (см. src/settings/borderSetting.js) —
+   меняем только цвет рамки, а не ширину, чтобы не сдвигать layout. */
+.borders-disabled .panel,
+.borders-disabled .panel-detail {
+  border-color: transparent;
+}
+
 .folder-list,
 .item-list {
   list-style: none;
