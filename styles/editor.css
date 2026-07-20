@@ -110,3 +110,15 @@
   margin-left: 1.2rem;
   margin-top: 0.15rem;
 }
+
+.rte-content table.rte-table {
+  border-collapse: collapse;
+  margin: 0.6rem 0;
+  width: 100%;
+}
+
+.rte-content table.rte-table td {
+  border: 1px solid #d0d7de;
+  padding: 0.4rem 0.6rem;
+  min-width: 2.5rem;
+}

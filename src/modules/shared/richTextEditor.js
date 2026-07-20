@@ -1,4 +1,5 @@
 import { t } from "../../i18n/i18n.js";
+import { openPrompt } from "../../utils/modal.js";
 
 const COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
 
@@ -7,13 +8,18 @@ function getButtonDefs() {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold") },
     italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic") },
     underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: () => document.execCommand("underline") },
+    strikethrough: { label: "S", title: t("editor.strikethrough"), command: () => document.execCommand("strikeThrough") },
     h1: { label: "H1", title: t("editor.h1"), command: () => document.execCommand("formatBlock", false, "H1") },
     h2: { label: "H2", title: t("editor.h2"), command: () => document.execCommand("formatBlock", false, "H2") },
+    alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft") },
+    alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter") },
+    alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight") },
     bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList") },
     orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList") },
     checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl) },
     textColor: { label: "A", title: t("editor.textColor"), isColor: true, apply: (color) => document.execCommand("foreColor", false, color) },
     highlight: { label: "▮", title: t("editor.highlight"), isColor: true, apply: (color) => document.execCommand("hiliteColor", false, color) },
+    table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
   };
 }
 
@@ -53,8 +59,10 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     if (def.isColor) {
       btn.addEventListener("click", () => toggleColorPopover(btn, def, contentEl, onChange));
     } else {
-      btn.addEventListener("click", () => {
-        def.command(contentEl);
+      btn.addEventListener("click", async () => {
+        // await — командой может быть insertTable, которая асинхронно спрашивает
+        // размер через модалку; для обычных execCommand-команд просто no-op.
+        await def.command(contentEl);
         contentEl.focus();
         onChange(contentEl.innerHTML);
       });
@@ -97,6 +105,47 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   });
 
   return { toolbarEl, contentEl };
+}
+
+// Prompt — асинхронная модалка, за время её открытия редактор теряет фокус
+// и текущее выделение. Сохраняем позицию курсора заранее и восстанавливаем
+// перед вставкой таблицы.
+async function insertTable(editorEl) {
+  const savedRange = getCurrentRange(editorEl);
+
+  const rowsInput = await openPrompt({ message: t("editor.tableRowsPrompt"), defaultValue: "3" });
+  if (rowsInput === null) return;
+  const colsInput = await openPrompt({ message: t("editor.tableColsPrompt"), defaultValue: "3" });
+  if (colsInput === null) return;
+
+  const rows = clamp(parseInt(rowsInput, 10) || 3, 1, 20);
+  const cols = clamp(parseInt(colsInput, 10) || 3, 1, 20);
+
+  editorEl.focus();
+  restoreRange(savedRange);
+
+  const rowHtml = `<tr>${"<td>&nbsp;</td>".repeat(cols)}</tr>`;
+  const tableHtml = `<table class="rte-table">${rowHtml.repeat(rows)}</table><p><br></p>`;
+  document.execCommand("insertHTML", false, tableHtml);
+}
+
+function getCurrentRange(editorEl) {
+  const selection = window.getSelection();
+  if (selection.rangeCount && editorEl.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+    return selection.getRangeAt(0).cloneRange();
+  }
+  return null;
+}
+
+function restoreRange(range) {
+  if (!range) return;
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function toggleColorPopover(btn, def, editorEl, onChange) {
