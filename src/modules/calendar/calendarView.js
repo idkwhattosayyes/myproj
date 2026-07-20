@@ -1,4 +1,5 @@
-import { getMonthMatrix, getWeekdayLabels, todayISO, MONTH_NAMES } from "../../utils/date.js";
+import { getMonthMatrix, todayISO } from "../../utils/date.js";
+import { t } from "../../i18n/i18n.js";
 
 let state = null;
 
@@ -14,20 +15,20 @@ export async function renderCalendarView(container) {
 function render(container) {
   const days = getMonthMatrix(state.year, state.month);
   const today = todayISO();
+  const months = t("calendar.months");
+  const weekdays = t("calendar.weekdaysShort");
 
   container.innerHTML = `
-    <a href="#/" class="back-link">← На главную</a>
+    <a href="#/" class="back-link">${t("nav.backHome")}</a>
     <div class="calendar">
       <div class="calendar-toolbar">
         <button type="button" class="btn" data-action="prev">←</button>
-        <h2 class="calendar-title">${MONTH_NAMES[state.month]} ${state.year}</h2>
+        <h2 class="calendar-title">${months[state.month]} ${state.year}</h2>
         <button type="button" class="btn" data-action="next">→</button>
-        <button type="button" class="btn" data-action="today">Сегодня</button>
+        <button type="button" class="btn" data-action="today">${t("calendar.today")}</button>
       </div>
       <div class="calendar-weekdays">
-        ${getWeekdayLabels()
-          .map((label) => `<div class="calendar-weekday">${label}</div>`)
-          .join("")}
+        ${weekdays.map((label) => `<div class="calendar-weekday">${label}</div>`).join("")}
       </div>
       <div class="calendar-grid">
         ${days

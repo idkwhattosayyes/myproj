@@ -1,13 +1,17 @@
-const BUTTONS = {
-  bold: { label: "Ж", title: "Жирный" },
-  italic: { label: "К", title: "Курсив" },
-  underline: { label: "П", title: "Подчёркнутый" },
-  h1: { label: "H1", title: "Заголовок 1" },
-  h2: { label: "H2", title: "Заголовок 2" },
-  bulletList: { label: "•", title: "Маркированный список" },
-  orderedList: { label: "1.", title: "Нумерованный список" },
-  checklist: { label: "☑", title: "Чек-лист" },
-};
+import { t } from "../../i18n/i18n.js";
+
+function getButtonDefs() {
+  return {
+    bold: { label: t("editor.boldLabel"), title: t("editor.bold") },
+    italic: { label: t("editor.italicLabel"), title: t("editor.italic") },
+    underline: { label: t("editor.underlineLabel"), title: t("editor.underline") },
+    h1: { label: "H1", title: t("editor.h1") },
+    h2: { label: "H2", title: t("editor.h2") },
+    bulletList: { label: "•", title: t("editor.bulletList") },
+    orderedList: { label: "1.", title: t("editor.orderedList") },
+    checklist: { label: "☑", title: t("editor.checklist") },
+  };
+}
 
 /**
  * @param {HTMLElement} container
@@ -25,8 +29,9 @@ export function renderRichTextEditor(container, { content, buttons, onChange }) 
   const editorEl = container.querySelector(".rte-content");
   editorEl.innerHTML = content || "";
 
+  const buttonDefs = getButtonDefs();
   toolbarEl.innerHTML = buttons
-    .map((key) => `<button type="button" class="rte-btn" data-command="${key}" title="${BUTTONS[key].title}">${BUTTONS[key].label}</button>`)
+    .map((key) => `<button type="button" class="rte-btn" data-command="${key}" title="${buttonDefs[key].title}">${buttonDefs[key].label}</button>`)
     .join("");
 
   toolbarEl.querySelectorAll("[data-command]").forEach((btn) => {

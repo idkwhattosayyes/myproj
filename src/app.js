@@ -2,6 +2,7 @@ import { renderHomeView } from "./modules/home/homeView.js";
 import { renderTasksView } from "./modules/tasks/tasksView.js";
 import { renderDocumentsView } from "./modules/documents/documentsView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
+import { getLang, setLang, t } from "./i18n/i18n.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -28,5 +29,27 @@ async function renderRoute() {
   await routes[route](view, param);
 }
 
+function renderLangSwitcher() {
+  let btn = document.getElementById("lang-switcher");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.id = "lang-switcher";
+    btn.className = "lang-switcher";
+    btn.type = "button";
+    document.body.appendChild(btn);
+    btn.addEventListener("click", async () => {
+      setLang(getLang() === "en" ? "ru" : "en");
+      renderLangSwitcher();
+      await renderRoute();
+    });
+  }
+  btn.textContent = getLang() === "en" ? "RU" : "EN";
+  btn.title = t("app.langSwitch");
+  document.documentElement.lang = getLang();
+}
+
 window.addEventListener("hashchange", renderRoute);
-window.addEventListener("DOMContentLoaded", renderRoute);
+window.addEventListener("DOMContentLoaded", () => {
+  renderLangSwitcher();
+  renderRoute();
+});

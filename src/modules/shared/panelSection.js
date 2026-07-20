@@ -3,6 +3,7 @@ import { renderRichTextEditor } from "./richTextEditor.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml } from "../../utils/dom.js";
+import { t } from "../../i18n/i18n.js";
 
 /**
  * Переиспользуемый каркас "папки слева + список заметок + редактор справа",
@@ -27,21 +28,21 @@ export async function renderPanelSection(container, config) {
 
 function render(container, config, state) {
   container.innerHTML = `
-    <a href="#/" class="back-link">← На главную</a>
+    <a href="#/" class="back-link">${t("nav.backHome")}</a>
     <div class="panel-layout">
       <aside class="panel panel-folders ${state.foldersCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-folders" title="Свернуть/развернуть">☰</button>
-          <span class="panel-title">Папки</span>
+          <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
+          <span class="panel-title">${t("panel.folders")}</span>
         </div>
         <div class="panel-body" data-role="folder-body"></div>
       </aside>
 
       <section class="panel panel-list ${state.listCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-list" title="Свернуть/развернуть">☰</button>
-          <span class="panel-title" data-role="list-title">Все</span>
-          <button type="button" class="btn btn-small" data-action="new-item">+</button>
+          <button type="button" class="panel-toggle" data-action="toggle-list" title="${t("panel.togglePanel")}">☰</button>
+          <span class="panel-title" data-role="list-title">${t("panel.all")}</span>
+          <button type="button" class="btn btn-small" data-action="new-item" title="${t("panel.newItem")}">+</button>
         </div>
         <div class="panel-body" data-role="list-body"></div>
       </section>
@@ -69,7 +70,7 @@ function wireHeaderActions(container, config, state) {
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
     const folderId = isRealFolderId(state.selectedFolderId) ? state.selectedFolderId : null;
-    const item = await itemsService.createItem(config.section, { title: "Без названия", content: "", folderId });
+    const item = await itemsService.createItem(config.section, { title: t("panel.untitled"), content: "", folderId });
     state.items = await itemsService.listItems(config.section);
     state.selectedItemId = item.id;
     render(container, config, state);
@@ -85,14 +86,14 @@ function renderFolders(container, config, state) {
 
   bodyEl.innerHTML = `
     <ul class="folder-list">
-      <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">Все</li>
-      <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">Без папки</li>
+      <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
+      <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
       ${state.folders
         .map(
           (folder) => `
         <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}">
           <span>${escapeHtml(folder.name)}</span>
-          <button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="Удалить папку">✕</button>
+          <button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>
         </li>`
         )
         .join("")}
@@ -110,7 +111,7 @@ function renderFolders(container, config, state) {
   bodyEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
-      const ok = await openConfirm({ message: "Удалить папку? Заметки останутся и станут «Без папки»." });
+      const ok = await openConfirm({ message: t("panel.deleteFolderConfirm") });
       if (!ok) return;
       const folderId = btn.dataset.deleteFolder;
       await itemsService.deleteFolder(config.section, folderId);
@@ -125,9 +126,9 @@ function renderFolders(container, config, state) {
     event.preventDefault();
     showContextMenu(event.clientX, event.clientY, [
       {
-        label: "Создать папку",
+        label: t("panel.newFolder"),
         onClick: async () => {
-          const name = await openPrompt({ message: "Название папки:" });
+          const name = await openPrompt({ message: t("panel.folderNamePrompt") });
           if (!name || !name.trim()) return;
           await itemsService.createFolder(config.section, name.trim());
           state.folders = await itemsService.listFolders(config.section);
@@ -153,11 +154,11 @@ function renderList(container, config, state) {
               .map(
                 (item) => `
         <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}">
-          ${escapeHtml(item.title || "Без названия")}
+          ${escapeHtml(item.title || t("panel.untitled"))}
         </li>`
               )
               .join("")
-          : `<li class="placeholder">Пусто</li>`
+          : `<li class="placeholder">${t("panel.empty")}</li>`
       }
     </ul>
   `;
@@ -177,8 +178,8 @@ function getFilteredItems(state) {
 }
 
 function getListTitle(state) {
-  if (state.selectedFolderId === "all") return "Все";
-  if (state.selectedFolderId === "unfiled") return "Без папки";
+  if (state.selectedFolderId === "all") return t("panel.all");
+  if (state.selectedFolderId === "unfiled") return t("panel.unfiled");
   const folder = state.folders.find((f) => f.id === state.selectedFolderId);
   return folder ? folder.name : "";
 }
@@ -188,7 +189,7 @@ function renderDetail(container, config, state) {
   const item = state.items.find((i) => i.id === state.selectedItemId);
 
   if (!item) {
-    detailEl.innerHTML = `<p class="placeholder">Выберите заметку слева или создайте новую.</p>`;
+    detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
     return;
   }
 
@@ -196,7 +197,7 @@ function renderDetail(container, config, state) {
     <div class="item-detail">
       <div class="item-detail-toolbar">
         <input type="text" class="item-title-input" data-role="title-input">
-        <button type="button" class="btn btn-danger btn-small" data-action="delete-item">Удалить</button>
+        <button type="button" class="btn btn-danger btn-small" data-action="delete-item">${t("panel.delete")}</button>
       </div>
       <div data-role="editor-host"></div>
     </div>
@@ -232,7 +233,7 @@ function renderDetail(container, config, state) {
   });
 
   detailEl.querySelector('[data-action="delete-item"]').addEventListener("click", async () => {
-    const ok = await openConfirm({ message: "Удалить безвозвратно?" });
+    const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
     if (!ok) return;
     clearTimeout(saveTimer);
     await itemsService.deleteItem(item.id);

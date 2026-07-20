@@ -1,3 +1,5 @@
+import { t } from "../i18n/i18n.js";
+
 function createOverlay(contentHtml) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -7,7 +9,7 @@ function createOverlay(contentHtml) {
 }
 
 /** @returns {Promise<boolean>} */
-export function openConfirm({ message, confirmLabel = "Да", cancelLabel = "Отмена" }) {
+export function openConfirm({ message, confirmLabel = t("modal.yes"), cancelLabel = t("modal.cancel") }) {
   return new Promise((resolve) => {
     const overlay = createOverlay(`
       <p class="modal-message"></p>
@@ -32,7 +34,7 @@ export function openConfirm({ message, confirmLabel = "Да", cancelLabel = "О�
 }
 
 /** @returns {Promise<string|null>} null означает "отменено" */
-export function openPrompt({ message, defaultValue = "", confirmLabel = "ОК", cancelLabel = "Отмена" }) {
+export function openPrompt({ message, defaultValue = "", confirmLabel = t("modal.ok"), cancelLabel = t("modal.cancel") }) {
   return new Promise((resolve) => {
     const overlay = createOverlay(`
       <p class="modal-message"></p>
@@ -68,7 +70,7 @@ export function openPrompt({ message, defaultValue = "", confirmLabel = "ОК", 
 }
 
 /** @returns {Promise<void>} */
-export function openAlert({ message, okLabel = "ОК" }) {
+export function openAlert({ message, okLabel = t("modal.ok") }) {
   return new Promise((resolve) => {
     const overlay = createOverlay(`
       <p class="modal-message"></p>
