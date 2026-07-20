@@ -1,4 +1,6 @@
 import * as notesService from "../../services/notesService.js";
+import * as searchService from "../../services/searchService.js";
+import { getBacklinks } from "../../services/linksService.js";
 import { renderNoteEditor } from "./noteEditor.js";
 import { renderNoteReader } from "./noteReader.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
@@ -13,6 +15,8 @@ export async function renderNotesView(container) {
     selectedTag: null,
     selectedNoteId: null,
     mode: "reader", // "reader" | "writer"
+    searchQuery: "",
+    searchScope: "all", // "all" | "folder" | "note"
   };
   render(container);
 }
@@ -24,6 +28,14 @@ function render(container) {
         <div class="notes-sidebar-actions">
           <button type="button" class="btn" data-action="new-note">+ Заметка</button>
           <button type="button" class="btn" data-action="new-folder">+ Папка</button>
+        </div>
+        <div class="notes-search">
+          <input type="text" class="notes-search-input" data-role="search-input" placeholder="Поиск...">
+          <select class="notes-search-scope" data-role="search-scope">
+            <option value="all">Везде</option>
+            ${isRealFolderId(state.selectedFolderId) ? `<option value="folder">В этой папке</option>` : ""}
+            ${state.selectedNoteId ? `<option value="note">В этой заметке</option>` : ""}
+          </select>
         </div>
         <nav class="notes-folder-tree" data-role="folder-tree"></nav>
         <div class="notes-tag-list">
@@ -38,7 +50,41 @@ function render(container) {
   renderFolderTree(container);
   renderTagList(container);
   wireSidebarActions(container);
+  wireSearch(container);
   renderMain(container);
+}
+
+function wireSearch(container) {
+  const input = container.querySelector('[data-role="search-input"]');
+  const scopeSelect = container.querySelector('[data-role="search-scope"]');
+
+  input.value = state.searchQuery;
+  if ([...scopeSelect.options].some((option) => option.value === state.searchScope)) {
+    scopeSelect.value = state.searchScope;
+  } else {
+    state.searchScope = "all";
+    scopeSelect.value = "all";
+  }
+
+  input.addEventListener("input", () => {
+    state.searchQuery = input.value;
+    renderMain(container);
+  });
+
+  scopeSelect.addEventListener("change", () => {
+    state.searchScope = scopeSelect.value;
+    renderMain(container);
+  });
+}
+
+function getSearchScope() {
+  if (state.searchScope === "folder" && isRealFolderId(state.selectedFolderId)) {
+    return { type: "folder", folderId: state.selectedFolderId };
+  }
+  if (state.searchScope === "note" && state.selectedNoteId) {
+    return { type: "note", noteId: state.selectedNoteId };
+  }
+  return { type: "all" };
 }
 
 function buildFolderTree(folders, parentId = null) {
@@ -154,6 +200,11 @@ function isRealFolderId(folderId) {
 function renderMain(container) {
   const mainEl = container.querySelector('[data-role="main"]');
 
+  if (state.searchQuery.trim()) {
+    renderSearchResults(mainEl, container);
+    return;
+  }
+
   if (state.selectedNoteId) {
     const note = state.notes.find((n) => n.id === state.selectedNoteId);
     if (!note) {
@@ -221,6 +272,46 @@ function getFilteredNotes() {
   return notes;
 }
 
+async function renderSearchResults(mainEl, container) {
+  const query = state.searchQuery;
+  const results = await searchService.search(query, getSearchScope());
+
+  mainEl.innerHTML = `
+    <div class="notes-list-header">
+      <h2>Результаты поиска: «${escapeHtml(query)}»</h2>
+    </div>
+    <ul class="search-results-list">
+      ${
+        results.length
+          ? results
+              .map(
+                (result) => `
+        <li class="search-result-item" data-result-type="${result.type}" data-result-id="${result.id}" data-result-date="${result.date || ""}">
+          <span class="search-result-type">${result.type === "diary" ? "Дневник" : "Заметка"}</span>
+          <span class="search-result-title">${escapeHtml(result.title)}</span>
+          <p class="search-result-snippet">${escapeHtml(result.snippet)}</p>
+        </li>`
+              )
+              .join("")
+          : `<li class="placeholder">Ничего не найдено.</li>`
+      }
+    </ul>
+  `;
+
+  mainEl.querySelectorAll("[data-result-id]").forEach((el) => {
+    el.addEventListener("click", () => {
+      if (el.dataset.resultType === "diary") {
+        window.location.hash = `#/diary/${el.dataset.resultDate}`;
+        return;
+      }
+      state.searchQuery = "";
+      state.selectedNoteId = el.dataset.resultId;
+      state.mode = "reader";
+      render(container);
+    });
+  });
+}
+
 function renderNoteDetail(mainEl, note, container) {
   mainEl.innerHTML = `
     <div class="note-detail">
@@ -277,6 +368,7 @@ function renderNoteDetail(mainEl, note, container) {
 
   if (state.mode === "writer") {
     renderNoteEditor(bodyEl, note, {
+      allNotes: state.notes,
       onSave: async ({ title, content }) => {
         await notesService.updateNote(note.id, { title, content });
         state.notes = await notesService.listNotes();
@@ -289,7 +381,10 @@ function renderNoteDetail(mainEl, note, container) {
       },
     });
   } else {
+    const notesById = new Map(state.notes.map((n) => [n.id, n]));
     renderNoteReader(bodyEl, note, {
+      notesById,
+      backlinks: getBacklinks(note.id, state.notes),
       onHighlight: async (highlight) => {
         await notesService.addHighlight(note.id, highlight);
         state.notes = await notesService.listNotes();
@@ -298,6 +393,12 @@ function renderNoteDetail(mainEl, note, container) {
       onRemoveHighlight: async (highlightId) => {
         await notesService.removeHighlight(note.id, highlightId);
         state.notes = await notesService.listNotes();
+        render(container);
+      },
+      onOpenLink: (targetNoteId) => {
+        state.searchQuery = "";
+        state.selectedNoteId = targetNoteId;
+        state.mode = "reader";
         render(container);
       },
     });

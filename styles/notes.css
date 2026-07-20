@@ -18,6 +18,22 @@
   margin-bottom: 1rem;
 }
 
+.notes-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.notes-search-input,
+.notes-search-scope {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
 .folder-list {
   list-style: none;
 }
@@ -187,4 +203,105 @@
   margin-top: 0.75rem;
   color: #9ca3af;
   font-size: 0.8rem;
+}
+
+.note-reader-content .wiki-link {
+  color: #0969da;
+  border-bottom: 1px dashed #0969da;
+}
+
+.note-backlinks {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eef1f4;
+}
+
+.note-backlinks h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 0.4rem;
+}
+
+.note-backlinks ul {
+  list-style: none;
+}
+
+.note-backlinks li {
+  padding: 0.25rem 0;
+  color: #0969da;
+  cursor: pointer;
+}
+
+.note-backlinks li:hover {
+  text-decoration: underline;
+}
+
+.note-editor-toolbar {
+  margin-bottom: 0.5rem;
+}
+
+.link-picker {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin: 0.5rem 0;
+  background: #f9fafb;
+}
+
+.link-picker-input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.link-picker-results {
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.link-picker-results li {
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.link-picker-results li:hover {
+  background: #eef1f4;
+}
+
+.search-results-list {
+  list-style: none;
+  margin-top: 0.75rem;
+}
+
+.search-result-item {
+  padding: 0.6rem 0.4rem;
+  border-bottom: 1px solid #eef1f4;
+  cursor: pointer;
+}
+
+.search-result-item:hover {
+  background: #f9fafb;
+}
+
+.search-result-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-right: 0.5rem;
+}
+
+.search-result-title {
+  font-weight: 600;
+}
+
+.search-result-snippet {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
 }

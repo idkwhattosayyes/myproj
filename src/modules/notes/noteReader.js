@@ -1,16 +1,26 @@
 import { escapeHtml } from "../../utils/dom.js";
+import { renderContentHtml } from "../../services/linksService.js";
 
-export function renderNoteReader(container, note, { onHighlight, onRemoveHighlight }) {
+export function renderNoteReader(container, note, { onHighlight, onRemoveHighlight, onOpenLink, notesById, backlinks }) {
   container.innerHTML = `
     <div class="note-reader">
       <h2 class="note-reader-title">${escapeHtml(note.title)}</h2>
       <div class="note-reader-content" data-role="content"></div>
       <p class="note-reader-hint">Выделите текст мышью, чтобы подчеркнуть его. Клик по подчёркнутому — убрать.</p>
+      ${backlinks && backlinks.length ? renderBacklinks(backlinks) : ""}
     </div>
   `;
 
   const contentEl = container.querySelector('[data-role="content"]');
-  contentEl.innerHTML = renderHighlightedContent(note.content, note.highlights || []);
+  contentEl.innerHTML = renderContentHtml(note.content, note.highlights || [], notesById);
+
+  contentEl.querySelectorAll(".wiki-link").forEach((linkEl) => {
+    linkEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenLink(linkEl.dataset.noteId);
+    });
+  });
 
   contentEl.querySelectorAll("mark[data-highlight-id]").forEach((markEl) => {
     markEl.addEventListener("click", () => {
@@ -29,27 +39,23 @@ export function renderNoteReader(container, note, { onHighlight, onRemoveHighlig
     });
     window.getSelection().removeAllRanges();
   });
+
+  container.querySelectorAll("[data-backlink-id]").forEach((el) => {
+    el.addEventListener("click", () => onOpenLink(el.dataset.backlinkId));
+  });
 }
 
-function renderHighlightedContent(content, highlights) {
-  if (!highlights.length) return escapeHtml(content);
-
-  const valid = highlights
-    .filter((h) => h.startOffset >= 0 && h.endOffset <= content.length && h.startOffset < h.endOffset)
-    .sort((a, b) => a.startOffset - b.startOffset);
-
-  let html = "";
-  let cursor = 0;
-  for (const highlight of valid) {
-    if (highlight.startOffset < cursor) continue; // пропускаем пересекающиеся диапазоны
-    html += escapeHtml(content.slice(cursor, highlight.startOffset));
-    html += `<mark data-highlight-id="${highlight.id}">${escapeHtml(
-      content.slice(highlight.startOffset, highlight.endOffset)
-    )}</mark>`;
-    cursor = highlight.endOffset;
-  }
-  html += escapeHtml(content.slice(cursor));
-  return html;
+function renderBacklinks(backlinks) {
+  return `
+    <div class="note-backlinks">
+      <h3>Ссылаются на эту заметку</h3>
+      <ul>
+        ${backlinks
+          .map((note) => `<li data-backlink-id="${note.id}">${escapeHtml(note.title || "Без названия")}</li>`)
+          .join("")}
+      </ul>
+    </div>
+  `;
 }
 
 function getSelectionOffsets(container) {
