@@ -30,10 +30,18 @@ function matchesSection(entitySection, querySection) {
   return entitySection === querySection;
 }
 
+// Сортировка по полю order (задаётся drag-and-drop). Старые записи без order
+// считаем как 0 — при стабильной сортировке они сохраняют порядок вставки.
+function byOrder(a, b) {
+  return (a.order ?? 0) - (b.order ?? 0);
+}
+
 export const localStorageAdapter = {
   // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getFolders(section) {
-    return readCollection(STORAGE_KEYS.folders).filter((folder) => matchesSection(folder.section, section));
+    return readCollection(STORAGE_KEYS.folders)
+      .filter((folder) => matchesSection(folder.section, section))
+      .sort(byOrder);
   },
   async createFolder(folder) {
     const folders = readCollection(STORAGE_KEYS.folders);
@@ -56,7 +64,9 @@ export const localStorageAdapter = {
 
   // Items (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getItems(section) {
-    return readCollection(STORAGE_KEYS.items).filter((item) => matchesSection(item.section, section));
+    return readCollection(STORAGE_KEYS.items)
+      .filter((item) => matchesSection(item.section, section))
+      .sort(byOrder);
   },
   async getItem(id) {
     return readCollection(STORAGE_KEYS.items).find((item) => item.id === id) ?? null;

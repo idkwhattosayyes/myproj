@@ -114,7 +114,27 @@
   font-weight: 600;
 }
 
-.folder-delete {
+.folder-name,
+.item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Счётчик вложенных заметок — виден только при наведении на папку. */
+.folder-count {
+  flex-shrink: 0;
+  color: #9ca3af;
+  font-size: 0.78rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.folder-item:hover .folder-count { opacity: 1; }
+
+.folder-delete,
+.item-delete {
   border: none;
   background: none;
   color: #9ca3af;
@@ -122,7 +142,16 @@
   flex-shrink: 0;
 }
 
-.folder-delete:hover { color: #b91c1c; }
+.folder-delete:hover,
+.item-delete:hover { color: #b91c1c; }
+
+/* Подсветка активной цели при drag-and-drop. */
+.folder-item.is-drop-target,
+.item-list-row.is-drop-target {
+  outline: 2px dashed #33507e;
+  outline-offset: -2px;
+  background: #eef2ff;
+}
 
 /* Контекстное меню (ПКМ по панели папок) */
 .context-menu {

@@ -5,6 +5,22 @@ import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 
+// Что сейчас перетаскивается (id + вид). Модульная переменная, т.к. dragstart и
+// drop навешиваются на разные элементы, пересоздаваемые при каждом render.
+let dragged = null; // { kind: "item" | "folder", id } | null
+
+// "Пустая" заметка = в теле нет текста (заголовок не считается). От этого
+// зависит, показывать ли крестик мгновенного удаления в списке.
+function isItemEmpty(item) {
+  const div = document.createElement("div");
+  div.innerHTML = item.content || "";
+  return div.textContent.trim() === "";
+}
+
+function countItemsInFolder(state, folderId) {
+  return state.items.filter((i) => i.folderId === folderId).length;
+}
+
 /**
  * Переиспользуемый каркас "папки слева + список заметок + редактор справа",
  * используется и Задачами, и Документами — отличаются только набором кнопок
@@ -93,31 +109,50 @@ function renderFolders(container, config, state) {
       <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
       <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
       ${state.folders
-        .map(
-          (folder) => `
-        <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}">
-          <span>${escapeHtml(folder.name)}</span>
-          <button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>
-        </li>`
-        )
+        .map((folder) => {
+          const count = countItemsInFolder(state, folder.id);
+          return `
+        <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}" draggable="true">
+          <span class="folder-name">${escapeHtml(folder.name)}</span>
+          <span class="folder-count">(${count})</span>
+          ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
+        </li>`;
+        })
         .join("")}
     </ul>
   `;
 
   bodyEl.querySelectorAll("[data-folder-id]").forEach((el) => {
+    const folderId = el.dataset.folderId;
+
     el.addEventListener("click", () => {
-      state.selectedFolderId = el.dataset.folderId;
+      state.selectedFolderId = folderId;
       state.selectedItemId = null;
       render(container, config, state);
     });
 
-    // Избранное доступно только для настоящих папок (не для псевдо-папок
-    // "Все"/"Без папки"/"Избранное") — на них ПКМ показывает общее меню фона.
-    if (isRealFolderId(el.dataset.folderId)) {
+    // Настоящие папки можно тащить; псевдо-папки — нет.
+    if (isRealFolderId(folderId)) {
+      el.addEventListener("dragstart", (event) => {
+        dragged = { kind: "folder", id: folderId };
+        event.dataTransfer.effectAllowed = "move";
+      });
+      el.addEventListener("dragend", () => {
+        dragged = null;
+      });
+    }
+
+    // Приёмники drop: реальные папки, "Без папки" и "Избранное".
+    if (isRealFolderId(folderId) || folderId === "unfiled" || folderId === "favorites") {
+      wireFolderDropTarget(el, folderId, container, config, state);
+    }
+
+    // ПКМ по настоящей папке: избранное + удаление (для непустых — единственный способ).
+    if (isRealFolderId(folderId)) {
       el.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const folder = state.folders.find((f) => f.id === el.dataset.folderId);
+        const folder = state.folders.find((f) => f.id === folderId);
         showContextMenu(event.clientX, event.clientY, [
           {
             label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
@@ -127,22 +162,20 @@ function renderFolders(container, config, state) {
               render(container, config, state);
             },
           },
+          {
+            label: t("panel.delete"),
+            onClick: () => deleteFolderFlow(folder.id, container, config, state, true),
+          },
         ]);
       });
     }
   });
 
+  // Крестик виден только у пустой папки — удаляет мгновенно, без подтверждения.
   bodyEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
-      const ok = await openConfirm({ message: t("panel.deleteFolderConfirm") });
-      if (!ok) return;
-      const folderId = btn.dataset.deleteFolder;
-      await itemsService.deleteFolder(config.section, folderId);
-      state.folders = await itemsService.listFolders(config.section);
-      state.items = await itemsService.listItems(config.section);
-      if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
-      render(container, config, state);
+      await deleteFolderFlow(btn.dataset.deleteFolder, container, config, state, false);
     });
   });
 
@@ -163,6 +196,71 @@ function renderFolders(container, config, state) {
   });
 }
 
+// confirm=true — спросить подтверждение (удаление непустой папки через ПКМ);
+// confirm=false — мгновенное удаление пустой папки по крестику.
+async function deleteFolderFlow(folderId, container, config, state, confirm) {
+  if (confirm) {
+    const ok = await openConfirm({ message: t("panel.deleteFolderConfirm") });
+    if (!ok) return;
+  }
+  await itemsService.deleteFolder(config.section, folderId);
+  state.folders = await itemsService.listFolders(config.section);
+  state.items = await itemsService.listItems(config.section);
+  if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
+  render(container, config, state);
+}
+
+// Навешивает dragover/drop на папку-приёмник. Поведение зависит от того, что
+// тащат (заметку или папку) и на какую цель (реальную папку / "Без папки" / "Избранное").
+function wireFolderDropTarget(el, folderId, container, config, state) {
+  el.addEventListener("dragover", (event) => {
+    if (!dragged) return;
+    event.preventDefault();
+    el.classList.add("is-drop-target");
+  });
+  el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
+  el.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    el.classList.remove("is-drop-target");
+    if (!dragged) return;
+    const drop = dragged;
+    dragged = null;
+
+    if (folderId === "favorites") {
+      // Заметку или папку — в избранное.
+      if (drop.kind === "item") await itemsService.updateItem(drop.id, { isFavorite: true });
+      else await itemsService.updateFolder(drop.id, { isFavorite: true });
+    } else if (folderId === "unfiled") {
+      // Только заметку — вынуть из папки.
+      if (drop.kind === "item") await itemsService.updateItem(drop.id, { folderId: null });
+    } else if (drop.kind === "item") {
+      // Заметку — в эту папку.
+      await itemsService.updateItem(drop.id, { folderId });
+    } else if (drop.kind === "folder" && drop.id !== folderId) {
+      // Папку на папку — переупорядочить.
+      await reorderFolder(drop.id, folderId, state);
+    }
+
+    state.folders = await itemsService.listFolders(config.section);
+    state.items = await itemsService.listItems(config.section);
+    render(container, config, state);
+  });
+}
+
+// Переставляет папку draggedId так, чтобы она оказалась перед targetId, затем
+// переназначает order = index всем папкам и сохраняет.
+async function reorderFolder(draggedId, targetId, state) {
+  const arr = state.folders;
+  const from = arr.findIndex((f) => f.id === draggedId);
+  if (from < 0) return;
+  const [moved] = arr.splice(from, 1);
+  const to = arr.findIndex((f) => f.id === targetId);
+  arr.splice(to, 0, moved);
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].order !== i) await itemsService.updateFolder(arr[i].id, { order: i });
+  }
+}
+
 function renderList(container, config, state) {
   const bodyEl = container.querySelector('[data-role="list-body"]');
   const titleEl = container.querySelector('[data-role="list-title"]');
@@ -181,26 +279,56 @@ function renderList(container, config, state) {
         .map((folder) => `<li class="item-list-row" data-jump-folder-id="${folder.id}">${escapeHtml(folder.name)}</li>`)
         .join("")}
       ${items
-        .map(
-          (item) => `
-        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}">
-          ${escapeHtml(item.title || t("panel.untitled"))}
-        </li>`
-        )
+        .map((item) => {
+          const empty = isItemEmpty(item);
+          return `
+        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}" draggable="true">
+          <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
+          ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
+        </li>`;
+        })
         .join("")}
       ${isEmpty ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
     </ul>
   `;
 
   bodyEl.querySelectorAll("[data-item-id]").forEach((el) => {
+    const itemId = el.dataset.itemId;
+
     el.addEventListener("click", () => {
-      state.selectedItemId = el.dataset.itemId;
+      state.selectedItemId = itemId;
+      render(container, config, state);
+    });
+
+    el.addEventListener("dragstart", (event) => {
+      dragged = { kind: "item", id: itemId };
+      event.dataTransfer.effectAllowed = "move";
+    });
+    el.addEventListener("dragend", () => {
+      dragged = null;
+    });
+
+    // Заметка-приёмник: только переупорядочивание заметок.
+    el.addEventListener("dragover", (event) => {
+      if (!dragged || dragged.kind !== "item" || dragged.id === itemId) return;
+      event.preventDefault();
+      el.classList.add("is-drop-target");
+    });
+    el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
+    el.addEventListener("drop", async (event) => {
+      el.classList.remove("is-drop-target");
+      if (!dragged || dragged.kind !== "item" || dragged.id === itemId) return;
+      event.preventDefault();
+      const draggedId = dragged.id;
+      dragged = null;
+      await reorderItem(draggedId, itemId, state);
+      state.items = await itemsService.listItems(config.section);
       render(container, config, state);
     });
 
     el.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      const item = state.items.find((i) => i.id === el.dataset.itemId);
+      const item = state.items.find((i) => i.id === itemId);
       showContextMenu(event.clientX, event.clientY, [
         {
           label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
@@ -210,7 +338,19 @@ function renderList(container, config, state) {
             render(container, config, state);
           },
         },
+        {
+          label: t("panel.delete"),
+          onClick: () => deleteItemFlow(item.id, container, config, state, true),
+        },
       ]);
+    });
+  });
+
+  // Крестик виден только у пустой заметки — удаляет мгновенно.
+  bodyEl.querySelectorAll("[data-delete-item]").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await deleteItemFlow(btn.dataset.deleteItem, container, config, state, false);
     });
   });
 
@@ -221,6 +361,30 @@ function renderList(container, config, state) {
       render(container, config, state);
     });
   });
+}
+
+async function deleteItemFlow(itemId, container, config, state, confirm) {
+  if (confirm) {
+    const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
+    if (!ok) return;
+  }
+  await itemsService.deleteItem(itemId);
+  state.items = await itemsService.listItems(config.section);
+  if (state.selectedItemId === itemId) state.selectedItemId = null;
+  render(container, config, state);
+}
+
+// Переставляет заметку draggedId перед targetId, переназначает order всем и сохраняет.
+async function reorderItem(draggedId, targetId, state) {
+  const arr = state.items;
+  const from = arr.findIndex((i) => i.id === draggedId);
+  if (from < 0) return;
+  const [moved] = arr.splice(from, 1);
+  const to = arr.findIndex((i) => i.id === targetId);
+  arr.splice(to, 0, moved);
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].order !== i) await itemsService.updateItem(arr[i].id, { order: i });
+  }
 }
 
 function getFilteredItems(state) {
