@@ -66,8 +66,8 @@ export const translations = {
     "editor.alignCenter": "Align center",
     "editor.alignRight": "Align right",
     "editor.table": "Insert table",
-    "editor.tableRowsPrompt": "Number of rows:",
-    "editor.tableColsPrompt": "Number of columns:",
+    "editor.tableCols": "Number of columns:",
+    "editor.tableRows": "Number of rows:",
 
     "modal.yes": "Yes",
     "modal.cancel": "Cancel",
@@ -140,8 +140,8 @@ export const translations = {
     "editor.alignCenter": "По центру",
     "editor.alignRight": "По правому краю",
     "editor.table": "Вставить таблицу",
-    "editor.tableRowsPrompt": "Количество строк:",
-    "editor.tableColsPrompt": "Количество столбцов:",
+    "editor.tableCols": "Количество столбцов:",
+    "editor.tableRows": "Количество строк:",
 
     "modal.yes": "Да",
     "modal.cancel": "Отмена",

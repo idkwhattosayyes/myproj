@@ -1,5 +1,5 @@
 import { t } from "../../i18n/i18n.js";
-import { openPrompt } from "../../utils/modal.js";
+import { openTablePrompt } from "../../utils/modal.js";
 
 const COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
 
@@ -9,8 +9,8 @@ function getButtonDefs() {
     italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
     underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: () => document.execCommand("underline"), isActive: () => document.queryCommandState("underline") },
     strikethrough: { label: "S", title: t("editor.strikethrough"), command: () => document.execCommand("strikeThrough"), isActive: () => document.queryCommandState("strikeThrough") },
-    h1: { label: "H1", title: t("editor.h1"), command: () => document.execCommand("formatBlock", false, "H1"), isActive: (editorEl) => isFormatBlock(editorEl, "h1") },
-    h2: { label: "H2", title: t("editor.h2"), command: () => document.execCommand("formatBlock", false, "H2"), isActive: (editorEl) => isFormatBlock(editorEl, "h2") },
+    h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
+    h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
     alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
     alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
@@ -39,14 +39,35 @@ function getButtonDefs() {
   };
 }
 
-// Тег блока текущего выделения (formatBlock) — для подсветки H1/H2 в тулбаре.
-function isFormatBlock(editorEl, tagName) {
+// Ближайший блочный элемент, содержащий каретку (внутри редактора, но не сам
+// редактор). Используется для заголовков: сравниваем именно ближайший блок, а
+// не любого предка — иначе node.closest("h1") ловил бы обёртку и подсвечивал
+// обе кнопки H1/H2 одновременно.
+function getBlockElement(editorEl) {
   const selection = window.getSelection();
-  if (!selection.rangeCount) return false;
-  let node = selection.getRangeAt(0).commonAncestorContainer;
+  if (!selection.rangeCount) return null;
+  let node = selection.getRangeAt(0).startContainer;
   if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-  if (!node || !editorEl.contains(node)) return false;
-  return !!(node.closest && node.closest(tagName));
+  if (!node || !editorEl.contains(node)) return null;
+  const block = node.closest("h1,h2,p,div,li,blockquote");
+  return block && block !== editorEl && editorEl.contains(block) ? block : null;
+}
+
+function isHeading(editorEl, tagName) {
+  const block = getBlockElement(editorEl);
+  return !!block && block.tagName === tagName.toUpperCase();
+}
+
+// Взаимоисключающий переключатель заголовка: если текущий блок уже этого
+// уровня — снимаем (в обычный div); иначе применяем нужный уровень. formatBlock
+// заменяет блок целиком, поэтому H1↔H2 не вкладываются друг в друга.
+function applyHeading(editorEl, tagName) {
+  const block = getBlockElement(editorEl);
+  if (block && block.tagName === tagName.toUpperCase()) {
+    document.execCommand("formatBlock", false, "div");
+  } else {
+    document.execCommand("formatBlock", false, tagName);
+  }
 }
 
 // Активность textColor/highlight определяем по computed-стилю в точке курсора,
@@ -173,13 +194,14 @@ export function createRichTextEditor({ content, buttons, onChange }) {
 async function insertTable(editorEl) {
   const savedRange = getCurrentRange(editorEl);
 
-  const rowsInput = await openPrompt({ message: t("editor.tableRowsPrompt"), defaultValue: "3" });
-  if (rowsInput === null) return;
-  const colsInput = await openPrompt({ message: t("editor.tableColsPrompt"), defaultValue: "3" });
-  if (colsInput === null) return;
+  const result = await openTablePrompt({
+    colsLabel: t("editor.tableCols"),
+    rowsLabel: t("editor.tableRows"),
+  });
+  if (result === null) return;
 
-  const rows = clamp(parseInt(rowsInput, 10) || 3, 1, 20);
-  const cols = clamp(parseInt(colsInput, 10) || 3, 1, 20);
+  const cols = clamp(result.cols || 3, 1, 20);
+  const rows = clamp(result.rows || 3, 1, 20);
 
   editorEl.focus();
   restoreRange(savedRange);
