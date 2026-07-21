@@ -107,6 +107,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   contentEl.contentEditable = "true";
   contentEl.spellcheck = false;
   contentEl.innerHTML = content || "";
+  upgradeLegacyChecklists(contentEl);
 
   // Подсвечивает кнопки, чьё форматирование активно в текущем выделении/позиции
   // курсора (bold в жирном тексте, highlight на закрашенном фрагменте и т.д.).
@@ -147,37 +148,26 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     toolbarEl.appendChild(btn);
   });
 
-  contentEl.addEventListener("input", () => {
-    contentEl.querySelectorAll("ul.checklist").forEach(ensureCheckboxes);
+  contentEl.addEventListener("input", () => onChange(contentEl.innerHTML));
+
+  // Отметка "выполнено" — клик по квадратику слева от текста. Сам квадратик
+  // рисуется через ::before в левом отступе пункта, поэтому целью клика будет
+  // сам <li>, а не текстовый узел внутри него.
+  contentEl.addEventListener("click", (event) => {
+    const li = event.target instanceof Element ? event.target.closest("li") : null;
+    if (!li || !li.closest("ul.checklist") || event.target !== li) return;
+    if (event.clientX - li.getBoundingClientRect().left > CHECKLIST_MARKER_WIDTH) return;
+    li.classList.toggle("is-done");
     onChange(contentEl.innerHTML);
   });
 
-  contentEl.addEventListener("click", (event) => {
-    if (event.target.matches("li > input[type='checkbox']")) {
-      const checkbox = event.target;
-      // innerHTML сериализует checked-АТРИБУТ, а не DOM-свойство — без этого
-      // отметка визуально теряется после сохранения/перезагрузки.
-      checkbox.toggleAttribute("checked", checkbox.checked);
-      checkbox.closest("li").classList.toggle("is-done", checkbox.checked);
-      onChange(contentEl.innerHTML);
-    }
-  });
-
   contentEl.addEventListener("keydown", (event) => {
-    if (event.key === "Tab") {
-      event.preventDefault();
-      handleTabIndent(contentEl, event.shiftKey);
-      onChange(contentEl.innerHTML);
-      return;
-    }
-    if (event.key === "Enter" && isInsideChecklist(contentEl)) {
-      // Не полагаемся на реактивный ensureCheckboxes из "input" — к моменту,
-      // когда он срабатывает, курсор браузера уже "устаканился" не там, где
-      // нужно. Вставляем чекбокс синхронно, сразу после разбиения строки.
-      event.preventDefault();
-      handleChecklistEnter(contentEl);
-      onChange(contentEl.innerHTML);
-    }
+    if (event.key !== "Tab") return;
+    // Tab в списках — вложенность (как в маркированном списке), а не переход
+    // фокуса на следующий элемент страницы.
+    event.preventDefault();
+    document.execCommand(event.shiftKey ? "outdent" : "indent");
+    onChange(contentEl.innerHTML);
   });
 
   // Курсор/выделение двигаются кликом мыши или клавиатурой без гарантии
@@ -290,79 +280,61 @@ function closeColorPopovers() {
   }
 }
 
-// Tab/Shift+Tab — стандартный indent/outdent; для чек-листа донаращиваем
-// чекбоксы во вложенном <ul>, который execCommand создаёт без класса.
-function handleTabIndent(editorEl, shiftKey) {
-  const wasChecklist = isInsideChecklist(editorEl);
-  document.execCommand(shiftKey ? "outdent" : "indent");
+// Ширина зоны маркера слева от текста пункта (см. --checklist-marker в
+// styles/editor.css): клик левее этой границы переключает "выполнено",
+// правее — обычная установка курсора в текст.
+const CHECKLIST_MARKER_WIDTH = 22;
 
-  if (wasChecklist) {
-    editorEl.querySelectorAll("li ul:not(.checklist)").forEach((ul) => {
-      if (ul.closest(".checklist")) ul.classList.add("checklist");
-    });
-    editorEl.querySelectorAll("ul.checklist").forEach(ensureCheckboxes);
-  }
+// Ближайший список вокруг каретки: по нему решаем, создавать список,
+// пометить существующий как чек-лист или снять пометку.
+function getCurrentList(editorEl) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return null;
+  let node = selection.getRangeAt(0).commonAncestorContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return null;
+  const list = node.closest("ul,ol");
+  return list && editorEl.contains(list) ? list : null;
 }
 
 function isInsideChecklist(editorEl) {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return false;
-  let node = selection.getRangeAt(0).commonAncestorContainer;
-  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-  return !!(node && node.closest && node.closest("ul.checklist"));
+  const list = getCurrentList(editorEl);
+  return !!list && !!list.closest("ul.checklist");
 }
 
-// execCommand не умеет чек-листы — оборачиваем выделение в обычный <ul>,
-// затем добавляем немую (contenteditable=false) галочку в каждый пункт.
+// Кнопка ☑ работает ровно как кнопка маркированного списка: строка становится
+// пунктом с квадратиком, повторное нажатие возвращает обычный текст. Сам
+// квадратик — CSS-маркер (::before) на <li>, а не элемент в тексте: любой узел
+// внутри contenteditable браузер копирует при Enter и таскает вокруг него
+// каретку, из-за чего текст оказывался перед галочкой.
 function applyChecklist(editorEl) {
-  document.execCommand("insertUnorderedList");
+  const list = getCurrentList(editorEl);
 
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
+  if (list && list.closest("ul.checklist")) {
+    const checklist = list.closest("ul.checklist");
+    checklist.classList.remove("checklist");
+    checklist.querySelectorAll("li.is-done").forEach((li) => li.classList.remove("is-done"));
+    document.execCommand("insertUnorderedList"); // развернуть список обратно в текст
+    return;
+  }
 
-  let node = selection.getRangeAt(0).commonAncestorContainer;
-  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  // Списка нет — создаём; нумерованный execCommand превратит в маркированный.
+  // Обычный <ul> помечаем на месте, не пересоздавая.
+  if (!list || list.tagName === "OL") document.execCommand("insertUnorderedList");
 
-  const list = node ? node.closest("ul") : null;
-  if (!list || !editorEl.contains(list)) return;
-
-  list.classList.add("checklist");
-  ensureCheckboxes(list);
+  const target = getCurrentList(editorEl);
+  if (target) target.classList.add("checklist");
 }
 
-// Enter внутри чек-листа: даём браузеру разбить строку как обычно, затем
-// синхронно (без ожидания следующего "input") вставляем чекбокс в новый
-// пустой <li> и ставим курсор в конец — реагировать на "input" постфактум
-// ненадёжно, браузер к этому моменту уже зафиксировал курсор перед чекбоксом.
-function handleChecklistEnter(editorEl) {
-  document.execCommand("insertParagraph");
-
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-
-  let node = selection.getRangeAt(0).commonAncestorContainer;
-  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
-  const li = node ? node.closest("li") : null;
-  if (!li || !editorEl.contains(li) || li.querySelector(":scope > input[type='checkbox']")) return;
-
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  checkbox.setAttribute("contenteditable", "false");
-  li.prepend(checkbox);
-
-  const range = document.createRange();
-  range.selectNodeContents(li);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function ensureCheckboxes(list) {
-  list.querySelectorAll(":scope > li").forEach((li) => {
-    if (li.querySelector(":scope > input[type='checkbox']")) return;
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.setAttribute("contenteditable", "false");
-    li.prepend(checkbox);
+// Заметки, сохранённые до перехода на CSS-маркер, содержат немые чекбоксы
+// внутри пунктов. Убираем их при открытии, перенося отметку в класс is-done.
+function upgradeLegacyChecklists(editorEl) {
+  editorEl.querySelectorAll("ul.checklist input[type='checkbox']").forEach((checkbox) => {
+    const li = checkbox.closest("li");
+    if (li && checkbox.hasAttribute("checked")) li.classList.add("is-done");
+    checkbox.remove();
   });
+  // Вложенные списки чек-листа помечать классом больше не нужно — стили
+  // наследуются по вложенности; снимаем, чтобы разметка была однородной.
+  editorEl.querySelectorAll("ul.checklist ul.checklist").forEach((nested) => nested.classList.remove("checklist"));
 }

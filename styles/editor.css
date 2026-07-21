@@ -105,20 +105,43 @@
   margin: 0.4rem 0;
 }
 
-.rte-content ul.checklist {
+/* Чек-лист: квадратик рисуется маркером ::before в левом отступе пункта.
+   Никаких <input> внутри редактируемого текста — браузер копировал бы их при
+   Enter и таскал каретку вокруг них. Вложенные списки подхватывают вид по
+   вложенности, поэтому класс нужен только на внешнем <ul>. Ширина отступа
+   совпадает с CHECKLIST_MARKER_WIDTH в richTextEditor.js (зона клика). */
+.rte-content ul.checklist,
+.rte-content ul.checklist ul {
   list-style: none;
   padding-left: 0.2rem;
 }
 
 .rte-content ul.checklist li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.15rem 0;
+  position: relative;
+  padding: 0.15rem 0 0.15rem 22px;
 }
 
-.rte-content ul.checklist li input[type="checkbox"] {
-  margin-top: 0.25rem;
+.rte-content ul.checklist li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.42em;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #9ca3af;
+  border-radius: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.rte-content ul.checklist li.is-done::before {
+  content: "✓";
+  border-color: #33507e;
+  background: #33507e;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
 }
 
 .rte-content ul.checklist li.is-done {
@@ -126,7 +149,7 @@
   color: #9ca3af;
 }
 
-.rte-content ul.checklist ul.checklist {
+.rte-content ul.checklist ul {
   margin-left: 1.2rem;
   margin-top: 0.15rem;
 }
