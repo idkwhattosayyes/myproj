@@ -175,6 +175,23 @@
   background: #ffffff;
 }
 
+/* Вариант-число: показывается вместо точки, когда записей на день больше одной. */
+.day-circle-marker--count {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #e8590c;
+}
+
+.day-circle.is-today .day-circle-marker--count {
+  background: transparent;
+  color: #ffffff;
+}
+
 /* Day panel — скрыт по умолчанию, плавно раскрывается снизу */
 .day-panel {
   max-height: 0;
@@ -239,6 +256,7 @@
   border-radius: 4px;
   padding: 0.1rem 0.3rem;
   margin: -0.1rem -0.3rem;
+  white-space: pre-wrap; /* многострочный текст заметки */
 }
 
 .day-entry-title:hover {
@@ -329,4 +347,91 @@
   padding: 0.4rem 0.6rem;
   border: 1px solid #d0d7de;
   border-radius: 6px;
+}
+
+.day-entry-textarea {
+  min-height: 3.5rem;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.4;
+}
+
+/* Пикер тегов и создатель нового тега */
+.day-entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.tag-chip {
+  --tag-color: #9ca3af;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.78rem;
+  color: #374151;
+}
+
+.tag-chip[data-tag-id]:not([data-tag-id=""])::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tag-color);
+}
+
+.tag-chip:hover { background: #f3f4f6; }
+
+.tag-chip.is-selected {
+  border-color: #33507e;
+  box-shadow: inset 0 0 0 1px #33507e;
+  font-weight: 600;
+}
+
+.tag-chip--new {
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.tag-creator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Явное правило: атрибут hidden должен прятать создатель, несмотря на display:flex выше. */
+.tag-creator[hidden] {
+  display: none;
+}
+
+.tag-name-input {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.tag-color-input {
+  width: 2.2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: none;
+}
+
+/* Метка тега рядом с текстом записи */
+.day-entry-tag {
+  flex-shrink: 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: #ffffff;
 }

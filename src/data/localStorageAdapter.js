@@ -3,6 +3,7 @@ const STORAGE_KEYS = {
   items: "app:items",
   diaryEntries: "app:diaryEntries",
   calendarEntries: "app:calendarEntries",
+  calendarTags: "app:calendarTags",
 };
 
 function readCollection(key) {
@@ -123,6 +124,9 @@ export const localStorageAdapter = {
   async getAllCalendarEntryDates() {
     return [...new Set(readCollection(STORAGE_KEYS.calendarEntries).map((entry) => entry.date))];
   },
+  async getAllCalendarEntries() {
+    return readCollection(STORAGE_KEYS.calendarEntries);
+  },
   async createCalendarEntry(entry) {
     const entries = readCollection(STORAGE_KEYS.calendarEntries);
     entries.push(entry);
@@ -140,5 +144,20 @@ export const localStorageAdapter = {
   async deleteCalendarEntry(id) {
     const entries = readCollection(STORAGE_KEYS.calendarEntries).filter((entry) => entry.id !== id);
     writeCollection(STORAGE_KEYS.calendarEntries, entries);
+  },
+
+  // Calendar tags — пользовательские метки {id, name, color}, привязываются к записям
+  async getCalendarTags() {
+    return readCollection(STORAGE_KEYS.calendarTags);
+  },
+  async createCalendarTag(tag) {
+    const tags = readCollection(STORAGE_KEYS.calendarTags);
+    tags.push(tag);
+    writeCollection(STORAGE_KEYS.calendarTags, tags);
+    return tag;
+  },
+  async deleteCalendarTag(id) {
+    const tags = readCollection(STORAGE_KEYS.calendarTags).filter((tag) => tag.id !== id);
+    writeCollection(STORAGE_KEYS.calendarTags, tags);
   },
 };

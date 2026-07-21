@@ -2,6 +2,7 @@ import { getMonthMatrix, todayISO, todayDMY } from "../../utils/date.js";
 import { t } from "../../i18n/i18n.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
+import * as calendarTagsService from "../../services/calendarTagsService.js";
 
 let state = null;
 
@@ -14,6 +15,8 @@ export async function renderCalendarView(container) {
     selectedDate: null,
     dayEntryType: "todo", // "note" | "todo" — какой тип записи создаётся формой ниже
     editingEntryId: null, // id записи, которая сейчас редактируется инлайн в списке
+    tags: await calendarTagsService.listTags(),
+    selectedTagId: null, // тег, который прикрепится к следующей создаваемой записи
   };
   await render(container);
 }
@@ -74,7 +77,8 @@ async function renderMonthView(container) {
   const today = todayISO();
   const months = t("calendar.months");
   const weekdays = t("calendar.weekdaysShort");
-  const markedDates = new Set(await calendarEntriesService.listAllDates());
+  state.tags = await calendarTagsService.listTags();
+  const summaries = await calendarEntriesService.listDateSummaries(state.tags);
 
   container.innerHTML = `
     <div class="calendar-nav">
@@ -99,7 +103,7 @@ async function renderMonthView(container) {
               (day) => `
             <button type="button" class="day-circle ${day.inCurrentMonth ? "" : "is-outside"} ${day.iso === today ? "is-today" : ""} ${state.selectedDate === day.iso ? "is-selected" : ""}" data-date="${day.iso}">
               <span class="day-circle-number">${day.date.getDate()}</span>
-              ${markedDates.has(day.iso) ? '<span class="day-circle-marker"></span>' : ""}
+              ${dayMarkerHtml(summaries.get(day.iso))}
             </button>`
             )
             .join("")}
@@ -180,6 +184,16 @@ async function renderDayPanel(container) {
         <button type="button" class="day-entry-type-btn ${state.dayEntryType === "note" ? "is-active" : ""}" data-entry-type="note">${t("calendar.typeNote")}</button>
         <button type="button" class="day-entry-type-btn ${state.dayEntryType === "todo" ? "is-active" : ""}" data-entry-type="todo">${t("calendar.typeTodo")}</button>
       </div>
+      <div class="day-entry-tags" data-role="tag-picker">
+        ${renderTagChip(null, t("calendar.noTag"))}
+        ${state.tags.map((tag) => renderTagChip(tag.id, tag.name, tag.color)).join("")}
+        <button type="button" class="tag-chip tag-chip--new" data-action="new-tag" title="${t("calendar.newTag")}">＋</button>
+      </div>
+      <div class="tag-creator" data-role="tag-creator" hidden>
+        <input type="text" class="tag-name-input" data-role="tag-name" placeholder="${t("calendar.tagName")}">
+        <input type="color" class="tag-color-input" data-role="tag-color" value="#33507e">
+        <button type="button" class="btn btn-primary btn-small" data-action="save-tag">${t("calendar.tagCreate")}</button>
+      </div>
       <form class="day-entry-form" data-role="entry-form" novalidate>
         <div class="day-entry-form-times">
           <label class="day-entry-time-label">
@@ -191,7 +205,11 @@ async function renderDayPanel(container) {
             <input type="time" class="day-entry-time" data-role="entry-end">
           </label>
         </div>
-        <input type="text" class="day-entry-input" placeholder="${t("calendar.addPlaceholder")}" data-role="entry-input">
+        ${
+          state.dayEntryType === "note"
+            ? `<textarea class="day-entry-input day-entry-textarea" placeholder="${t("calendar.addPlaceholder")}" data-role="entry-input"></textarea>`
+            : `<input type="text" class="day-entry-input" placeholder="${t("calendar.addPlaceholder")}" data-role="entry-input">`
+        }
         <button type="submit" class="btn btn-primary btn-small">${state.dayEntryType === "note" ? t("calendar.save") : t("calendar.add")}</button>
       </form>
     </div>
@@ -251,14 +269,9 @@ async function renderDayPanel(container) {
     });
   });
 
-  const titleInput = panelEl.querySelector('[data-role="entry-input"]');
-  // Заметка добавляется только явной кнопкой — Enter в поле названия не должен
-  // отправлять форму, в отличие от To-do, где Enter — обычный быстрый способ добавить пункт.
-  titleInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && state.dayEntryType === "note") {
-      event.preventDefault();
-    }
-  });
+  // Note (textarea): Enter = перенос строки, добавление кнопкой. To-do (input):
+  // Enter отправляет форму нативно. Поэтому отдельный keydown-перехват не нужен.
+  wireTagPicker(panelEl, container);
 
   panelEl.querySelector('[data-role="entry-form"]').addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -272,12 +285,56 @@ async function renderDayPanel(container) {
       type: state.dayEntryType,
       startTime: startInput.value,
       endTime: endInput.value,
+      tagId: state.selectedTagId,
     });
     input.value = "";
     startInput.value = "";
     endInput.value = "";
+    state.selectedTagId = null;
     await renderDayPanel(container);
     await refreshDayMarker(container, state.selectedDate);
+  });
+}
+
+// Выбор тега и создание нового делаем без полного re-render, чтобы не терять
+// уже введённый текст записи. Обновляем DOM точечно.
+function wireTagPicker(panelEl, container) {
+  const picker = panelEl.querySelector('[data-role="tag-picker"]');
+  const creator = panelEl.querySelector('[data-role="tag-creator"]');
+
+  picker.querySelectorAll("[data-tag-id]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      state.selectedTagId = chip.dataset.tagId || null;
+      picker.querySelectorAll("[data-tag-id]").forEach((c) => c.classList.remove("is-selected"));
+      chip.classList.add("is-selected");
+    });
+  });
+
+  picker.querySelector('[data-action="new-tag"]').addEventListener("click", () => {
+    creator.hidden = !creator.hidden;
+    if (!creator.hidden) creator.querySelector('[data-role="tag-name"]').focus();
+  });
+
+  creator.querySelector('[data-action="save-tag"]').addEventListener("click", async () => {
+    const name = creator.querySelector('[data-role="tag-name"]').value.trim();
+    const color = creator.querySelector('[data-role="tag-color"]').value;
+    if (!name) return;
+    const tag = await calendarTagsService.createTag({ name, color });
+    state.tags.push(tag);
+    state.selectedTagId = tag.id;
+    // Вставляем новый чип перед кнопкой "＋" и помечаем выбранным, не перерисовывая панель.
+    const newChipBtn = picker.querySelector('[data-action="new-tag"]');
+    newChipBtn.insertAdjacentHTML("beforebegin", renderTagChip(tag.id, tag.name, tag.color, true));
+    picker.querySelectorAll("[data-tag-id]").forEach((c) => c.classList.remove("is-selected"));
+    const inserted = picker.querySelector(`[data-tag-id="${tag.id}"]`);
+    inserted.classList.add("is-selected");
+    inserted.addEventListener("click", () => {
+      state.selectedTagId = tag.id;
+      picker.querySelectorAll("[data-tag-id]").forEach((c) => c.classList.remove("is-selected"));
+      inserted.classList.add("is-selected");
+    });
+    creator.querySelector('[data-role="tag-name"]').value = "";
+    creator.hidden = true;
   });
 }
 
@@ -285,15 +342,41 @@ async function refreshDayMarker(container, iso) {
   const dayEl = container.querySelector(`[data-date="${iso}"]`);
   if (!dayEl) return;
   const entries = await calendarEntriesService.listForDate(iso);
-  const hasEntries = entries.length > 0;
-  let marker = dayEl.querySelector(".day-circle-marker");
-  if (hasEntries && !marker) {
-    marker = document.createElement("span");
-    marker.className = "day-circle-marker";
-    dayEl.appendChild(marker);
-  } else if (!hasEntries && marker) {
-    marker.remove();
+  const colors = entries
+    .map((e) => (state.tags.find((tag) => tag.id === e.tagId) || {}).color)
+    .filter(Boolean);
+  const summary = entries.length ? { count: entries.length, colors } : null;
+
+  const existing = dayEl.querySelector(".day-circle-marker");
+  if (existing) existing.remove();
+  const html = dayMarkerHtml(summary);
+  if (html) dayEl.insertAdjacentHTML("beforeend", html);
+}
+
+// Маркер на кружке дня: если записей больше одной — число; если ровно одна —
+// точка цвета её тега (или дефолтная, если тега нет); если записей нет — ничего.
+function dayMarkerHtml(summary) {
+  if (!summary || summary.count === 0) return "";
+  if (summary.count > 1) {
+    return `<span class="day-circle-marker day-circle-marker--count">${summary.count}</span>`;
   }
+  const color = summary.colors[0];
+  return `<span class="day-circle-marker"${color ? ` style="background:${escapeAttr(color)}"` : ""}></span>`;
+}
+
+// Цветной чип тега в форме дня; selected — начальное состояние выбора.
+function renderTagChip(tagId, name, color, selected = false) {
+  const isSelected = selected || (tagId ?? null) === state.selectedTagId;
+  const style = color ? ` style="--tag-color:${escapeAttr(color)}"` : "";
+  return `<button type="button" class="tag-chip ${isSelected ? "is-selected" : ""}" data-tag-id="${tagId ?? ""}"${style}>${escapeHtml(name)}</button>`;
+}
+
+// Метка тега рядом с текстом записи в списке дня.
+function entryTagBadge(entry) {
+  if (!entry.tagId) return "";
+  const tag = state.tags.find((tg) => tg.id === entry.tagId);
+  if (!tag) return "";
+  return `<span class="day-entry-tag" style="background:${escapeAttr(tag.color)}">${escapeHtml(tag.name)}</span>`;
 }
 
 function renderEntryRow(entry) {
@@ -301,6 +384,7 @@ function renderEntryRow(entry) {
     <li class="day-entry ${entry.done ? "is-done" : ""}" data-entry-id="${entry.id}">
       ${entry.type === "note" ? "" : `<input type="checkbox" data-role="entry-check" ${entry.done ? "checked" : ""}>`}
       ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
+      ${entryTagBadge(entry)}
       <span class="day-entry-title" data-role="entry-title" title="${t("calendar.editEntry")}">${escapeHtml(entry.title)}</span>
       <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
     </li>`;
@@ -308,12 +392,17 @@ function renderEntryRow(entry) {
 
 // Инлайн-форма правки — та же строка списка, только с полями вместо текста;
 // тип записи (note/todo) при правке не меняется, редактируются лишь текст и время.
+// Для заметки поле — textarea (многострочный текст), для to-do — однострочный input.
 function renderEditRow(entry) {
+  const titleField =
+    entry.type === "note"
+      ? `<textarea class="day-entry-edit-input day-entry-textarea" data-role="edit-title">${escapeHtml(entry.title)}</textarea>`
+      : `<input type="text" class="day-entry-edit-input" data-role="edit-title" value="${escapeAttr(entry.title)}">`;
   return `
     <li class="day-entry day-entry--editing" data-entry-id="${entry.id}">
       <input type="time" class="day-entry-time" data-role="edit-start" value="${escapeAttr(entry.startTime || "")}">
       <input type="time" class="day-entry-time" data-role="edit-end" value="${escapeAttr(entry.endTime || "")}">
-      <input type="text" class="day-entry-edit-input" data-role="edit-title" value="${escapeAttr(entry.title)}">
+      ${titleField}
       <button type="button" class="btn btn-primary btn-small" data-action="save-entry">${t("calendar.save")}</button>
       <button type="button" class="btn btn-small" data-action="cancel-edit">${t("modal.cancel")}</button>
     </li>`;

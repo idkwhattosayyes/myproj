@@ -27,7 +27,7 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
   };
 }
 
-export function createCalendarEntryModel({ date, title = "", type = "todo", startTime = "", endTime = "" }) {
+export function createCalendarEntryModel({ date, title = "", type = "todo", startTime = "", endTime = "", tagId = null }) {
   return {
     id: generateId(),
     date,
@@ -35,7 +35,16 @@ export function createCalendarEntryModel({ date, title = "", type = "todo", star
     type, // "note" | "todo"
     startTime,
     endTime,
+    tagId, // id тега из app:calendarTags или null
     done: false,
     createdAt: new Date().toISOString(),
+  };
+}
+
+export function createCalendarTagModel({ name = "", color = "#33507e" }) {
+  return {
+    id: generateId(),
+    name,
+    color,
   };
 }

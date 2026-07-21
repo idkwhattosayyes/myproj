@@ -28,6 +28,10 @@ export const translations = {
     "calendar.typeTodo": "To-do",
     "calendar.save": "Save",
     "calendar.editEntry": "Click to edit",
+    "calendar.noTag": "No tag",
+    "calendar.newTag": "New tag",
+    "calendar.tagName": "Tag name",
+    "calendar.tagCreate": "Create",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -102,6 +106,10 @@ export const translations = {
     "calendar.typeTodo": "To-do",
     "calendar.save": "Сохранить",
     "calendar.editEntry": "Нажмите, чтобы изменить",
+    "calendar.noTag": "Без тега",
+    "calendar.newTag": "Новый тег",
+    "calendar.tagName": "Название тега",
+    "calendar.tagCreate": "Создать",
 
     "panel.folders": "Папки",
     "panel.all": "Все",
