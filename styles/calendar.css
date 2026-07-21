@@ -192,7 +192,9 @@
   color: #ffffff;
 }
 
-/* Day panel — скрыт по умолчанию, плавно раскрывается снизу */
+/* Day panel — скрыт по умолчанию, плавно раскрывается снизу. В раскрытом
+   состоянии предел высоты заведомо больше содержимого и overflow снят: иначе
+   растущее поле заметки упиралось бы в него и текст обрезался. */
 .day-panel {
   max-height: 0;
   opacity: 0;
@@ -201,7 +203,8 @@
 }
 
 .month-view.is-day-open .day-panel {
-  max-height: 480px;
+  max-height: 200vh;
+  overflow: visible;
   opacity: 1;
   margin-top: 1rem;
 }
@@ -314,6 +317,11 @@
   gap: 0.5rem;
 }
 
+/* Кнопка не тянется по высоте выросшего поля заметки, а остаётся у его низа. */
+.day-entry-form [type="submit"] {
+  align-self: flex-end;
+}
+
 .day-entry-form-times {
   display: flex;
   gap: 0.75rem;
@@ -349,9 +357,14 @@
   border-radius: 6px;
 }
 
+/* Высоту задаёт autoGrowTextarea (src/utils/dom.js): поле растёт вниз под
+   текст. Предел — чтобы очень длинная заметка не вытолкнула кнопку сохранения
+   за экран; дальше поле скроллится внутри себя. */
 .day-entry-textarea {
   min-height: 3.5rem;
-  resize: vertical;
+  max-height: 40vh;
+  overflow-y: auto;
+  resize: none;
   font: inherit;
   line-height: 1.4;
 }

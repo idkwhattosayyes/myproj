@@ -15,3 +15,19 @@ export function escapeHtml(value) {
 export function escapeAttr(value) {
   return escapeHtml(value).replace(/"/g, "&quot;");
 }
+
+/**
+ * Textarea растёт вниз по мере ввода вместо того, чтобы прятать текст за
+ * нижним краем. Высоту снимаем в auto перед замером — иначе scrollHeight
+ * останется равным уже выставленной высоте и поле не сожмётся при удалении.
+ */
+export function autoGrowTextarea(el) {
+  const resize = () => {
+    el.style.height = "auto";
+    // +2px — запас на дробную высоту строки: без него у поля впритык
+    // появляется полоса прокрутки, хотя весь текст уже помещается.
+    el.style.height = `${el.scrollHeight + 2}px`;
+  };
+  el.addEventListener("input", resize);
+  resize();
+}

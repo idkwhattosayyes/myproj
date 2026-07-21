@@ -1,6 +1,6 @@
 import { getMonthMatrix, todayISO, todayDMY } from "../../utils/date.js";
 import { t } from "../../i18n/i18n.js";
-import { escapeHtml, escapeAttr } from "../../utils/dom.js";
+import { escapeHtml, escapeAttr, autoGrowTextarea } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
 import * as calendarTagsService from "../../services/calendarTagsService.js";
 import { pushLayer, setViewEscape } from "../../utils/escapeLayers.js";
@@ -292,6 +292,8 @@ async function renderDayPanel(container) {
 
   // Note (textarea): Enter = перенос строки, добавление кнопкой. To-do (input):
   // Enter отправляет форму нативно. Поэтому отдельный keydown-перехват не нужен.
+  // Многострочные поля растут вниз вместе с текстом — и в форме, и в правке.
+  panelEl.querySelectorAll("textarea").forEach(autoGrowTextarea);
   wireTagPicker(panelEl, container);
 
   panelEl.querySelector('[data-role="entry-form"]').addEventListener("submit", async (event) => {
