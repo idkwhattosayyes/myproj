@@ -19,8 +19,8 @@ function getButtonDefs() {
   return {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
     italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
-    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, "u"), isActive: (editorEl) => isInlineFormatActive(editorEl, "u") },
-    strikethrough: { label: "S", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, "s"), isActive: (editorEl) => isInlineFormatActive(editorEl, "s") },
+    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.u), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.u) },
+    strikethrough: { label: "S", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
     h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
     h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
@@ -62,6 +62,24 @@ function getButtonDefs() {
 // HTML не попадает — см. serializeEditor.
 const CARET_ANCHOR = "\u200B";
 
+// \u0418\u043D\u043B\u0430\u0439\u043D\u043E\u0432\u044B\u0435 \u0444\u043E\u0440\u043C\u0430\u0442\u044B: \u0447\u0435\u043C \u0443\u0437\u043D\u0430\u0442\u044C (selector) \u0438 \u0447\u0435\u043C \u043E\u0431\u0435\u0440\u043D\u0443\u0442\u044C (create). \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438
+// \u0442\u043E\u0436\u0435 \u0438\u043D\u043B\u0430\u0439\u043D\u043E\u0432\u044B\u0435 \u2014 H1/H2 \u043F\u0440\u0438\u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F \u043A \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u043E\u043C\u0443 \u043A\u0443\u0441\u043A\u0443 \u0441\u0442\u0440\u043E\u043A\u0438, \u0430 \u043D\u0435 \u043A \u0431\u043B\u043E\u043A\u0443,
+// \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u044D\u0442\u043E span \u0441 \u043A\u043B\u0430\u0441\u0441\u043E\u043C, \u0430 \u043D\u0435 \u0441\u0430\u043C \u0442\u0435\u0433 <h1>.
+const FORMATS = {
+  u: { selector: "u", create: () => document.createElement("u") },
+  s: { selector: "s", create: () => document.createElement("s") },
+  h1: { selector: "span.rte-h1", create: () => createHeadingSpan("rte-h1") },
+  h2: { selector: "span.rte-h2", create: () => createHeadingSpan("rte-h2") },
+};
+
+const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2";
+
+function createHeadingSpan(className) {
+  const span = document.createElement("span");
+  span.className = className;
+  return span;
+}
+
 function serializeEditor(editorEl) {
   return editorEl.innerHTML.split(CARET_ANCHOR).join("").replace(/<(u|s)><\/\1>/g, "");
 }
@@ -72,41 +90,41 @@ function serializeEditor(editorEl) {
  * снимались в середине слова и strikeThrough вставлял лишний символ. Свои
  * <u>/<s> вкладываются независимо и снимаются в любой точке.
  */
-function toggleInlineFormat(editorEl, tagName) {
+function toggleInlineFormat(editorEl, format) {
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
   const range = selection.getRangeAt(0);
   if (!editorEl.contains(range.commonAncestorContainer)) return;
 
   if (!range.collapsed) {
-    if (isInlineFormatActive(editorEl, tagName)) unwrapSelection(editorEl, tagName, range);
-    else wrapSelection(editorEl, tagName, range);
+    if (isInlineFormatActive(editorEl, format)) unwrapSelection(editorEl, format, range);
+    else wrapSelection(editorEl, format, range);
     return;
   }
 
-  const active = getFormatAncestor(editorEl, tagName, range.startContainer);
+  const active = getFormatAncestor(editorEl, format, range.startContainer);
   if (active) exitInlineFormat(active, range);
-  else enterInlineFormat(tagName, range);
+  else enterInlineFormat(format, range);
 }
 
 // Активна, если ВЕСЬ выделенный текст уже в этом теге (для схлопнутой каретки —
 // если в нём находится сама каретка). Иначе кнопка должна включать формат.
-function isInlineFormatActive(editorEl, tagName) {
+function isInlineFormatActive(editorEl, format) {
   const selection = window.getSelection();
   if (!selection.rangeCount) return false;
   const range = selection.getRangeAt(0);
   if (!editorEl.contains(range.commonAncestorContainer)) return false;
 
-  if (range.collapsed) return !!getFormatAncestor(editorEl, tagName, range.startContainer);
+  if (range.collapsed) return !!getFormatAncestor(editorEl, format, range.startContainer);
 
   const nodes = collectTextNodes(range);
-  return nodes.length > 0 && nodes.every((node) => getFormatAncestor(editorEl, tagName, node));
+  return nodes.length > 0 && nodes.every((node) => getFormatAncestor(editorEl, format, node));
 }
 
-function getFormatAncestor(editorEl, tagName, node) {
+function getFormatAncestor(editorEl, format, node) {
   let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
   if (!el || !editorEl.contains(el)) return null;
-  const found = el.closest(tagName);
+  const found = el.closest(format.selector);
   return found && editorEl.contains(found) ? found : null;
 }
 
@@ -123,7 +141,7 @@ function collectTextNodes(range) {
   return nodes;
 }
 
-function wrapSelection(editorEl, tagName, range) {
+function wrapSelection(editorEl, format, range) {
   // Режем крайние текстовые узлы по границам выделения (конец раньше начала —
   // иначе сдвинулись бы смещения), чтобы дальше оборачивать узлы целиком.
   const { endContainer, endOffset, startContainer, startOffset } = range;
@@ -138,8 +156,8 @@ function wrapSelection(editorEl, tagName, range) {
   if (!nodes.length) return;
 
   nodes.forEach((node) => {
-    if (getFormatAncestor(editorEl, tagName, node)) return; // уже оформлен
-    const wrapper = document.createElement(tagName);
+    if (getFormatAncestor(editorEl, format, node)) return; // уже оформлен
+    const wrapper = format.create();
     node.replaceWith(wrapper);
     wrapper.appendChild(node);
   });
@@ -147,7 +165,7 @@ function wrapSelection(editorEl, tagName, range) {
   selectNodes(nodes);
 }
 
-function unwrapSelection(editorEl, tagName, range) {
+function unwrapSelection(editorEl, format, range) {
   const { endContainer, endOffset, startContainer, startOffset } = range;
   if (endContainer.nodeType === Node.TEXT_NODE && endOffset < endContainer.length) {
     endContainer.splitText(endOffset);
@@ -158,7 +176,7 @@ function unwrapSelection(editorEl, tagName, range) {
 
   const nodes = collectTextNodes(range);
   nodes.forEach((node) => {
-    const wrapper = getFormatAncestor(editorEl, tagName, node);
+    const wrapper = getFormatAncestor(editorEl, format, node);
     if (!wrapper) return;
     // Выносим узел из тега, отрезая всё, что было до и после него.
     splitOff(wrapper, node, "after");
@@ -174,7 +192,7 @@ function unwrapSelection(editorEl, tagName, range) {
 // <u><s></s></u> — невидимые, но копящиеся в разметке. Убираем сразу.
 // Тег с якорем каретки не пустой (в нём ZWSP), поэтому он переживёт чистку.
 function removeEmptyFormatWrappers(editorEl) {
-  editorEl.querySelectorAll("u,s").forEach((el) => {
+  editorEl.querySelectorAll(EMPTY_WRAPPER_SELECTOR).forEach((el) => {
     if (el.textContent === "") el.remove();
   });
 }
@@ -208,8 +226,8 @@ function selectNodes(nodes) {
 
 // Включение без выделения: пустой тег с невидимым якорем, каретка внутри —
 // дальнейший ввод сразу оформляется.
-function enterInlineFormat(tagName, range) {
-  const wrapper = document.createElement(tagName);
+function enterInlineFormat(format, range) {
+  const wrapper = format.create();
   wrapper.appendChild(document.createTextNode(CARET_ANCHOR));
   range.insertNode(wrapper);
   placeCaretAfter(wrapper.firstChild, wrapper.firstChild.length);
@@ -261,13 +279,31 @@ function getBlockElement(editorEl) {
 
 function isHeading(editorEl, tagName) {
   const block = getBlockElement(editorEl);
-  return !!block && block.tagName === tagName.toUpperCase();
+  if (block && block.tagName === tagName.toUpperCase()) return true;
+  return isInlineFormatActive(editorEl, FORMATS[tagName.toLowerCase()]);
 }
 
-// Взаимоисключающий переключатель заголовка: если текущий блок уже этого
-// уровня — снимаем (в обычный div); иначе применяем нужный уровень. formatBlock
-// заменяет блок целиком, поэтому H1↔H2 не вкладываются друг в друга.
+/**
+ * Есть выделение — заголовок применяется ТОЛЬКО к нему: хоть одна буква, хоть
+ * несколько строк. Строка при этом не разрывается, оформляется сам фрагмент.
+ * Ничего не выделено — прежнее поведение: весь блок под кареткой становится
+ * заголовком (и повторное нажатие снимает его).
+ */
 function applyHeading(editorEl, tagName) {
+  const format = FORMATS[tagName.toLowerCase()];
+  const other = FORMATS[tagName.toLowerCase() === "h1" ? "h2" : "h1"];
+  const selection = window.getSelection();
+  const range = selection.rangeCount ? selection.getRangeAt(0) : null;
+
+  if (range && !range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
+    // H1 и H2 взаимоисключающие: снимаем соседний уровень с этого же фрагмента.
+    if (isInlineFormatActive(editorEl, other)) {
+      unwrapSelection(editorEl, other, selection.getRangeAt(0));
+    }
+    toggleInlineFormat(editorEl, format);
+    return;
+  }
+
   const block = getBlockElement(editorEl);
   if (block && block.tagName === tagName.toUpperCase()) {
     document.execCommand("formatBlock", false, "div");
