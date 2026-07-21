@@ -146,6 +146,12 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.calendarEntries, entries);
   },
 
+  // Полный сброс пользовательских данных. Настройки (язык, обводка) живут под
+  // своими ключами и намеренно переживают очистку — это не данные, а вид приложения.
+  async clearAll() {
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+  },
+
   // Calendar tags — пользовательские метки {id, name, color}, привязываются к записям
   async getCalendarTags() {
     return readCollection(STORAGE_KEYS.calendarTags);

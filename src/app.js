@@ -2,8 +2,9 @@ import { renderHomeView } from "./modules/home/homeView.js";
 import { renderTasksView } from "./modules/tasks/tasksView.js";
 import { renderDocumentsView } from "./modules/documents/documentsView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
-import { getLang, setLang, t } from "./i18n/i18n.js";
-import { getBorderEnabled, setBorderEnabled } from "./settings/borderSetting.js";
+import { getLang } from "./i18n/i18n.js";
+import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
+import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -25,56 +26,48 @@ function parseHash() {
 
 async function renderRoute() {
   const { route, param } = parseHash();
+  // Обработчик Esc от предыдущего раздела не должен пережить переход.
+  setViewEscape(null);
   view.classList.toggle("app-view--home", route === "home");
   view.innerHTML = "";
+  document.documentElement.lang = getLang();
   await routes[route](view, param);
 }
 
-function renderLangSwitcher() {
-  let btn = document.getElementById("lang-switcher");
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.id = "lang-switcher";
-    btn.className = "lang-switcher";
-    btn.type = "button";
-    document.body.appendChild(btn);
-    btn.addEventListener("click", async () => {
-      setLang(getLang() === "en" ? "ru" : "en");
-      renderLangSwitcher();
-      renderBorderToggle();
-      await renderRoute();
-    });
-  }
-  btn.textContent = getLang() === "en" ? "RU" : "EN";
-  btn.title = t("app.langSwitch");
-  document.documentElement.lang = getLang();
+// Esc сверху вниз: сначала открытые поверх страницы слои (меню, модалки,
+// поповеры), затем выход из поля ввода, и только потом — шаг назад по навигации.
+function isEditingField(el) {
+  if (!el) return false;
+  return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
 }
 
-function applyBorderSetting() {
-  document.body.classList.toggle("borders-disabled", !getBorderEnabled());
+function onEscape() {
+  if (closeTopLayer()) return;
+
+  if (isEditingField(document.activeElement)) {
+    document.activeElement.blur();
+    return;
+  }
+
+  const viewEscape = getViewEscape();
+  if (viewEscape) {
+    viewEscape();
+    return;
+  }
+  if (parseHash().route !== DEFAULT_ROUTE) window.location.hash = "#/";
 }
 
-function renderBorderToggle() {
-  let label = document.getElementById("border-toggle");
-  if (!label) {
-    label = document.createElement("label");
-    label.id = "border-toggle";
-    label.className = "border-toggle";
-    label.innerHTML = `<input type="checkbox"><span></span>`;
-    document.body.appendChild(label);
-    label.querySelector("input").addEventListener("change", (event) => {
-      setBorderEnabled(event.target.checked);
-      applyBorderSetting();
-    });
-  }
-  label.querySelector("input").checked = getBorderEnabled();
-  label.querySelector("span").textContent = t("settings.toggleBorders");
-}
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  onEscape();
+});
 
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
   applyBorderSetting();
-  renderLangSwitcher();
-  renderBorderToggle();
+  // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
+  // перерисовать текущий раздел на новом языке.
+  mountSettings({ onLangChange: renderRoute });
   renderRoute();
 });

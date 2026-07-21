@@ -1,7 +1,11 @@
 export const translations = {
   en: {
-    "app.langSwitch": "Switch to Russian",
+    "settings.open": "Settings",
+    "settings.title": "Settings",
+    "settings.language": "Language",
     "settings.toggleBorders": "Panel borders",
+    "settings.clearData": "Clear all data",
+    "settings.clearDataConfirm": "Delete all folders, notes and calendar entries? This cannot be undone.",
 
     "nav.backHome": "← Home",
 
@@ -78,8 +82,12 @@ export const translations = {
     "modal.ok": "OK",
   },
   ru: {
-    "app.langSwitch": "Переключить на английский",
+    "settings.open": "Настройки",
+    "settings.title": "Настройки",
+    "settings.language": "Язык",
     "settings.toggleBorders": "Обводка панелей",
+    "settings.clearData": "Очистить все данные",
+    "settings.clearDataConfirm": "Удалить все папки, заметки и записи календаря? Отменить будет нельзя.",
 
     "nav.backHome": "← На главную",
 

@@ -1,5 +1,6 @@
 import { t } from "../../i18n/i18n.js";
 import { openTablePrompt } from "../../utils/modal.js";
+import { pushLayer } from "../../utils/escapeLayers.js";
 
 const COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
 
@@ -232,11 +233,8 @@ function clamp(value, min, max) {
 
 function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
   const existing = btn.querySelector(".rte-color-popover");
-  if (existing) {
-    existing.remove();
-    return;
-  }
-  closeColorPopovers(btn);
+  closeColorPopovers();
+  if (existing) return;
 
   const popover = document.createElement("div");
   popover.className = "rte-color-popover";
@@ -251,7 +249,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
   resetSwatch.addEventListener("click", (event) => {
     event.stopPropagation();
     def.reset();
-    popover.remove();
+    closeColorPopovers();
     editorEl.focus();
     onChange(editorEl.innerHTML);
     refreshToolbarState();
@@ -276,13 +274,20 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
   });
 
   btn.appendChild(popover);
-  setTimeout(() => document.addEventListener("click", () => popover.remove(), { once: true }), 0);
+  unregisterPopoverLayer = pushLayer(closeColorPopovers);
+  setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
 }
 
-function closeColorPopovers(exceptBtn) {
-  document.querySelectorAll(".rte-color-popover").forEach((popover) => {
-    if (!exceptBtn || !exceptBtn.contains(popover)) popover.remove();
-  });
+// Поповер цвета — такой же "слой", как меню и модалки: закрывается кликом вне
+// и по Esc. Регистрация в стеке слоёв снимается здесь, где бы его ни закрыли.
+let unregisterPopoverLayer = null;
+
+function closeColorPopovers() {
+  document.querySelectorAll(".rte-color-popover").forEach((popover) => popover.remove());
+  if (unregisterPopoverLayer) {
+    unregisterPopoverLayer();
+    unregisterPopoverLayer = null;
+  }
 }
 
 // Tab/Shift+Tab — стандартный indent/outdent; для чек-листа донаращиваем

@@ -24,6 +24,7 @@ import { localStorageAdapter } from "./localStorageAdapter.js";
  * @property {(entry: Object) => Promise<Object>} createCalendarEntry
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateCalendarEntry
  * @property {(id: string) => Promise<void>} deleteCalendarEntry
+ * @property {() => Promise<void>} clearAll
  */
 
 // Единственное место, которое нужно поменять при переходе на Supabase.

@@ -66,46 +66,87 @@ button {
   color: #1f2328;
 }
 
-.lang-switcher {
+/* Настройки: одна кнопка-шестерёнка в углу + выпадающая панель под ней */
+.settings-btn {
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 500;
-  padding: 0.35rem 0.7rem;
+  z-index: 600;
+  width: 2.2rem;
+  height: 2.2rem;
   border: 1px solid #d0d7de;
-  border-radius: 999px;
+  border-radius: 50%;
   background: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1;
   color: #374151;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
-.lang-switcher:hover {
+.settings-btn:hover,
+.settings-btn.is-active {
   background: #f3f4f6;
 }
 
-.border-toggle {
+.settings-panel {
   position: fixed;
-  top: 1rem;
-  right: 5.5rem;
-  z-index: 500;
+  top: 3.6rem;
+  right: 1rem;
+  z-index: 600;
+  width: 15rem;
+  padding: 0.9rem;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+.settings-title {
+  font-size: 0.9rem;
+  margin-bottom: 0.7rem;
+}
+
+.settings-row {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.7rem;
-  border: 1px solid #d0d7de;
-  border-radius: 999px;
-  background: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #374151;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
-.border-toggle:hover {
+.settings-lang {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.settings-lang-btn {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.settings-lang-btn:hover {
   background: #f3f4f6;
+}
+
+.settings-lang-btn.is-active {
+  background: #33507e;
+  border-color: #33507e;
+  color: #ffffff;
+}
+
+.settings-clear {
+  width: 100%;
 }
 
 .placeholder {

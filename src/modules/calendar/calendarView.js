@@ -3,6 +3,7 @@ import { t } from "../../i18n/i18n.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
 import * as calendarTagsService from "../../services/calendarTagsService.js";
+import { pushLayer, setViewEscape } from "../../utils/escapeLayers.js";
 
 let state = null;
 
@@ -22,11 +23,28 @@ export async function renderCalendarView(container) {
 }
 
 async function render(container) {
+  setViewEscape(() => escapeOneLevel(container));
   if (state.view === "months") {
     renderMonthsView(container);
   } else {
     await renderMonthView(container);
   }
+}
+
+// Esc без открытых меню — шаг назад по календарю: открытый день -> сетка дней
+// -> список месяцев -> главная.
+function escapeOneLevel(container) {
+  if (state.view === "month" && state.selectedDate) {
+    state.selectedDate = null;
+    render(container);
+    return;
+  }
+  if (state.view === "month") {
+    state.view = "months";
+    render(container);
+    return;
+  }
+  window.location.hash = "#/";
 }
 
 function renderMonthsView(container) {
@@ -155,6 +173,9 @@ function changeMonth(container, delta) {
 
 async function renderDayPanel(container) {
   const panelEl = container.querySelector('[data-role="day-panel"]');
+  // Панель пересоздаётся целиком — открытый создатель тега остался бы висеть
+  // в стеке слоёв, указывая на выброшенный DOM-узел.
+  closeTagCreator();
   if (!state.selectedDate) {
     panelEl.innerHTML = "";
     return;
@@ -311,8 +332,8 @@ function wireTagPicker(panelEl, container) {
   });
 
   picker.querySelector('[data-action="new-tag"]').addEventListener("click", () => {
-    creator.hidden = !creator.hidden;
-    if (!creator.hidden) creator.querySelector('[data-role="tag-name"]').focus();
+    if (creator.hidden) openTagCreator(creator);
+    else closeTagCreator();
   });
 
   creator.querySelector('[data-action="save-tag"]').addEventListener("click", async () => {
@@ -334,8 +355,32 @@ function wireTagPicker(panelEl, container) {
       inserted.classList.add("is-selected");
     });
     creator.querySelector('[data-role="tag-name"]').value = "";
-    creator.hidden = true;
+    closeTagCreator();
   });
+}
+
+// Создатель тега — раскрывающееся мини-меню внутри панели дня, поэтому он тоже
+// закрывается по Esc (раньше, чем Esc уводит на уровень назад по календарю).
+let openCreatorEl = null;
+let unregisterCreatorLayer = null;
+
+function openTagCreator(creator) {
+  closeTagCreator();
+  creator.hidden = false;
+  creator.querySelector('[data-role="tag-name"]').focus();
+  openCreatorEl = creator;
+  unregisterCreatorLayer = pushLayer(closeTagCreator);
+}
+
+function closeTagCreator() {
+  if (openCreatorEl) {
+    openCreatorEl.hidden = true;
+    openCreatorEl = null;
+  }
+  if (unregisterCreatorLayer) {
+    unregisterCreatorLayer();
+    unregisterCreatorLayer = null;
+  }
 }
 
 async function refreshDayMarker(container, iso) {
