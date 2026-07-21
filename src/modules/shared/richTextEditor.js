@@ -2,7 +2,18 @@ import { t } from "../../i18n/i18n.js";
 import { openTablePrompt } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 
-const COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
+const TEXT_COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
+// Заливка идёт под текст, поэтому палитра своя — светлая, иначе текст не читается.
+const HIGHLIGHT_COLORS = ["#fff3a3", "#ffd8a8", "#b2f2bb", "#a5d8ff", "#d0bfff", "#ffc9c9"];
+
+// Последний выбранный цвет запоминается: ЛКМ по кнопке красит именно им.
+function getLastColor(storageKey, fallback) {
+  return localStorage.getItem(storageKey) || fallback;
+}
+
+function setLastColor(storageKey, color) {
+  localStorage.setItem(storageKey, color);
+}
 
 function getButtonDefs() {
   return {
@@ -20,8 +31,11 @@ function getButtonDefs() {
     checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl), isActive: (editorEl) => isInsideChecklist(editorEl) },
     textColor: {
       label: "A",
-      title: t("editor.textColor"),
+      title: t("editor.textColorHint"),
       isColor: true,
+      colors: TEXT_COLORS,
+      storageKey: "app:lastTextColor",
+      defaultColor: TEXT_COLORS[0],
       apply: (color) => document.execCommand("foreColor", false, color),
       // Сбрасывает цвет текста обратно к обычному — иначе применённый foreColor
       // ничем не убрать после закрытия поповера.
@@ -30,8 +44,11 @@ function getButtonDefs() {
     },
     highlight: {
       label: "▮",
-      title: t("editor.highlight"),
+      title: t("editor.highlightHint"),
       isColor: true,
+      colors: HIGHLIGHT_COLORS,
+      storageKey: "app:lastHighlightColor",
+      defaultColor: HIGHLIGHT_COLORS[0],
       apply: (color) => document.execCommand("hiliteColor", false, color),
       reset: () => document.execCommand("hiliteColor", false, "transparent"),
       isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
@@ -325,7 +342,18 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     btn.addEventListener("mousedown", (event) => event.preventDefault());
 
     if (def.isColor) {
-      btn.addEventListener("click", () => toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState));
+      // ЛКМ — быстрый переключатель последним выбранным цветом, ПКМ — палитра.
+      btn.addEventListener("click", () => {
+        if (def.isActive(contentEl)) def.reset();
+        else def.apply(getLastColor(def.storageKey, def.defaultColor));
+        contentEl.focus();
+        onChange(serializeEditor(contentEl));
+        refreshToolbarState();
+      });
+      btn.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState);
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -438,7 +466,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
   });
   popover.appendChild(resetSwatch);
 
-  COLORS.forEach((color) => {
+  def.colors.forEach((color) => {
     const swatch = document.createElement("button");
     swatch.type = "button";
     swatch.className = "rte-color-swatch";
@@ -447,7 +475,9 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
     swatch.addEventListener("click", (event) => {
       event.stopPropagation();
       def.apply(color);
-      popover.remove();
+      // Выбранный здесь цвет становится тем, которым красит ЛКМ по кнопке.
+      setLastColor(def.storageKey, color);
+      closeColorPopovers();
       editorEl.focus();
       onChange(serializeEditor(editorEl));
       refreshToolbarState();
