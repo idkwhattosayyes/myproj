@@ -54,6 +54,9 @@ export const translations = {
     "panel.selectPrompt": "Select a note on the left, or create a new one.",
     "panel.delete": "Delete",
     "panel.deleteItemConfirm": "Delete permanently?",
+    "panel.rename": "Rename",
+    "panel.renameFolderPrompt": "New folder name:",
+    "panel.renameItemPrompt": "New note name:",
 
     "editor.boldLabel": "B",
     "editor.italicLabel": "I",
@@ -136,6 +139,9 @@ export const translations = {
     "panel.selectPrompt": "Выберите заметку слева или создайте новую.",
     "panel.delete": "Удалить",
     "panel.deleteItemConfirm": "Удалить безвозвратно?",
+    "panel.rename": "Переименовать",
+    "panel.renameFolderPrompt": "Новое название папки:",
+    "panel.renameItemPrompt": "Новое название заметки:",
 
     "editor.boldLabel": "Ж",
     "editor.italicLabel": "К",

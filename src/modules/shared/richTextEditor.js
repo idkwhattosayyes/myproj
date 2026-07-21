@@ -8,8 +8,8 @@ function getButtonDefs() {
   return {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
     italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
-    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: () => document.execCommand("underline"), isActive: () => document.queryCommandState("underline") },
-    strikethrough: { label: "S", title: t("editor.strikethrough"), command: () => document.execCommand("strikeThrough"), isActive: () => document.queryCommandState("strikeThrough") },
+    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, "u"), isActive: (editorEl) => isInlineFormatActive(editorEl, "u") },
+    strikethrough: { label: "S", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, "s"), isActive: (editorEl) => isInlineFormatActive(editorEl, "s") },
     h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
     h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
@@ -38,6 +38,194 @@ function getButtonDefs() {
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
   };
+}
+
+// Невидимый якорь: держит каретку внутри только что созданного (или только что
+// покинутого) форматирующего тега, пока в него ничего не набрано. В сохраняемый
+// HTML не попадает — см. serializeEditor.
+const CARET_ANCHOR = "\u200B";
+
+function serializeEditor(editorEl) {
+  return editorEl.innerHTML.split(CARET_ANCHOR).join("").replace(/<(u|s)><\/\1>/g, "");
+}
+
+/**
+ * Подчёркивание и зачёркивание в обход execCommand. Chrome кладёт обе команды в
+ * одно свойство text-decoration, из-за чего они затирали друг друга, не
+ * снимались в середине слова и strikeThrough вставлял лишний символ. Свои
+ * <u>/<s> вкладываются независимо и снимаются в любой точке.
+ */
+function toggleInlineFormat(editorEl, tagName) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return;
+
+  if (!range.collapsed) {
+    if (isInlineFormatActive(editorEl, tagName)) unwrapSelection(editorEl, tagName, range);
+    else wrapSelection(editorEl, tagName, range);
+    return;
+  }
+
+  const active = getFormatAncestor(editorEl, tagName, range.startContainer);
+  if (active) exitInlineFormat(active, range);
+  else enterInlineFormat(tagName, range);
+}
+
+// Активна, если ВЕСЬ выделенный текст уже в этом теге (для схлопнутой каретки —
+// если в нём находится сама каретка). Иначе кнопка должна включать формат.
+function isInlineFormatActive(editorEl, tagName) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return false;
+
+  if (range.collapsed) return !!getFormatAncestor(editorEl, tagName, range.startContainer);
+
+  const nodes = collectTextNodes(range);
+  return nodes.length > 0 && nodes.every((node) => getFormatAncestor(editorEl, tagName, node));
+}
+
+function getFormatAncestor(editorEl, tagName, node) {
+  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (!el || !editorEl.contains(el)) return null;
+  const found = el.closest(tagName);
+  return found && editorEl.contains(found) ? found : null;
+}
+
+// Непустые текстовые узлы, которые пересекает выделение.
+function collectTextNodes(range) {
+  const root = range.commonAncestorContainer;
+  if (root.nodeType === Node.TEXT_NODE) return range.toString() ? [root] : [];
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent.length && range.intersectsNode(node)) nodes.push(node);
+  }
+  return nodes;
+}
+
+function wrapSelection(editorEl, tagName, range) {
+  // Режем крайние текстовые узлы по границам выделения (конец раньше начала —
+  // иначе сдвинулись бы смещения), чтобы дальше оборачивать узлы целиком.
+  const { endContainer, endOffset, startContainer, startOffset } = range;
+  if (endContainer.nodeType === Node.TEXT_NODE && endOffset < endContainer.length) {
+    endContainer.splitText(endOffset);
+  }
+  if (startContainer.nodeType === Node.TEXT_NODE && startOffset > 0) {
+    range.setStart(startContainer.splitText(startOffset), 0);
+  }
+
+  const nodes = collectTextNodes(range);
+  if (!nodes.length) return;
+
+  nodes.forEach((node) => {
+    if (getFormatAncestor(editorEl, tagName, node)) return; // уже оформлен
+    const wrapper = document.createElement(tagName);
+    node.replaceWith(wrapper);
+    wrapper.appendChild(node);
+  });
+
+  selectNodes(nodes);
+}
+
+function unwrapSelection(editorEl, tagName, range) {
+  const { endContainer, endOffset, startContainer, startOffset } = range;
+  if (endContainer.nodeType === Node.TEXT_NODE && endOffset < endContainer.length) {
+    endContainer.splitText(endOffset);
+  }
+  if (startContainer.nodeType === Node.TEXT_NODE && startOffset > 0) {
+    range.setStart(startContainer.splitText(startOffset), 0);
+  }
+
+  const nodes = collectTextNodes(range);
+  nodes.forEach((node) => {
+    const wrapper = getFormatAncestor(editorEl, tagName, node);
+    if (!wrapper) return;
+    // Выносим узел из тега, отрезая всё, что было до и после него.
+    splitOff(wrapper, node, "after");
+    splitOff(wrapper, node, "before");
+    wrapper.replaceWith(...wrapper.childNodes);
+  });
+
+  removeEmptyFormatWrappers(editorEl);
+  selectNodes(nodes);
+}
+
+// После разрезания на границах выделения остаются пустые обёртки вроде
+// <u><s></s></u> — невидимые, но копящиеся в разметке. Убираем сразу.
+// Тег с якорем каретки не пустой (в нём ZWSP), поэтому он переживёт чистку.
+function removeEmptyFormatWrappers(editorEl) {
+  editorEl.querySelectorAll("u,s").forEach((el) => {
+    if (el.textContent === "") el.remove();
+  });
+}
+
+// Переносит часть содержимого el (до или после node) в такой же соседний тег.
+// Промежуточные обёртки внутри el сохраняются — extractContents клонирует их.
+function splitOff(el, node, side) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  if (side === "after") range.setStartAfter(node);
+  else range.setEndBefore(node);
+
+  const part = range.extractContents();
+  if (!part.childNodes.length) return;
+
+  const clone = el.cloneNode(false);
+  clone.appendChild(part);
+  if (side === "after") el.after(clone);
+  else el.before(clone);
+}
+
+function selectNodes(nodes) {
+  if (!nodes.length) return;
+  const range = document.createRange();
+  range.setStartBefore(nodes[0]);
+  range.setEndAfter(nodes[nodes.length - 1]);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// Включение без выделения: пустой тег с невидимым якорем, каретка внутри —
+// дальнейший ввод сразу оформляется.
+function enterInlineFormat(tagName, range) {
+  const wrapper = document.createElement(tagName);
+  wrapper.appendChild(document.createTextNode(CARET_ANCHOR));
+  range.insertNode(wrapper);
+  placeCaretAfter(wrapper.firstChild, wrapper.firstChild.length);
+}
+
+// Выключение без выделения: разрезаем тег в точке каретки и ставим её МЕЖДУ
+// половинами — снаружи тега. Работает и в середине слова, и в конце: пробел
+// для выхода из форматирования больше не нужен.
+function exitInlineFormat(wrapper, range) {
+  const tailRange = document.createRange();
+  tailRange.selectNodeContents(wrapper);
+  tailRange.setStart(range.startContainer, range.startOffset);
+
+  const tail = tailRange.extractContents();
+  if (tail.childNodes.length) {
+    const clone = wrapper.cloneNode(false);
+    clone.appendChild(tail);
+    wrapper.after(clone);
+  }
+
+  const anchor = document.createTextNode(CARET_ANCHOR);
+  wrapper.after(anchor);
+  if (wrapper.textContent === "") wrapper.remove(); // каретка стояла в самом начале тега
+  placeCaretAfter(anchor, anchor.length);
+}
+
+function placeCaretAfter(node, offset) {
+  const range = document.createRange();
+  range.setStart(node, offset);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 // Ближайший блочный элемент, содержащий каретку (внутри редактора, но не сам
@@ -97,6 +285,10 @@ function isColorActive(editorEl, cssProp) {
  */
 export function createRichTextEditor({ content, buttons, onChange }) {
   const buttonDefs = getButtonDefs();
+  // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
+  // стилями Chrome складывает разные оформления в одно свойство и они
+  // затирают друг друга.
+  document.execCommand("styleWithCSS", false, false);
 
   const toolbarEl = document.createElement("div");
   toolbarEl.className = "rte-toolbar";
@@ -140,7 +332,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
         // размер через модалку; для обычных execCommand-команд просто no-op.
         await def.command(contentEl);
         contentEl.focus();
-        onChange(contentEl.innerHTML);
+        onChange(serializeEditor(contentEl));
         refreshToolbarState();
       });
     }
@@ -148,7 +340,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     toolbarEl.appendChild(btn);
   });
 
-  contentEl.addEventListener("input", () => onChange(contentEl.innerHTML));
+  contentEl.addEventListener("input", () => onChange(serializeEditor(contentEl)));
 
   // Отметка "выполнено" — клик по квадратику слева от текста. Сам квадратик
   // рисуется через ::before в левом отступе пункта, поэтому целью клика будет
@@ -158,7 +350,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     if (!li || !li.closest("ul.checklist") || event.target !== li) return;
     if (event.clientX - li.getBoundingClientRect().left > CHECKLIST_MARKER_WIDTH) return;
     li.classList.toggle("is-done");
-    onChange(contentEl.innerHTML);
+    onChange(serializeEditor(contentEl));
   });
 
   contentEl.addEventListener("keydown", (event) => {
@@ -167,7 +359,7 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     // фокуса на следующий элемент страницы.
     event.preventDefault();
     document.execCommand(event.shiftKey ? "outdent" : "indent");
-    onChange(contentEl.innerHTML);
+    onChange(serializeEditor(contentEl));
   });
 
   // Курсор/выделение двигаются кликом мыши или клавиатурой без гарантии
@@ -241,7 +433,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
     def.reset();
     closeColorPopovers();
     editorEl.focus();
-    onChange(editorEl.innerHTML);
+    onChange(serializeEditor(editorEl));
     refreshToolbarState();
   });
   popover.appendChild(resetSwatch);
@@ -257,7 +449,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
       def.apply(color);
       popover.remove();
       editorEl.focus();
-      onChange(editorEl.innerHTML);
+      onChange(serializeEditor(editorEl));
       refreshToolbarState();
     });
     popover.appendChild(swatch);

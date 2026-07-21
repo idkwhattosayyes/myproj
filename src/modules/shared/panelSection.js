@@ -155,6 +155,16 @@ function renderFolders(container, config, state) {
         const folder = state.folders.find((f) => f.id === folderId);
         showContextMenu(event.clientX, event.clientY, [
           {
+            label: t("panel.rename"),
+            onClick: async () => {
+              const name = await openPrompt({ message: t("panel.renameFolderPrompt"), defaultValue: folder.name });
+              if (name === null || !name.trim()) return;
+              await itemsService.updateFolder(folder.id, { name: name.trim() });
+              state.folders = await itemsService.listFolders(config.section);
+              render(container, config, state);
+            },
+          },
+          {
             label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
             onClick: async () => {
               await itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite });
@@ -330,6 +340,16 @@ function renderList(container, config, state) {
       event.preventDefault();
       const item = state.items.find((i) => i.id === itemId);
       showContextMenu(event.clientX, event.clientY, [
+        {
+          label: t("panel.rename"),
+          onClick: async () => {
+            const title = await openPrompt({ message: t("panel.renameItemPrompt"), defaultValue: item.title });
+            if (title === null || !title.trim()) return;
+            await itemsService.updateItem(item.id, { title: title.trim() });
+            state.items = await itemsService.listItems(config.section);
+            render(container, config, state);
+          },
+        },
         {
           label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
           onClick: async () => {
