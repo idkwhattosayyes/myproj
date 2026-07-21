@@ -7,7 +7,8 @@ export async function renderDocumentsView(container) {
     // осталось — чтобы вернуть, достаточно снова добавить "italic" в список.
     toolbarButtons: [
       "bold", "underline", "strikethrough", "textColor", "highlight",
-      "h1", "h2", "alignLeft", "alignCenter", "alignRight", "bulletList", "orderedList", "table",
+      "h1", "h2", "alignLeft", "alignCenter", "alignRight",
+      "bulletList", "orderedList", "checklist", "table",
     ],
   });
 }
