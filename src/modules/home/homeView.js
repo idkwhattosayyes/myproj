@@ -30,7 +30,7 @@ export async function renderHomeView(container) {
 // заходе добавляем небольшое случайное смещение через --tx/--ty, чтобы схема
 // оставалась узнаваемой, но не была статичной.
 function applyJitter(container) {
-  const JITTER = 18; // px, максимальное отклонение в каждую сторону
+  const JITTER = 32; // px, максимальное отклонение в каждую сторону
   container.querySelectorAll(".home-circle").forEach((circle) => {
     const tx = Math.round((Math.random() * 2 - 1) * JITTER);
     const ty = Math.round((Math.random() * 2 - 1) * JITTER);
