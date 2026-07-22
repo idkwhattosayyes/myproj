@@ -503,7 +503,7 @@ function renderDetail(container, config, state) {
   // Порядок в детали заметки: тулбар сверху -> название -> текст.
   detailEl.innerHTML = `
     <div class="item-detail">
-      <div data-role="toolbar-host"></div>
+      <div class="rte-toolbar-host" data-role="toolbar-host"></div>
       <div class="item-detail-titlebar">
         <input type="text" class="item-title-input" data-role="title-input">
         <button type="button" class="btn btn-danger btn-small" data-action="delete-item">${t("panel.delete")}</button>

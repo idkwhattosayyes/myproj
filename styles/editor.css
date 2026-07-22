@@ -15,11 +15,59 @@
   border-radius: 6px;
 }
 
+/* Прилипает именно обёртка, а не сам тулбар: sticky-элемент ездит в пределах
+   своего родителя, а родитель тулбара ровно с него высотой — прилипать было бы
+   негде. Отступы вытянуты в стороны отрицательными margin, иначе строки текста
+   проезжали бы в просвете между краем тулбара и границей .panel-detail. */
+.rte-toolbar-host {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* Отрицательный отступ ровно гасит внутренний отступ .panel-detail, а свой
+     padding возвращает его обратно. Так белая подложка тулбара доходит до самого
+     края карточки: иначе в просвете над прилипшим тулбаром ползли бы строки. */
+  margin: -1.25rem -1.5rem 0;
+  padding: 1.25rem 1.5rem 0.4rem;
+  background: #ffffff;
+}
+
 .rte-toolbar {
   display: flex;
+  align-items: flex-start;
   gap: 0.3rem;
   flex-wrap: wrap;
 }
+
+/* Кнопка сворачивания в левом углу тулбара — как ☰ у панели папок. */
+.rte-toolbar-toggle {
+  min-width: 1.4rem;
+  padding: 0.3rem 0.2rem;
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: #6b7280;
+  border-radius: 4px;
+}
+
+.rte-toolbar-toggle:hover { background: #f3f4f6; }
+
+/* Свёрнутый тулбар — тонкая полоска на месте кнопок, сама являющаяся кнопкой
+   разворачивания (тот же приём, что у свёрнутой панели папок). */
+.rte-toolbar.is-collapsed { gap: 0; }
+
+.rte-toolbar.is-collapsed .rte-btn { display: none; }
+
+.rte-toolbar.is-collapsed .rte-toolbar-toggle {
+  flex: 1;
+  height: 10px;
+  padding: 0;
+  font-size: 0;
+  border-radius: 3px;
+  background: #e5e7eb;
+}
+
+.rte-toolbar.is-collapsed .rte-toolbar-toggle:hover { background: #d1d5db; }
 
 .rte-btn {
   position: relative;

@@ -10,8 +10,17 @@
 
 /* Без transition на width: панель — элемент grid-колонки auto, и анимация
    ширины оставляла колонку в старом размере — свёрнутая панель так и висела
-   в 220px вместо полоски. */
+   в 220px вместо полоски.
+
+   position: sticky — панель остаётся на экране, пока прокручивается длинная
+   заметка справа. Высота ограничена окном, иначе прилипать было бы нечему:
+   элемент выше вьюпорта уезжает вверх вместе со страницей. */
 .panel {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
   background: #ffffff;
   border: 1px solid #d8dbdf;
   border-radius: 8px;
@@ -53,11 +62,13 @@
 .panel-tab-icon { color: #9ca3af; }
 
 /* Свёрнутая панель папок — тонкая полоска во всю высоту у левого края, сама
-   являющаяся кнопкой разворачивания. align-self: stretch обязателен: без него
-   у полоски (всё содержимое скрыто) нулевая высота и в неё нечем попасть. */
+   являющаяся кнопкой разворачивания. Высота задаётся явно: всё содержимое
+   скрыто, поэтому своей высоты у полоски нет и в неё нечем было бы попасть.
+   Растянуть по родителю (align-self: stretch) нельзя — растянутому элементу
+   некуда прилипать, и полоска уезжала бы при прокрутке. */
 .panel-folders.is-collapsed {
   width: 10px;
-  align-self: stretch;
+  height: calc(100vh - 2rem);
   display: flex;
   flex-direction: column;
 }
@@ -113,7 +124,13 @@
   flex: 1;
 }
 
-.panel-body { padding: 0.6rem; }
+/* Панель прилипла и ограничена по высоте, поэтому длинный список папок или
+   заметок прокручивается внутри неё, а не выталкивает панель за экран. */
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.6rem;
+}
 
 .panel-detail {
   background: #ffffff;
@@ -247,7 +264,12 @@
      папок остаётся во всю ширину и сворачивается только по высоте. */
   .panel-folders.is-collapsed {
     width: 100%;
-    align-self: auto;
+    height: auto;
+  }
+  /* Друг под другом прилипание только мешает: панели налезали бы одна на другую. */
+  .panel {
+    position: static;
+    max-height: none;
   }
   .panel-folders.is-collapsed .panel-header { min-height: 10px; }
 }

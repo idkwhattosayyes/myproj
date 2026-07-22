@@ -15,6 +15,35 @@ function setLastColor(storageKey, color) {
   localStorage.setItem(storageKey, color);
 }
 
+// Свёрнутость тулбара — настройка вида, а не данные заметки, поэтому живёт
+// в localStorage рядом с последними выбранными цветами. Без сохранения тулбар
+// разворачивался бы обратно при каждом переключении заметки: renderDetail()
+// создаёт редактор заново.
+const TOOLBAR_COLLAPSED_KEY = "app:toolbarCollapsed";
+
+function createToolbarToggle(toolbarEl) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "rte-toolbar-toggle";
+  btn.title = t("editor.toggleToolbar");
+
+  function apply(collapsed) {
+    toolbarEl.classList.toggle("is-collapsed", collapsed);
+    btn.textContent = collapsed ? "▾" : "▴";
+  }
+
+  apply(localStorage.getItem(TOOLBAR_COLLAPSED_KEY) === "1");
+  // Как и у кнопок форматирования: не забираем фокус, иначе выделение в тексте
+  // схлопнется ещё до клика.
+  btn.addEventListener("mousedown", (event) => event.preventDefault());
+  btn.addEventListener("click", () => {
+    const collapsed = !toolbarEl.classList.contains("is-collapsed");
+    localStorage.setItem(TOOLBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+    apply(collapsed);
+  });
+  return btn;
+}
+
 function getButtonDefs() {
   return {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
@@ -356,6 +385,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   const toolbarEl = document.createElement("div");
   toolbarEl.className = "rte-toolbar";
   toolbarEl.setAttribute("role", "toolbar");
+  toolbarEl.appendChild(createToolbarToggle(toolbarEl));
 
   const contentEl = document.createElement("div");
   contentEl.className = "rte-content";
