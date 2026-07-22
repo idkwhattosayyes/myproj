@@ -181,6 +181,23 @@ function isRealFolderId(id) {
   return id && id !== "all" && id !== "unfiled" && id !== "favorites";
 }
 
+// Ниже или выше строки встанет перетаскиваемый элемент — по тому, в какую
+// половину строки указывает курсор. Без этого вставка всегда шла ПЕРЕД целью и
+// последняя позиция списка оставалась недостижимой.
+function isDropAfter(el, event) {
+  const rect = el.getBoundingClientRect();
+  return event.clientY > rect.top + rect.height / 2;
+}
+
+function markDropSide(el, after) {
+  el.classList.toggle("is-drop-before", !after);
+  el.classList.toggle("is-drop-after", after);
+}
+
+function clearDropMarks(el) {
+  el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
+}
+
 function renderFolders(container, config, state) {
   const bodyEl = container.querySelector('[data-role="folder-body"]');
 
@@ -311,12 +328,16 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
     if (!dragged) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    el.classList.add("is-drop-target");
+    // Папку на папку — переупорядочивание, поэтому показываем линию сверху или
+    // снизу. Заметку на папку — "положить внутрь", подсвечиваем строку целиком.
+    if (dragged.kind === "folder" && isRealFolderId(folderId)) markDropSide(el, isDropAfter(el, event));
+    else el.classList.add("is-drop-target");
   });
-  el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
+  el.addEventListener("dragleave", () => clearDropMarks(el));
   el.addEventListener("drop", async (event) => {
     event.preventDefault();
-    el.classList.remove("is-drop-target");
+    const after = isDropAfter(el, event);
+    clearDropMarks(el);
     if (!dragged) return;
     const drop = dragged;
     dragged = null;
@@ -333,7 +354,7 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
       await itemsService.updateItem(drop.id, { folderId });
     } else if (drop.kind === "folder" && drop.id !== folderId) {
       // Папку на папку — переупорядочить.
-      await reorderFolder(drop.id, folderId, state);
+      await reorderFolder(drop.id, folderId, state, after);
     }
 
     state.folders = await itemsService.listFolders(config.section);
@@ -342,15 +363,16 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
   });
 }
 
-// Переставляет папку draggedId так, чтобы она оказалась перед targetId, затем
-// переназначает order = index всем папкам и сохраняет.
-async function reorderFolder(draggedId, targetId, state) {
+// Переставляет папку draggedId рядом с targetId — перед ней или после неё, —
+// затем переназначает order = index всем папкам и сохраняет.
+async function reorderFolder(draggedId, targetId, state, after) {
   const arr = state.folders;
   const from = arr.findIndex((f) => f.id === draggedId);
   if (from < 0) return;
   const [moved] = arr.splice(from, 1);
+  // Индекс цели ищем уже после удаления перетаскиваемой папки — сдвиг учтён.
   const to = arr.findIndex((f) => f.id === targetId);
-  arr.splice(to, 0, moved);
+  arr.splice(after ? to + 1 : to, 0, moved);
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].order !== i) await itemsService.updateFolder(arr[i].id, { order: i });
   }
@@ -409,16 +431,17 @@ function renderList(container, config, state) {
       if (!dragged || dragged.kind !== "item" || dragged.id === itemId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      el.classList.add("is-drop-target");
+      markDropSide(el, isDropAfter(el, event));
     });
-    el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
+    el.addEventListener("dragleave", () => clearDropMarks(el));
     el.addEventListener("drop", async (event) => {
-      el.classList.remove("is-drop-target");
+      clearDropMarks(el);
       if (!dragged || dragged.kind !== "item" || dragged.id === itemId) return;
       event.preventDefault();
+      const after = isDropAfter(el, event);
       const draggedId = dragged.id;
       dragged = null;
-      await reorderItem(draggedId, itemId, state);
+      await reorderItem(draggedId, itemId, state, after);
       state.items = await itemsService.listItems(config.section);
       render(container, config, state);
     });
@@ -481,14 +504,16 @@ async function deleteItemFlow(itemId, container, config, state, confirm) {
   render(container, config, state);
 }
 
-// Переставляет заметку draggedId перед targetId, переназначает order всем и сохраняет.
-async function reorderItem(draggedId, targetId, state) {
+// Переставляет заметку draggedId перед targetId или после неё, переназначает
+// order всем и сохраняет.
+async function reorderItem(draggedId, targetId, state, after) {
   const arr = state.items;
   const from = arr.findIndex((i) => i.id === draggedId);
   if (from < 0) return;
   const [moved] = arr.splice(from, 1);
+  // Индекс цели ищем уже после удаления перетаскиваемой заметки — сдвиг учтён.
   const to = arr.findIndex((i) => i.id === targetId);
-  arr.splice(to, 0, moved);
+  arr.splice(after ? to + 1 : to, 0, moved);
   for (let i = 0; i < arr.length; i++) {
     if (arr[i].order !== i) await itemsService.updateItem(arr[i].id, { order: i });
   }

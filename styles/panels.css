@@ -222,12 +222,24 @@
 .folder-delete:hover,
 .item-delete:hover { color: #b91c1c; }
 
-/* Подсветка активной цели при drag-and-drop. */
+/* Подсветка цели, которая примет элемент внутрь себя (заметку — в папку). */
 .folder-item.is-drop-target,
 .item-list-row.is-drop-target {
   outline: 2px dashed #33507e;
   outline-offset: -2px;
   background: #eef2ff;
+}
+
+/* Переупорядочивание: линия показывает, встанет элемент выше или ниже строки.
+   Линия под последней строкой — это и есть позиция в самом конце списка. */
+.folder-item.is-drop-before,
+.item-list-row.is-drop-before {
+  box-shadow: inset 0 2px 0 #33507e;
+}
+
+.folder-item.is-drop-after,
+.item-list-row.is-drop-after {
+  box-shadow: inset 0 -2px 0 #33507e;
 }
 
 /* Контекстное меню (ПКМ по панели папок) */
