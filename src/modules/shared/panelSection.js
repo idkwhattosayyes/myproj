@@ -156,6 +156,18 @@ function wireHeaderActions(container, config, state) {
     });
   });
 
+  // Между строками и над шапками панелей никто перетаскивание не принимает, и
+  // браузер рисует там "запрещено" — хотя перемещение разрешено и работает.
+  // Объявляем обе панели допустимой зоной: сброс мимо строки просто ничего не делает.
+  container.querySelectorAll(".panel-folders, .panel-list").forEach((panel) => {
+    panel.addEventListener("dragover", (event) => {
+      if (!dragged) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    panel.addEventListener("drop", (event) => event.preventDefault());
+  });
+
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
     const folderId = isRealFolderId(state.selectedFolderId) ? state.selectedFolderId : null;
     const item = await itemsService.createItem(config.section, { title: t("panel.untitled"), content: "", folderId });
@@ -205,6 +217,9 @@ function renderFolders(container, config, state) {
       el.addEventListener("dragstart", (event) => {
         dragged = { kind: "folder", id: folderId };
         event.dataTransfer.effectAllowed = "move";
+        // Перетаскивание без данных браузер считает неполноценным и рисует
+        // курсор "запрещено", даже когда цель готова принять сброс.
+        event.dataTransfer.setData("text/plain", folderId);
       });
       el.addEventListener("dragend", () => {
         dragged = null;
@@ -295,6 +310,7 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
   el.addEventListener("dragover", (event) => {
     if (!dragged) return;
     event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
     el.classList.add("is-drop-target");
   });
   el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
@@ -382,6 +398,7 @@ function renderList(container, config, state) {
     el.addEventListener("dragstart", (event) => {
       dragged = { kind: "item", id: itemId };
       event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", itemId);
     });
     el.addEventListener("dragend", () => {
       dragged = null;
@@ -391,6 +408,7 @@ function renderList(container, config, state) {
     el.addEventListener("dragover", (event) => {
       if (!dragged || dragged.kind !== "item" || dragged.id === itemId) return;
       event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
       el.classList.add("is-drop-target");
     });
     el.addEventListener("dragleave", () => el.classList.remove("is-drop-target"));
