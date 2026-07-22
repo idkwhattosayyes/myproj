@@ -1,6 +1,9 @@
+/* minmax(0, 1fr) вместо 1fr у колонки редактора: с обычным 1fr минимум колонки
+   равен min-content её содержимого, поэтому длинное слово или широкая таблица
+   растягивали всю сетку и страница уезжала вбок. */
 .panel-layout {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -77,6 +80,7 @@
   border-radius: 8px;
   padding: 1.25rem 1.5rem;
   min-height: 440px;
+  min-width: 0; /* иначе grid-элемент не даёт содержимому сжаться и переноситься */
 }
 
 /* Обводка отключается переключателем в шапке (см. src/settings/borderSetting.js) —

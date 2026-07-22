@@ -7,6 +7,7 @@
 
 .item-title-input {
   flex: 1;
+  min-width: 0; /* у input своя min-content ширина — без этого он распирает строку */
   font-size: 1.1rem;
   font-weight: 600;
   padding: 0.4rem 0.5rem;
@@ -83,6 +84,10 @@
   color: #b91c1c;
 }
 
+/* Текст ведёт себя как в Word: строка доходит до правого края видимой области и
+   переносится вниз, страница растёт по вертикали. overflow-wrap: anywhere не
+   только рвёт слишком длинные слова, но и уменьшает min-content ширину блока —
+   без этого длинная ссылка тянула бы за собой всю колонку редактора. */
 .rte-content {
   min-height: 340px;
   padding: 0.85rem 1rem;
@@ -90,6 +95,8 @@
   border-radius: 6px;
   font-size: 0.98rem;
   line-height: 1.6;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .rte-content:focus {
@@ -159,14 +166,17 @@
   margin-top: 0.15rem;
 }
 
+/* table-layout: fixed — колонки делят ширину редактора поровну и не расширяют
+   таблицу за его пределы; текст в ячейке переносится, а не растягивает столбец. */
 .rte-content table.rte-table {
   border-collapse: collapse;
   margin: 0.6rem 0;
   width: 100%;
+  table-layout: fixed;
 }
 
 .rte-content table.rte-table td {
   border: 1px solid #d0d7de;
   padding: 0.4rem 0.6rem;
-  min-width: 2.5rem;
+  overflow-wrap: anywhere;
 }
