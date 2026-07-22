@@ -56,8 +56,16 @@ function getButtonDefs() {
       isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Не команда форматирования, а переключатель вида — обрабатывается отдельно
+    // в createRichTextEditor (см. isPageMode).
+    pageMode: { label: "▤", title: t("editor.pageMode"), isPageMode: true },
   };
 }
+
+// Высота страницы A4 при 96 dpi. То же значение зашито в .rte-content.is-paged
+// (styles/editor.css): менять нужно в обоих местах, иначе подгонка высоты
+// разъедется с нарисованными линиями разрыва.
+const PAGE_HEIGHT = 1123;
 
 // Невидимый якорь: держит каретку внутри только что созданного (или только что
 // покинутого) форматирующего тега, пока в него ничего не набрано. В сохраняемый
@@ -335,10 +343,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], onChange: (html: string) => void}} options
- * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement}}
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void}} options
+ * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void}}
  */
-export function createRichTextEditor({ content, buttons, onChange }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -355,6 +363,32 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   contentEl.spellcheck = false;
   contentEl.innerHTML = content || "";
   upgradeLegacyChecklists(contentEl);
+
+  // "flow" — один сплошной прокручиваемый лист, "paged" — разбивка на страницы.
+  let currentPageMode = pageMode === "paged" ? "paged" : "flow";
+  buttonDefs.pageMode.isActive = () => currentPageMode === "paged";
+
+  // Настоящей разбивки на страницы в contenteditable нет: сам лист и линии
+  // разрыва рисует CSS, а здесь высота подгоняется до целого числа страниц —
+  // тогда нижний край блока совпадает с концом последней страницы.
+  function updatePagedHeight() {
+    contentEl.style.minHeight = "";
+    if (currentPageMode !== "paged") return;
+    const pages = Math.max(1, Math.ceil(contentEl.scrollHeight / PAGE_HEIGHT));
+    contentEl.style.minHeight = `${pages * PAGE_HEIGHT}px`;
+  }
+
+  function applyPageMode() {
+    contentEl.classList.toggle("is-paged", currentPageMode === "paged");
+    updatePagedHeight();
+    refreshToolbarState();
+  }
+
+  function togglePageMode() {
+    currentPageMode = currentPageMode === "paged" ? "flow" : "paged";
+    applyPageMode();
+    if (onPageModeChange) onPageModeChange(currentPageMode);
+  }
 
   // Подсвечивает кнопки, чьё форматирование активно в текущем выделении/позиции
   // курсора (bold в жирном тексте, highlight на закрашенном фрагменте и т.д.).
@@ -400,6 +434,11 @@ export function createRichTextEditor({ content, buttons, onChange }) {
         event.preventDefault();
         toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState);
       });
+    } else if (def.isPageMode) {
+      btn.addEventListener("click", () => {
+        togglePageMode();
+        contentEl.focus();
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -414,7 +453,10 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     toolbarEl.appendChild(btn);
   });
 
-  contentEl.addEventListener("input", () => onChange(serializeEditor(contentEl)));
+  contentEl.addEventListener("input", () => {
+    onChange(serializeEditor(contentEl));
+    updatePagedHeight();
+  });
 
   // Отметка "выполнено" — клик по квадратику слева от текста. Сам квадратик
   // рисуется через ::before в левом отступе пункта, поэтому целью клика будет
@@ -442,7 +484,17 @@ export function createRichTextEditor({ content, buttons, onChange }) {
   contentEl.addEventListener("keyup", refreshToolbarState);
   contentEl.addEventListener("focus", refreshToolbarState);
 
-  return { toolbarEl, contentEl };
+  applyPageMode();
+
+  return {
+    toolbarEl,
+    contentEl,
+    getPageMode: () => currentPageMode,
+    togglePageMode,
+    // Высоту страниц можно посчитать только когда узел уже в документе, поэтому
+    // вызывающий код дёргает это после вставки в DOM.
+    refreshLayout: updatePagedHeight,
+  };
 }
 
 // Prompt — асинхронная модалка, за время её открытия редактор теряет фокус

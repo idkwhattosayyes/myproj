@@ -531,13 +531,18 @@ function renderDetail(container, config, state) {
     }, 400);
   }
 
-  const { toolbarEl, contentEl } = createRichTextEditor({
+  const editor = createRichTextEditor({
     content: item.content,
     buttons: config.toolbarButtons,
+    pageMode: item.pageMode,
     onChange: (html) => scheduleSave({ content: html }),
+    onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
   });
+  const { toolbarEl, contentEl } = editor;
   detailEl.querySelector('[data-role="toolbar-host"]').appendChild(toolbarEl);
   detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
+  // Высота страниц считается по реальным размерам — только после вставки в DOM.
+  editor.refreshLayout();
 
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
   titleInput.value = item.title;

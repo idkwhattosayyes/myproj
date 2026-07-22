@@ -126,6 +126,28 @@
   border-color: #0969da;
 }
 
+/* Постраничный режим: лист шириной A4 с полями, линии разрыва рисуются
+   повторяющимся градиентом каждые 1123px. Высоту до целого числа страниц
+   подгоняет JS (PAGE_HEIGHT в richTextEditor.js) — значения должны совпадать.
+   Рамки нет намеренно: с box-sizing: border-box она сдвигала бы содержимое
+   относительно линий разрыва. */
+.rte-content.is-paged {
+  width: 794px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 76px;
+  border: none;
+  background-color: #ffffff;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 1121px,
+    #e5e7eb 1121px,
+    #e5e7eb 1123px
+  );
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1), 0 0 0 1px #e5e7eb;
+}
+
 .rte-content h1 { font-size: 1.5rem; margin: 0.6rem 0 0.4rem; }
 .rte-content h2 { font-size: 1.2rem; margin: 0.5rem 0 0.3rem; }
 

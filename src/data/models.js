@@ -21,6 +21,7 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     folderId,
     section,
     isFavorite: false,
+    pageMode: "flow", // вид редактора: "flow" — сплошной лист, "paged" — постранично
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,
     updatedAt: now,

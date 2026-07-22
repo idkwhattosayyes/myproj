@@ -76,6 +76,9 @@ export const translations = {
     "editor.alignCenter": "Align center",
     "editor.alignRight": "Align right",
     "editor.table": "Insert table",
+    "editor.pageMode": "Page display mode",
+    "editor.pageModePaged": "Display mode: paged",
+    "editor.pageModeFlow": "Display mode: continuous",
     "editor.tableCols": "Number of columns:",
     "editor.tableRows": "Number of rows:",
 
@@ -160,6 +163,9 @@ export const translations = {
     "editor.alignCenter": "По центру",
     "editor.alignRight": "По правому краю",
     "editor.table": "Вставить таблицу",
+    "editor.pageMode": "Режим отображения страницы",
+    "editor.pageModePaged": "Режим отображения: постраничный",
+    "editor.pageModeFlow": "Режим отображения: сплошной",
     "editor.tableCols": "Количество столбцов:",
     "editor.tableRows": "Количество строк:",
 
