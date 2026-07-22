@@ -36,6 +36,8 @@ export const translations = {
     "calendar.newTag": "New tag",
     "calendar.tagName": "Tag name",
     "calendar.tagCreate": "Create",
+    "calendar.events": "Events",
+    "calendar.eventsEmpty": "No events yet.",
 
     "panel.folders": "Folders",
     "panel.all": "All",
@@ -128,6 +130,8 @@ export const translations = {
     "calendar.newTag": "Новый тег",
     "calendar.tagName": "Название тега",
     "calendar.tagCreate": "Создать",
+    "calendar.events": "События",
+    "calendar.eventsEmpty": "Событий пока нет.",
 
     "panel.folders": "Папки",
     "panel.all": "Все",

@@ -12,6 +12,11 @@ export async function listAllDates() {
   return storage.getAllCalendarEntryDates();
 }
 
+/** Все записи разом — для сквозного списка событий рядом с календарём. */
+export async function listAll() {
+  return storage.getAllCalendarEntries();
+}
+
 export async function createEntry(date, { title, type, startTime, endTime, tagId }) {
   const entry = createCalendarEntryModel({ date, title, type, startTime, endTime, tagId });
   return storage.createCalendarEntry(entry);

@@ -18,6 +18,7 @@ export async function renderCalendarView(container) {
     editingEntryId: null, // id записи, которая сейчас редактируется инлайн в списке
     tags: await calendarTagsService.listTags(),
     selectedTagId: null, // тег, который прикрепится к следующей создаваемой записи
+    eventsPanelOpen: false, // сквозной список всех событий слева от календаря
   };
   await render(container);
 }
@@ -25,15 +26,20 @@ export async function renderCalendarView(container) {
 async function render(container) {
   setViewEscape(() => escapeOneLevel(container));
   if (state.view === "months") {
-    renderMonthsView(container);
+    await renderMonthsView(container);
   } else {
     await renderMonthView(container);
   }
 }
 
-// Esc без открытых меню — шаг назад по календарю: открытый день -> сетка дней
-// -> список месяцев -> главная.
+// Esc без открытых меню — шаг назад по календарю: список событий -> открытый
+// день -> сетка дней -> список месяцев -> главная.
 function escapeOneLevel(container) {
+  if (state.eventsPanelOpen) {
+    state.eventsPanelOpen = false;
+    render(container);
+    return;
+  }
   if (state.view === "month" && state.selectedDate) {
     state.selectedDate = null;
     render(container);
@@ -47,30 +53,39 @@ function escapeOneLevel(container) {
   window.location.hash = "#/";
 }
 
-function renderMonthsView(container) {
+async function renderMonthsView(container) {
   const months = t("calendar.months");
   const now = new Date();
   const isCurrentYear = state.year === now.getFullYear();
 
   container.innerHTML = `
     <a href="#/" class="back-link">${t("nav.backHome")}</a>
-    <div class="calendar-today-date">${todayDMY()}</div>
-    <div class="months-toolbar">
-      <button type="button" class="btn" data-action="prev-year">←</button>
-      <h2 class="months-title">${state.year}</h2>
-      <button type="button" class="btn" data-action="next-year">→</button>
-    </div>
-    <div class="month-circles">
-      ${months
-        .map(
-          (name, index) => `
-        <button type="button" class="month-circle ${isCurrentYear && index === now.getMonth() ? "is-current" : ""}" data-month="${index}">
-          <span>${name}</span>
-        </button>`
-        )
-        .join("")}
+    <div class="calendar-with-events ${state.eventsPanelOpen ? "is-open" : ""}">
+      <aside class="events-panel" data-role="events-panel"></aside>
+      <div class="calendar-main">
+        <div class="calendar-today-date">${todayDMY()}</div>
+        <div class="months-toolbar">
+          <button type="button" class="btn" data-action="prev-year">←</button>
+          <h2 class="months-title">${state.year}</h2>
+          <button type="button" class="btn" data-action="next-year">→</button>
+          <button type="button" class="btn" data-action="toggle-events">☰ ${t("calendar.events")}</button>
+        </div>
+        <div class="month-circles">
+          ${months
+            .map(
+              (name, index) => `
+            <button type="button" class="month-circle ${isCurrentYear && index === now.getMonth() ? "is-current" : ""}" data-month="${index}">
+              <span>${name}</span>
+            </button>`
+            )
+            .join("")}
+        </div>
+      </div>
     </div>
   `;
+
+  wireEventsToggle(container);
+  await renderEventsPanel(container);
 
   container.querySelector('[data-action="prev-year"]').addEventListener("click", () => {
     state.year -= 1;
@@ -103,33 +118,40 @@ async function renderMonthView(container) {
       <a href="#/" class="back-link">${t("nav.backHome")}</a>
       <button type="button" class="back-link back-link--button" data-action="back-to-months">${t("calendar.backToMonths")}</button>
     </div>
-    <div class="month-view ${state.selectedDate ? "is-day-open" : ""}" data-role="month-view">
-      <div class="day-grid-wrap">
-        <div class="calendar-today-date">${todayDMY()}</div>
-        <div class="calendar-toolbar">
-          <button type="button" class="btn" data-action="prev-month">←</button>
-          <h2 class="calendar-title">${months[state.month]} ${state.year}</h2>
-          <button type="button" class="btn" data-action="next-month">→</button>
-          <button type="button" class="btn" data-action="today">${t("calendar.today")}</button>
+    <div class="calendar-with-events ${state.eventsPanelOpen ? "is-open" : ""}">
+      <aside class="events-panel" data-role="events-panel"></aside>
+      <div class="calendar-main month-view ${state.selectedDate ? "is-day-open" : ""}" data-role="month-view">
+        <div class="day-grid-wrap">
+          <div class="calendar-today-date">${todayDMY()}</div>
+          <div class="calendar-toolbar">
+            <button type="button" class="btn" data-action="prev-month">←</button>
+            <h2 class="calendar-title">${months[state.month]} ${state.year}</h2>
+            <button type="button" class="btn" data-action="next-month">→</button>
+            <button type="button" class="btn" data-action="today">${t("calendar.today")}</button>
+            <button type="button" class="btn" data-action="toggle-events">☰ ${t("calendar.events")}</button>
+          </div>
+          <div class="day-weekdays">
+            ${weekdays.map((label) => `<div class="day-weekday">${label}</div>`).join("")}
+          </div>
+          <div class="day-circles">
+            ${days
+              .map(
+                (day) => `
+              <button type="button" class="day-circle ${day.inCurrentMonth ? "" : "is-outside"} ${day.iso === today ? "is-today" : ""} ${state.selectedDate === day.iso ? "is-selected" : ""}" data-date="${day.iso}">
+                <span class="day-circle-number">${day.date.getDate()}</span>
+                ${dayMarkerHtml(summaries.get(day.iso))}
+              </button>`
+              )
+              .join("")}
+          </div>
         </div>
-        <div class="day-weekdays">
-          ${weekdays.map((label) => `<div class="day-weekday">${label}</div>`).join("")}
-        </div>
-        <div class="day-circles">
-          ${days
-            .map(
-              (day) => `
-            <button type="button" class="day-circle ${day.inCurrentMonth ? "" : "is-outside"} ${day.iso === today ? "is-today" : ""} ${state.selectedDate === day.iso ? "is-selected" : ""}" data-date="${day.iso}">
-              <span class="day-circle-number">${day.date.getDate()}</span>
-              ${dayMarkerHtml(summaries.get(day.iso))}
-            </button>`
-            )
-            .join("")}
-        </div>
+        <div class="day-panel" data-role="day-panel"></div>
       </div>
-      <div class="day-panel" data-role="day-panel"></div>
     </div>
   `;
+
+  wireEventsToggle(container);
+  await renderEventsPanel(container);
 
   container.querySelector('[data-action="back-to-months"]').addEventListener("click", () => {
     state.view = "months";
@@ -169,6 +191,102 @@ function changeMonth(container, delta) {
   state.year = year;
   state.selectedDate = null;
   render(container);
+}
+
+function wireEventsToggle(container) {
+  container.querySelector('[data-action="toggle-events"]').addEventListener("click", () => {
+    state.eventsPanelOpen = !state.eventsPanelOpen;
+    render(container);
+  });
+}
+
+// Ключ сортировки записи: дата плюс время начала. Записи без времени попадают в
+// конец своего дня — точного момента у них нет, но день известен.
+function entrySortKey(entry) {
+  return `${entry.date} ${entry.startTime || "99:99"}`;
+}
+
+function nowSortKey() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${todayISO()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+/**
+ * Сквозной список всех событий слева от календаря. Порядок — от ранних к
+ * поздним; прошедшие остаются в списке выше, чтобы к ним можно было поднять
+ * прокрутку, а ближайшее подсвечено и стоит сразу под последним прошедшим.
+ */
+async function renderEventsPanel(container) {
+  const panelEl = container.querySelector('[data-role="events-panel"]');
+  if (!state.eventsPanelOpen) {
+    panelEl.innerHTML = "";
+    return;
+  }
+
+  state.tags = await calendarTagsService.listTags();
+  const entries = (await calendarEntriesService.listAll()).sort((a, b) => entrySortKey(a).localeCompare(entrySortKey(b)));
+  const nowKey = nowSortKey();
+  const nextIndex = entries.findIndex((entry) => entrySortKey(entry) >= nowKey);
+
+  panelEl.innerHTML = `
+    <h3 class="events-panel-title">${t("calendar.events")}</h3>
+    ${
+      entries.length
+        ? `<ul class="events-list" data-role="events-list">
+             ${entries.map((entry, index) => renderEventRow(entry, index, nextIndex)).join("")}
+           </ul>`
+        : `<p class="placeholder">${t("calendar.eventsEmpty")}</p>`
+    }
+  `;
+
+  const listEl = panelEl.querySelector('[data-role="events-list"]');
+  if (!listEl) return;
+
+  // Прокручиваем так, чтобы сверху осталось последнее прошедшее событие, а сразу
+  // под ним — подсвеченное ближайшее.
+  const nextEl = listEl.querySelector(".is-next");
+  const anchor = (nextEl && nextEl.previousElementSibling) || nextEl || listEl.lastElementChild;
+  if (anchor) listEl.scrollTop = anchor.offsetTop;
+
+  listEl.querySelectorAll("[data-event-date]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const iso = row.dataset.eventDate;
+      const [year, month] = iso.split("-").map(Number);
+      state.view = "month";
+      state.year = year;
+      state.month = month - 1;
+      state.selectedDate = iso;
+      render(container);
+    });
+  });
+}
+
+function renderEventRow(entry, index, nextIndex) {
+  // У заметок текст бывает многострочным: первая строка — название события,
+  // остальные показываем ниже мелким шрифтом как дополнительную информацию.
+  const [title, ...rest] = (entry.title || "").split("\n");
+  const note = rest.join("\n").trim();
+  const isPast = nextIndex === -1 || index < nextIndex;
+  const time = formatTimeRange(entry);
+
+  return `
+    <li class="event-row ${isPast ? "is-past" : ""} ${index === nextIndex ? "is-next" : ""}" data-event-date="${escapeAttr(entry.date)}">
+      <div class="event-row-meta">
+        <span class="event-row-date">${escapeHtml(formatShortDate(entry.date))}</span>
+        ${time ? `<span class="event-row-time">${escapeHtml(time)}</span>` : ""}
+        ${entryTagBadge(entry)}
+      </div>
+      <div class="event-row-title ${entry.done ? "is-done" : ""}">${escapeHtml(title)}</div>
+      ${note ? `<div class="event-row-note">${escapeHtml(note)}</div>` : ""}
+    </li>`;
+}
+
+// В плотном списке дата идёт числами: название месяца в русском требует
+// родительного падежа ("13 июля"), а словарь месяцев хранит именительный.
+function formatShortDate(iso) {
+  const [, month, day] = iso.split("-");
+  return `${day}.${month}`;
 }
 
 async function renderDayPanel(container) {
