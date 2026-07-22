@@ -17,6 +17,17 @@ export function escapeAttr(value) {
 }
 
 /**
+ * HTML заметки → плоский текст для поиска. Теги заменяются пробелом, иначе
+ * слова из соседних абзацев слиплись бы в одно и находились бы там, где их нет.
+ * Сущности (&nbsp; и подобные) раскрываются самим браузером при разборе.
+ */
+export function htmlToText(html) {
+  const holder = document.createElement("div");
+  holder.innerHTML = String(html || "").replace(/<[^>]+>/g, " ");
+  return holder.textContent.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Textarea растёт вниз по мере ввода вместо того, чтобы прятать текст за
  * нижним краем. Высоту снимаем в auto перед замером — иначе scrollHeight
  * останется равным уже выставленной высоте и поле не сожмётся при удалении.

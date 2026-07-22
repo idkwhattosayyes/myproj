@@ -65,3 +65,90 @@
   cursor: default;
   opacity: 0.6;
 }
+
+/* Выпадающий список результатов под полоской. */
+.search-results {
+  margin-top: 0.4rem;
+  max-height: min(28rem, calc(100vh - 6rem));
+  overflow-y: auto;
+  padding: 0.3rem;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.search-results[hidden] { display: none; }
+
+.search-group + .search-group {
+  margin-top: 0.2rem;
+  padding-top: 0.2rem;
+  border-top: 1px solid #eef1f4;
+}
+
+.search-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.search-row:hover,
+.search-row.is-active {
+  background: #f3f4f6;
+}
+
+/* Заголовок группы: что нашли и где оно лежит. */
+.search-row--head { font-weight: 600; }
+
+.search-kind {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #33507e;
+  vertical-align: 1px;
+}
+
+.search-row-sub {
+  margin-left: 0.4rem;
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+/* Строка совпадения — кусочек текста вокруг найденного. */
+.search-row--match {
+  color: #4b5563;
+  padding-left: 1.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-row--match mark {
+  background: #ffe8a3;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.search-more {
+  padding: 0.15rem 0.5rem 0.35rem 1.6rem;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.search-empty {
+  padding: 0.6rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}

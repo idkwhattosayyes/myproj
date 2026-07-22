@@ -13,6 +13,12 @@ export const translations = {
     "search.scopeGlobal": "Everywhere",
     "search.scopeLocal": "This section",
     "search.scopeHint": "Search scope (Tab to switch)",
+    "search.nothing": "Nothing found",
+    // Число ставим в конец, чтобы подпись не зависела от формы множественного числа.
+    "search.moreMatches": "More matches: {n}",
+    "search.kindFolder": "Folder",
+    "search.kindNote": "Note",
+    "search.kindEvent": "Event",
 
     "home.tasks": "Tasks",
     "home.documents": "Documents",
@@ -112,6 +118,11 @@ export const translations = {
     "search.scopeGlobal": "Везде",
     "search.scopeLocal": "В разделе",
     "search.scopeHint": "Область поиска (Tab — переключить)",
+    "search.nothing": "Ничего не найдено",
+    "search.moreMatches": "Ещё совпадений: {n}",
+    "search.kindFolder": "Папка",
+    "search.kindNote": "Заметка",
+    "search.kindEvent": "Событие",
 
     "home.tasks": "Задачи",
     "home.documents": "Документы",
