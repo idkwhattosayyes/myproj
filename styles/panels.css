@@ -19,32 +19,69 @@
 .panel-folders { width: 220px; }
 .panel-list { width: 240px; }
 
-/* Свёрнутая панель — тонкая полоска-полоса, сама являющаяся кликабельным
-   элементом для разворачивания (вместо квадратной кнопки с иконкой). */
-.panel.is-collapsed { width: 8px; }
+/* Свёрнутый список заметок не прячется совсем, а складывается в панель папок
+   вкладкой .panel-tab — сам блок при этом убирается из сетки. */
+.panel-list.is-collapsed { display: none; }
 
-.panel.is-collapsed .panel-body,
-.panel.is-collapsed .panel-title,
-.panel.is-collapsed [data-action="new-item"] {
+/* Вкладка свёрнутого списка внутри панели папок. */
+.panel-tab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  border-bottom: 1px solid #eef1f4;
+  background: #f3f4f6;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: left;
+}
+
+.panel-tab:hover { background: #e5e7eb; }
+
+.panel-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-tab-icon { color: #9ca3af; }
+
+/* Свёрнутая панель папок — тонкая полоска во всю высоту у левого края, сама
+   являющаяся кнопкой разворачивания. align-self: stretch обязателен: без него
+   у полоски (всё содержимое скрыто) нулевая высота и в неё нечем попасть. */
+.panel-folders.is-collapsed {
+  width: 10px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-folders.is-collapsed .panel-body,
+.panel-folders.is-collapsed .panel-title,
+.panel-folders.is-collapsed .panel-tab {
   display: none;
 }
 
-.panel.is-collapsed .panel-header {
+.panel-folders.is-collapsed .panel-header {
+  flex: 1;
   padding: 0;
-  height: 100%;
   border-bottom: none;
 }
 
-.panel.is-collapsed .panel-toggle {
+.panel-folders.is-collapsed .panel-toggle {
+  flex: 1;
   width: 100%;
-  height: 100%;
   padding: 0;
   font-size: 0;
   border-radius: 0;
   background: #d8dbdf;
 }
 
-.panel.is-collapsed .panel-toggle:hover { background: #b6bcc4; }
+.panel-folders.is-collapsed .panel-toggle:hover { background: #b6bcc4; }
 
 .panel-header {
   display: flex;
@@ -188,5 +225,11 @@
   .panel-list {
     width: 100%;
   }
-  .panel.is-collapsed { width: 100%; }
+  /* В одну колонку полоска у левого края смысла не имеет — свёрнутая панель
+     папок остаётся во всю ширину и сворачивается только по высоте. */
+  .panel-folders.is-collapsed {
+    width: 100%;
+    align-self: auto;
+  }
+  .panel-folders.is-collapsed .panel-header { min-height: 10px; }
 }

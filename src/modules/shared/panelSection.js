@@ -43,6 +43,15 @@ export async function renderPanelSection(container, config) {
 }
 
 function render(container, config, state) {
+  // Свёрнутый список заметок не исчезает, а складывается в панель папок
+  // отдельной вкладкой — из неё же и разворачивается обратно.
+  const listTab = state.listCollapsed
+    ? `<button type="button" class="panel-tab" data-action="toggle-list" title="${t("panel.togglePanel")}">
+         <span class="panel-tab-title">${escapeHtml(getListTitle(state))}</span>
+         <span class="panel-tab-icon">›</span>
+       </button>`
+    : "";
+
   container.innerHTML = `
     <a href="#/" class="back-link">${t("nav.backHome")}</a>
     <div class="panel-layout">
@@ -51,6 +60,7 @@ function render(container, config, state) {
           <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
           <span class="panel-title">${t("panel.folders")}</span>
         </div>
+        ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
       </aside>
 
@@ -74,17 +84,21 @@ function render(container, config, state) {
 }
 
 function wireHeaderActions(container, config, state) {
-  // Сворачивание/разворачивание переключает класс на уже существующем узле
-  // (без полного render), иначе CSS-transition нечего анимировать — элемент
-  // пересоздавался бы сразу в целевом состоянии.
+  // Панель папок сворачивается в тонкую полоску у левого края: переключаем класс
+  // на уже существующем узле (без полного render), иначе CSS-transition нечего
+  // анимировать — элемент пересоздавался бы сразу в целевом состоянии.
   container.querySelector('[data-action="toggle-folders"]').addEventListener("click", () => {
     state.foldersCollapsed = !state.foldersCollapsed;
     container.querySelector(".panel-folders").classList.toggle("is-collapsed", state.foldersCollapsed);
   });
 
-  container.querySelector('[data-action="toggle-list"]').addEventListener("click", () => {
-    state.listCollapsed = !state.listCollapsed;
-    container.querySelector(".panel-list").classList.toggle("is-collapsed", state.listCollapsed);
+  // Список заметок переезжает в панель папок и обратно, поэтому здесь нужен
+  // полный render. Кнопок две: в шапке самого списка и вкладка внутри папок.
+  container.querySelectorAll('[data-action="toggle-list"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.listCollapsed = !state.listCollapsed;
+      render(container, config, state);
+    });
   });
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
