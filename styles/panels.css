@@ -1,11 +1,11 @@
-/* minmax(0, 1fr) вместо 1fr у колонки редактора: с обычным 1fr минимум колонки
-   равен min-content её содержимого, поэтому длинное слово или широкая таблица
-   растягивали всю сетку и страница уезжала вбок. */
+/* Раскладка на flex, а не на grid: свёрнутый список заметок получает
+   display: none и выпадает из сетки, из-за чего редактор переезжал во вторую
+   колонку (шириной по содержимому), а третья оставалась пустой — поле для
+   письма съезжало влево и не занимало освободившуюся ширину. */
 .panel-layout {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  display: flex;
   gap: 1rem;
-  align-items: start;
+  align-items: flex-start;
 }
 
 /* Без transition на width: панель — элемент grid-колонки auto, и анимация
@@ -27,8 +27,8 @@
   overflow: hidden;
 }
 
-.panel-folders { width: 220px; }
-.panel-list { width: 240px; }
+.panel-folders { flex: 0 0 220px; }
+.panel-list { flex: 0 0 240px; }
 
 /* Свёрнутый список заметок не прячется совсем, а складывается в панель папок
    вкладкой .panel-tab — сам блок при этом убирается из сетки. */
@@ -67,7 +67,7 @@
    Растянуть по родителю (align-self: stretch) нельзя — растянутому элементу
    некуда прилипать, и полоска уезжала бы при прокрутке. */
 .panel-folders.is-collapsed {
-  width: 10px;
+  flex: 0 0 10px;
   height: calc(100vh - 2rem);
   display: flex;
   flex-direction: column;
@@ -133,6 +133,7 @@
 }
 
 .panel-detail {
+  flex: 1;
   background: #ffffff;
   border: 1px solid #d8dbdf;
   border-radius: 8px;
@@ -255,14 +256,17 @@
 .context-menu-item:hover { background: #f3f4f6; }
 
 @media (max-width: 780px) {
-  .panel-layout { grid-template-columns: 1fr; }
+  .panel-layout { flex-direction: column; }
   .panel-folders,
   .panel-list {
+    flex: 0 0 auto;
     width: 100%;
   }
+  .panel-detail { width: 100%; }
   /* В одну колонку полоска у левого края смысла не имеет — свёрнутая панель
      папок остаётся во всю ширину и сворачивается только по высоте. */
   .panel-folders.is-collapsed {
+    flex: 0 0 auto;
     width: 100%;
     height: auto;
   }
