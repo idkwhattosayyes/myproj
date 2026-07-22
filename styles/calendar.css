@@ -188,18 +188,14 @@
   cursor: pointer;
 }
 
+/* Сетка кружков ничего не делает при открытии дня — ни уменьшается, ни
+   сдвигается, ни бледнеет. Раньше она съезжала в scale(0.82), и это читалось
+   как скачок всего экрана. */
 .day-grid-wrap {
   background: #ffffff;
   border: 1px solid #d8dbdf;
   border-radius: 12px;
   padding: 1.25rem;
-  transition: transform 0.3s ease, opacity 0.3s ease;
-  transform-origin: top center;
-}
-
-.month-view.is-day-open .day-grid-wrap {
-  transform: scale(0.82) translateY(-8px);
-  opacity: 0.82;
 }
 
 .calendar-toolbar {
@@ -295,21 +291,20 @@
   color: #ffffff;
 }
 
-/* Day panel — скрыт по умолчанию, плавно раскрывается снизу. В раскрытом
-   состоянии предел высоты заведомо больше содержимого и overflow снят: иначе
-   растущее поле заметки упиралось бы в него и текст обрезался. */
+/* Место под блок дня занято всегда, поэтому его появление ничего не двигает:
+   ни сетку кружков выше, ни высоту страницы. Скрыт он видимостью, а не нулевой
+   высотой — прежний max-height: 0 → 200vh как раз и толкал раскладку. */
 .day-panel {
-  max-height: 0;
+  min-height: 20rem;
+  margin-top: 1rem;
   opacity: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+  visibility: hidden;
+  transition: opacity 0.25s ease;
 }
 
 .month-view.is-day-open .day-panel {
-  max-height: 200vh;
-  overflow: visible;
   opacity: 1;
-  margin-top: 1rem;
+  visibility: visible;
 }
 
 .day-panel-inner {
