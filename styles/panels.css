@@ -24,8 +24,8 @@
 .panel {
   zoom: var(--ui-scale, 1);
   position: sticky;
-  top: calc(1rem / var(--ui-scale, 1));
-  max-height: calc((100vh - 2rem) / var(--ui-scale, 1));
+  top: calc((1rem + var(--topbar-height)) / var(--ui-scale, 1));
+  max-height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -75,7 +75,7 @@
    некуда прилипать, и полоска уезжала бы при прокрутке. */
 .panel-folders.is-collapsed {
   flex: 0 0 10px;
-  height: calc((100vh - 2rem) / var(--ui-scale, 1));
+  height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
 }

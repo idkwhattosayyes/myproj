@@ -6,6 +6,7 @@ import { getLang } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { watchUiScale } from "./utils/uiScale.js";
+import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels } from "./search/searchBar.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -32,6 +33,8 @@ async function renderRoute() {
   view.classList.toggle("app-view--home", route === "home");
   view.innerHTML = "";
   document.documentElement.lang = getLang();
+  // Полоска поиска живёт вне маршрутов, но её охват зависит от раздела.
+  refreshSearchScope(route);
   await routes[route](view, param);
 }
 
@@ -68,8 +71,14 @@ window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
   applyBorderSetting();
   watchUiScale();
+  mountSearch();
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
-  // перерисовать текущий раздел на новом языке.
-  mountSettings({ onLangChange: renderRoute });
+  // перерисовать текущий раздел и полоску поиска на новом языке.
+  mountSettings({
+    onLangChange: () => {
+      renderSearchLabels();
+      renderRoute();
+    },
+  });
   renderRoute();
 });

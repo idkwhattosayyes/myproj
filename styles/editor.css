@@ -24,7 +24,7 @@
      см. src/utils/uiScale.js. */
   zoom: var(--ui-scale, 1);
   position: sticky;
-  top: 0;
+  top: calc(var(--topbar-height) / var(--ui-scale, 1));
   z-index: 5;
   /* Отрицательный отступ ровно гасит внутренний отступ .panel-detail, а свой
      padding возвращает его обратно. Так белая подложка тулбара доходит до самого

@@ -9,6 +9,11 @@ export const translations = {
 
     "nav.backHome": "← Home",
 
+    "search.placeholder": "Search…",
+    "search.scopeGlobal": "Everywhere",
+    "search.scopeLocal": "This section",
+    "search.scopeHint": "Search scope (Tab to switch)",
+
     "home.tasks": "Tasks",
     "home.documents": "Documents",
     "home.calendar": "Calendar",
@@ -102,6 +107,11 @@ export const translations = {
     "settings.clearDataConfirm": "Удалить все папки, заметки и записи календаря? Отменить будет нельзя.",
 
     "nav.backHome": "← На главную",
+
+    "search.placeholder": "Поиск…",
+    "search.scopeGlobal": "Везде",
+    "search.scopeLocal": "В разделе",
+    "search.scopeHint": "Область поиска (Tab — переключить)",
 
     "home.tasks": "Задачи",
     "home.documents": "Документы",

@@ -1,0 +1,67 @@
+/* Полоска поиска — узкая, по центру верхнего края. Шестерёнка настроек стоит
+   в правом углу (z-index 600), поэтому полоска держится ниже неё по слою и не
+   растягивается на всю ширину. */
+.search-bar {
+  position: fixed;
+  top: 0.7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  width: min(34rem, calc(100% - 8rem));
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.7rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.search-field:focus-within {
+  border-color: #33507e;
+}
+
+.search-icon {
+  color: #9ca3af;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-size: 0.9rem;
+  padding: 0.15rem 0;
+}
+
+.search-input:focus { outline: none; }
+
+/* Чип области поиска: показывает текущий охват и переключает его по клику —
+   то же самое делает Tab внутри поля. */
+.search-scope {
+  flex-shrink: 0;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #f3f4f6;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.search-scope:hover:not(:disabled) {
+  background: #e5e7eb;
+  color: #1f2328;
+}
+
+/* На главной охват один — глобальный, переключать не на что. */
+.search-scope:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
