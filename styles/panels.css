@@ -8,12 +8,14 @@
   align-items: start;
 }
 
+/* Без transition на width: панель — элемент grid-колонки auto, и анимация
+   ширины оставляла колонку в старом размере — свёрнутая панель так и висела
+   в 220px вместо полоски. */
 .panel {
   background: #ffffff;
   border: 1px solid #d8dbdf;
   border-radius: 8px;
   overflow: hidden;
-  transition: width 0.22s ease;
 }
 
 .panel-folders { width: 220px; }
@@ -70,11 +72,13 @@
   flex: 1;
   padding: 0;
   border-bottom: none;
+  /* stretch вместо center: иначе у кнопки с font-size: 0 нулевая высота и в
+     полоску невозможно попасть курсором. */
+  align-items: stretch;
 }
 
 .panel-folders.is-collapsed .panel-toggle {
   flex: 1;
-  width: 100%;
   padding: 0;
   font-size: 0;
   border-radius: 0;

@@ -140,9 +140,8 @@ function render(container, config, state) {
 }
 
 function wireHeaderActions(container, config, state) {
-  // Панель папок сворачивается в тонкую полоску у левого края: переключаем класс
-  // на уже существующем узле (без полного render), иначе CSS-transition нечего
-  // анимировать — элемент пересоздавался бы сразу в целевом состоянии.
+  // Панель папок сворачивается в тонкую полоску у левого края. Достаточно
+  // переключить класс на существующем узле — разметка при этом не меняется.
   container.querySelector('[data-action="toggle-folders"]').addEventListener("click", () => {
     state.foldersCollapsed = !state.foldersCollapsed;
     container.querySelector(".panel-folders").classList.toggle("is-collapsed", state.foldersCollapsed);
