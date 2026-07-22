@@ -43,6 +43,28 @@
 
 .rte-btn.is-active:hover { background: #cfe1f0; }
 
+/* Иконки подчёркивания и зачёркивания: буква плюс линия — как в привычных
+   текстовых редакторах. Линия рисуется границей и псевдоэлементом, а не
+   text-decoration: так она заметно толще и не съезжает вместе со шрифтом. */
+.rte-ico {
+  display: inline-block;
+  position: relative;
+  line-height: 1.1;
+}
+
+.rte-ico-underline { border-bottom: 2px solid currentColor; }
+
+.rte-ico-strike::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: currentColor;
+}
+
 .rte-btn[data-command="textColor"] { border-bottom: 3px solid #e03131; }
 .rte-btn[data-command="highlight"] { background: #fff3a3; }
 .rte-btn[data-command="highlight"]:hover { background: #ffe873; }

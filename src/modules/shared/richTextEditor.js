@@ -19,8 +19,10 @@ function getButtonDefs() {
   return {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
     italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
-    underline: { label: t("editor.underlineLabel"), title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.u), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.u) },
-    strikethrough: { label: "S", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
+    // U с линией снизу и S с линией посередине рисуются CSS-классом (см.
+    // .rte-ico-* в styles/editor.css): по кнопке сразу видно, что она делает.
+    underline: { label: "U", labelClass: "rte-ico-underline", title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.u), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.u) },
+    strikethrough: { label: "S", labelClass: "rte-ico-strike", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
     h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
     h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
@@ -373,7 +375,15 @@ export function createRichTextEditor({ content, buttons, onChange }) {
     btn.className = "rte-btn";
     btn.dataset.command = key;
     btn.title = def.title;
-    btn.textContent = def.label;
+    if (def.labelClass) {
+      // Линия рисуется вокруг буквы, поэтому подпись нужна отдельным узлом.
+      const icon = document.createElement("span");
+      icon.className = `rte-ico ${def.labelClass}`;
+      icon.textContent = def.label;
+      btn.appendChild(icon);
+    } else {
+      btn.textContent = def.label;
+    }
     // Не даём кнопке забрать фокус — иначе выделение в редакторе схлопнется до клика.
     btn.addEventListener("mousedown", (event) => event.preventDefault());
 

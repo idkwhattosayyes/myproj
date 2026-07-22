@@ -58,7 +58,6 @@ export const translations = {
 
     "editor.boldLabel": "B",
     "editor.italicLabel": "I",
-    "editor.underlineLabel": "U",
     "editor.bold": "Bold",
     "editor.italic": "Italic",
     "editor.underline": "Underline",
@@ -143,7 +142,6 @@ export const translations = {
 
     "editor.boldLabel": "Ж",
     "editor.italicLabel": "К",
-    "editor.underlineLabel": "П",
     "editor.bold": "Жирный",
     "editor.italic": "Курсив",
     "editor.underline": "Подчёркнутый",
