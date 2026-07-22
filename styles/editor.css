@@ -113,9 +113,16 @@
   background: currentColor;
 }
 
-.rte-btn[data-command="textColor"] { border-bottom: 3px solid #e03131; }
-.rte-btn[data-command="highlight"] { background: #fff3a3; }
-.rte-btn[data-command="highlight"]:hover { background: #ffe873; }
+/* Индикаторы показывают цвет, который сейчас выбран: --swatch выставляет JS
+   (см. updateSwatch в richTextEditor.js). У цвета текста это полоска снизу,
+   у заливки — именно обводка кнопки, а не заливка целиком: закрашенная кнопка
+   плохо читалась бы на светлых оттенках. */
+.rte-btn[data-command="textColor"] { border-bottom: 3px solid var(--swatch); }
+
+.rte-btn[data-command="highlight"] {
+  border: 2px solid var(--swatch);
+  padding: calc(0.3rem - 1px) calc(0.5rem - 1px);
+}
 
 .rte-color-popover {
   position: absolute;

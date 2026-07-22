@@ -16,6 +16,13 @@ function setLastColor(storageKey, color) {
   localStorage.setItem(storageKey, color);
 }
 
+// Индикатор на кнопке (полоска у цвета текста, обводка у заливки) должен
+// показывать выбранный цвет, а не зашитый в стилях. Цвет отдаём в CSS
+// переменной — см. --swatch в styles/editor.css.
+function updateSwatch(btn, def) {
+  btn.style.setProperty("--swatch", getLastColor(def.storageKey, def.defaultColor));
+}
+
 // Свёрнутость тулбара — настройка вида, а не данные заметки, поэтому живёт
 // в localStorage рядом с последними выбранными цветами. Без сохранения тулбар
 // разворачивался бы обратно при каждом переключении заметки: renderDetail()
@@ -563,6 +570,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     btn.addEventListener("mousedown", (event) => event.preventDefault());
 
     if (def.isColor) {
+      updateSwatch(btn, def);
       // ЛКМ — быстрый переключатель последним выбранным цветом, ПКМ — палитра.
       btn.addEventListener("click", () => {
         if (def.isActive(contentEl)) def.reset();
@@ -573,7 +581,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       });
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState);
+        toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState, focusActivePage);
       });
     } else if (def.isPageMode) {
       btn.addEventListener("click", () => {
@@ -723,7 +731,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
+function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, focusEditor) {
   const existing = btn.querySelector(".rte-color-popover");
   closeColorPopovers();
   if (existing) return;
@@ -742,7 +750,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
     event.stopPropagation();
     def.reset();
     closeColorPopovers();
-    editorEl.focus();
+    focusEditor();
     onChange(serializeEditor(editorEl));
     refreshToolbarState();
   });
@@ -757,10 +765,12 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState) {
     swatch.addEventListener("click", (event) => {
       event.stopPropagation();
       def.apply(color);
-      // Выбранный здесь цвет становится тем, которым красит ЛКМ по кнопке.
+      // Выбранный здесь цвет становится тем, которым красит ЛКМ по кнопке, —
+      // и тем, что показывает индикатор на самой кнопке.
       setLastColor(def.storageKey, color);
+      updateSwatch(btn, def);
       closeColorPopovers();
-      editorEl.focus();
+      focusEditor();
       onChange(serializeEditor(editorEl));
       refreshToolbarState();
     });
