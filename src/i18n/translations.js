@@ -80,6 +80,10 @@ export const translations = {
     "editor.pageMode": "Page display mode",
     "editor.pageModePaged": "Display mode: paged",
     "editor.pageModeFlow": "Display mode: continuous",
+    "editor.addPage": "Add page",
+    "editor.deletePage": "Delete page",
+    "editor.deletePageConfirm": "Delete this page along with its text?",
+    "editor.pageOverflow": "The page is longer than a standard sheet",
     "editor.tableCols": "Number of columns:",
     "editor.tableRows": "Number of rows:",
 
@@ -168,6 +172,10 @@ export const translations = {
     "editor.pageMode": "Режим отображения страницы",
     "editor.pageModePaged": "Режим отображения: постраничный",
     "editor.pageModeFlow": "Режим отображения: сплошной",
+    "editor.addPage": "Добавить страницу",
+    "editor.deletePage": "Удалить страницу",
+    "editor.deletePageConfirm": "Удалить эту страницу вместе с текстом?",
+    "editor.pageOverflow": "Страница больше допустимого размера",
     "editor.tableCols": "Количество столбцов:",
     "editor.tableRows": "Количество строк:",
 

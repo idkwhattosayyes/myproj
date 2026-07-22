@@ -536,6 +536,18 @@ function renderDetail(container, config, state) {
     pageMode: item.pageMode,
     onChange: (html) => scheduleSave({ content: html }),
     onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
+    // Раздел без кнопки режима в тулбаре (Заметки): переключать вид можно только
+    // по ПКМ внутри открытой заметки. Пункт отдаём редактору, а не вешаем своё
+    // меню — иначе поверх его меню открывалось бы второе. У строк списка слева
+    // своё меню, расширенная опция туда намеренно не попадает.
+    getExtraMenuItems: config.pageModeInContextMenu
+      ? () => [
+          {
+            label: editor.getPageMode() === "paged" ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
+            onClick: () => editor.togglePageMode(),
+          },
+        ]
+      : null,
   });
   const { toolbarEl, contentEl } = editor;
   detailEl.querySelector('[data-role="toolbar-host"]').appendChild(toolbarEl);
@@ -543,30 +555,13 @@ function renderDetail(container, config, state) {
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();
 
-  // Раздел без кнопки режима в тулбаре (Заметки): переключать вид можно только
-  // по ПКМ внутри самой открытой заметки. У строк списка слева своё меню —
-  // расширенная опция туда намеренно не попадает.
-  if (config.pageModeInContextMenu) {
-    contentEl.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      const paged = editor.getPageMode() === "paged";
-      showContextMenu(event.clientX, event.clientY, [
-        {
-          label: paged ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
-          onClick: () => editor.togglePageMode(),
-        },
-      ]);
-    });
-  }
-
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
   titleInput.value = item.title;
   titleInput.addEventListener("input", () => scheduleSave({ title: titleInput.value }));
   titleInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault();
-    contentEl.focus();
-    placeCaretAtStart(contentEl);
+    editor.focusContent();
   });
 
   detailEl.querySelector('[data-action="delete-item"]').addEventListener("click", async () => {
@@ -578,13 +573,4 @@ function renderDetail(container, config, state) {
     state.selectedItemId = null;
     render(container, config, state);
   });
-}
-
-function placeCaretAtStart(el) {
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  range.collapse(true);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
 }

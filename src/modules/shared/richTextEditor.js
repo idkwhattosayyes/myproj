@@ -1,6 +1,7 @@
 import { t } from "../../i18n/i18n.js";
-import { openTablePrompt } from "../../utils/modal.js";
+import { openTablePrompt, openConfirm } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
+import { showContextMenu } from "./contextMenu.js";
 
 const TEXT_COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
 // Заливка идёт под текст, поэтому палитра своя — светлая, иначе текст не читается.
@@ -91,10 +92,10 @@ function getButtonDefs() {
   };
 }
 
-// Высота страницы A4 при 96 dpi. То же значение зашито в .rte-content.is-paged
-// (styles/editor.css): менять нужно в обоих местах, иначе подгонка высоты
-// разъедется с нарисованными линиями разрыва.
-const PAGE_HEIGHT = 1123;
+// Высота листа A4 при 96 dpi. То же значение стоит в min-height у .rte-page
+// (styles/editor.css) — меняем в обоих местах, иначе обводка «страница выросла»
+// начнёт появляться раньше или позже, чем текст реально вылез за лист.
+const A4_HEIGHT = 1123;
 
 // Невидимый якорь: держит каретку внутри только что созданного (или только что
 // покинутого) форматирующего тега, пока в него ничего не набрано. В сохраняемый
@@ -119,8 +120,51 @@ function createHeadingSpan(className) {
   return span;
 }
 
+/**
+ * Заметка хранится как последовательность страниц: `<div class="rte-page">…</div>`.
+ * В сплошном режиме страница обычно одна, поэтому снаружи это по-прежнему просто
+ * текст. Рамки, крестики и кнопка «добавить страницу» в разметку не попадают —
+ * собираем только сами страницы.
+ */
 function serializeEditor(editorEl) {
-  return editorEl.innerHTML.split(CARET_ANCHOR).join("").replace(/<(u|s)><\/\1>/g, "");
+  return [...editorEl.querySelectorAll(".rte-page")]
+    .map((page) => `<div class="rte-page">${page.innerHTML}</div>`)
+    .join("")
+    .split(CARET_ANCHOR)
+    .join("")
+    .replace(/<(u|s)><\/\1>/g, "");
+}
+
+// Заметки, сохранённые до появления страниц, лежат одним куском HTML — такой
+// текст становится единственной страницей (ср. upgradeLegacyChecklists).
+function parsePages(html) {
+  const holder = document.createElement("div");
+  holder.innerHTML = html || "";
+  const pages = [...holder.querySelectorAll(":scope > .rte-page")];
+  if (!pages.length) return [holder.innerHTML];
+  return pages.map((page) => page.innerHTML);
+}
+
+/**
+ * Страница — самостоятельная область ввода: текст с одной страницы никуда не
+ * перетекает, и правка одной не задевает соседние. Рамка вокруг неё нужна, чтобы
+ * было куда повесить обводку переполнения и крестик удаления.
+ */
+function createPageFrame(html) {
+  const frame = document.createElement("div");
+  frame.className = "rte-page-frame";
+
+  const page = document.createElement("div");
+  page.className = "rte-page";
+  page.contentEditable = "true";
+  page.spellcheck = false;
+  // Пустой title у потомка гасит подсказку, унаследованную от рамки: над текстом
+  // она всплывать не должна — только над самой обводкой.
+  page.title = "";
+  page.innerHTML = html || "<div><br></div>";
+
+  frame.appendChild(page);
+  return frame;
 }
 
 /**
@@ -372,10 +416,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void}} options
- * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void}}
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[]}} options
+ * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -387,30 +431,97 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   toolbarEl.setAttribute("role", "toolbar");
   toolbarEl.appendChild(createToolbarToggle(toolbarEl));
 
+  // Сам контейнер не редактируется — редактируются страницы внутри него. Все
+  // проверки форматирования смотрят на editorEl.contains(узел), поэтому им
+  // по-прежнему передаётся контейнер.
   const contentEl = document.createElement("div");
   contentEl.className = "rte-content";
-  contentEl.contentEditable = "true";
-  contentEl.spellcheck = false;
-  contentEl.innerHTML = content || "";
+  parsePages(content).forEach((html) => contentEl.appendChild(createPageFrame(html)));
   upgradeLegacyChecklists(contentEl);
 
-  // "flow" — один сплошной прокручиваемый лист, "paged" — разбивка на страницы.
+  // Новая страница появляется только по явному действию — текст сам по себе на
+  // следующую страницу не перетекает.
+  const addPageBtn = document.createElement("button");
+  addPageBtn.type = "button";
+  addPageBtn.className = "rte-add-page";
+  addPageBtn.textContent = `＋ ${t("editor.addPage")}`;
+  addPageBtn.addEventListener("click", addPage);
+  contentEl.appendChild(addPageBtn);
+
+  // "flow" — один сплошной лист, "paged" — отдельные листы A4.
   let currentPageMode = pageMode === "paged" ? "paged" : "flow";
   buttonDefs.pageMode.isActive = () => currentPageMode === "paged";
 
-  // Настоящей разбивки на страницы в contenteditable нет: сам лист и линии
-  // разрыва рисует CSS, а здесь высота подгоняется до целого числа страниц —
-  // тогда нижний край блока совпадает с концом последней страницы.
-  function updatePagedHeight() {
-    contentEl.style.minHeight = "";
-    if (currentPageMode !== "paged") return;
-    const pages = Math.max(1, Math.ceil(contentEl.scrollHeight / PAGE_HEIGHT));
-    contentEl.style.minHeight = `${pages * PAGE_HEIGHT}px`;
+  // Страница, в которой последний раз стояла каретка: именно её возвращаем в
+  // фокус после нажатия кнопки тулбара.
+  let activePageEl = getPages()[0] || null;
+
+  function getPages() {
+    return [...contentEl.querySelectorAll(".rte-page")];
+  }
+
+  function focusActivePage() {
+    const pages = getPages();
+    if (!activePageEl || !contentEl.contains(activePageEl)) activePageEl = pages[0] || null;
+    if (activePageEl) activePageEl.focus();
+  }
+
+  function addPage() {
+    const frame = createPageFrame("");
+    contentEl.insertBefore(frame, addPageBtn);
+    activePageEl = frame.querySelector(".rte-page");
+    activePageEl.focus();
+    onChange(serializeEditor(contentEl));
+    refreshPages();
+  }
+
+  function removePage(page) {
+    if (getPages().length < 2) return;
+    page.parentElement.remove();
+    activePageEl = null;
+    onChange(serializeEditor(contentEl));
+    refreshPages();
+    focusActivePage();
+  }
+
+  // Пересчитывает всё, что зависит от наполнения страниц: обводку переполнения и
+  // крестик удаления. Вызывается на ввод и на смену режима — перерисовывать
+  // редактор целиком ради этого не нужно.
+  function refreshPages() {
+    const pages = getPages();
+    const paged = currentPageMode === "paged";
+    addPageBtn.hidden = !paged;
+
+    pages.forEach((page) => {
+      const frame = page.parentElement;
+      const isOverflowing = paged && page.offsetHeight > A4_HEIGHT;
+      frame.classList.toggle("is-overflow", isOverflowing);
+      if (isOverflowing) frame.title = t("editor.pageOverflow");
+      else frame.removeAttribute("title");
+
+      // Крестик — только у пустой страницы, ровно как у пустой заметки в списке.
+      // Непустую удаляют через ПКМ, с подтверждением.
+      const removable = paged && pages.length > 1 && page.textContent.trim() === "";
+      const existing = frame.querySelector(".rte-page-delete");
+      if (removable && !existing) frame.appendChild(createPageDeleteButton(page));
+      else if (!removable && existing) existing.remove();
+    });
+  }
+
+  function createPageDeleteButton(page) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rte-page-delete";
+    btn.title = t("editor.deletePage");
+    btn.textContent = "✕";
+    btn.addEventListener("mousedown", (event) => event.preventDefault());
+    btn.addEventListener("click", () => removePage(page));
+    return btn;
   }
 
   function applyPageMode() {
     contentEl.classList.toggle("is-paged", currentPageMode === "paged");
-    updatePagedHeight();
+    refreshPages();
     refreshToolbarState();
   }
 
@@ -456,7 +567,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       btn.addEventListener("click", () => {
         if (def.isActive(contentEl)) def.reset();
         else def.apply(getLastColor(def.storageKey, def.defaultColor));
-        contentEl.focus();
+        focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
       });
@@ -467,14 +578,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     } else if (def.isPageMode) {
       btn.addEventListener("click", () => {
         togglePageMode();
-        contentEl.focus();
+        focusActivePage();
       });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
         // размер через модалку; для обычных execCommand-команд просто no-op.
         await def.command(contentEl);
-        contentEl.focus();
+        focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
       });
@@ -485,7 +596,37 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
 
   contentEl.addEventListener("input", () => {
     onChange(serializeEditor(contentEl));
-    updatePagedHeight();
+    refreshPages();
+  });
+
+  // Какая страница сейчас редактируется — нужно, чтобы после нажатия кнопки
+  // тулбара фокус вернулся именно в неё, а не в первую попавшуюся.
+  contentEl.addEventListener("focusin", (event) => {
+    const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
+    if (page) activePageEl = page;
+  });
+
+  // Единственное контекстное меню редактора: сюда же попадают пункты раздела
+  // (в Заметках — переключение режима отображения). Два независимых обработчика
+  // открывали бы два меню одно поверх другого.
+  contentEl.addEventListener("contextmenu", (event) => {
+    const items = getExtraMenuItems ? [...getExtraMenuItems()] : [];
+    const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
+    if (page && currentPageMode === "paged" && getPages().length > 1) {
+      items.push({
+        label: t("editor.deletePage"),
+        onClick: async () => {
+          if (page.textContent.trim()) {
+            const ok = await openConfirm({ message: t("editor.deletePageConfirm") });
+            if (!ok) return;
+          }
+          removePage(page);
+        },
+      });
+    }
+    if (!items.length) return;
+    event.preventDefault();
+    showContextMenu(event.clientX, event.clientY, items);
   });
 
   // Отметка "выполнено" — клик по квадратику слева от текста. Сам квадратик
@@ -512,7 +653,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   // "input"-события — обновляем состояние кнопок по обоим путям и на фокус.
   contentEl.addEventListener("mouseup", refreshToolbarState);
   contentEl.addEventListener("keyup", refreshToolbarState);
-  contentEl.addEventListener("focus", refreshToolbarState);
+  contentEl.addEventListener("focusin", refreshToolbarState);
 
   applyPageMode();
 
@@ -521,9 +662,22 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     contentEl,
     getPageMode: () => currentPageMode,
     togglePageMode,
-    // Высоту страниц можно посчитать только когда узел уже в документе, поэтому
+    // Высоту страницы можно измерить только когда узел уже в документе, поэтому
     // вызывающий код дёргает это после вставки в DOM.
-    refreshLayout: updatePagedHeight,
+    refreshLayout: refreshPages,
+    // Переход из поля названия в текст: каретка встаёт в начало первой страницы.
+    focusContent: () => {
+      const first = getPages()[0];
+      if (!first) return;
+      activePageEl = first;
+      first.focus();
+      const range = document.createRange();
+      range.selectNodeContents(first);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    },
   };
 }
 
