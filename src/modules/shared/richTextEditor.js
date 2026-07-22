@@ -104,6 +104,12 @@ function getButtonDefs() {
 // начнёт появляться раньше или позже, чем текст реально вылез за лист.
 const A4_HEIGHT = 1123;
 
+// Ширина листа A4 при тех же 96 dpi — вместе с рамкой вокруг страницы (2px
+// границы + 1px отступа с каждой стороны). То же значение стоит у .rte-page
+// в styles/editor.css.
+const PAGE_WIDTH = 794;
+const PAGE_FRAME_WIDTH = PAGE_WIDTH + 6;
+
 // Невидимый якорь: держит каретку внутри только что созданного (или только что
 // покинутого) форматирующего тега, пока в него ничего не набрано. В сохраняемый
 // HTML не попадает — см. serializeEditor.
@@ -491,6 +497,15 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     focusActivePage();
   }
 
+  // Лист шире колонки (узкое окно, развёрнутые обратно панели, зум) — уменьшаем
+  // его целиком, сохраняя пропорции A4. Увеличивать сверх 100% не нужно: при
+  // браузерном зуме лист и так растёт вместе со всей страницей.
+  function updatePageFit() {
+    const available = contentEl.clientWidth;
+    if (!available) return; // узел ещё не в документе — посчитаем после вставки
+    contentEl.style.setProperty("--page-fit", String(Math.min(1, available / PAGE_FRAME_WIDTH)));
+  }
+
   // Пересчитывает всё, что зависит от наполнения страниц: обводку переполнения и
   // крестик удаления. Вызывается на ввод и на смену режима — перерисовывать
   // редактор целиком ради этого не нужно.
@@ -498,6 +513,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     const pages = getPages();
     const paged = currentPageMode === "paged";
     addPageBtn.hidden = !paged;
+    updatePageFit();
 
     pages.forEach((page) => {
       const frame = page.parentElement;
@@ -606,6 +622,10 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(serializeEditor(contentEl));
     refreshPages();
   });
+
+  // Колонка меняет ширину и без ввода: свернули панель, потянули окно, сменили
+  // зум. refreshPages() такие случаи не ловит, поэтому ещё и наблюдаем размер.
+  new ResizeObserver(updatePageFit).observe(contentEl);
 
   // Какая страница сейчас редактируется — нужно, чтобы после нажатия кнопки
   // тулбара фокус вернулся именно в неё, а не в первую попавшуюся.

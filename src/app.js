@@ -5,6 +5,7 @@ import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
+import { watchUiScale } from "./utils/uiScale.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -66,6 +67,7 @@ window.addEventListener("keydown", (event) => {
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
   applyBorderSetting();
+  watchUiScale();
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
   // перерисовать текущий раздел на новом языке.
   mountSettings({ onLangChange: renderRoute });

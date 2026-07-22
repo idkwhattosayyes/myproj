@@ -14,11 +14,18 @@
 
    position: sticky — панель остаётся на экране, пока прокручивается длинная
    заметка справа. Высота ограничена окном, иначе прилипать было бы нечему:
-   элемент выше вьюпорта уезжает вверх вместе со страницей. */
+   элемент выше вьюпорта уезжает вверх вместе со страницей.
+
+   zoom: var(--ui-scale) гасит браузерный зум (см. src/utils/uiScale.js), поэтому
+   панель остаётся одного физического размера на любом масштабе. Именно zoom, а
+   не transform: scale — он меняет саму раскладку, и панель честно занимает
+   меньше места в строке. Внутри зума свои координаты, поэтому 100vh и отступ
+   прилипания приходится делить обратно. */
 .panel {
+  zoom: var(--ui-scale, 1);
   position: sticky;
-  top: 1rem;
-  max-height: calc(100vh - 2rem);
+  top: calc(1rem / var(--ui-scale, 1));
+  max-height: calc((100vh - 2rem) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -68,7 +75,7 @@
    некуда прилипать, и полоска уезжала бы при прокрутке. */
 .panel-folders.is-collapsed {
   flex: 0 0 10px;
-  height: calc(100vh - 2rem);
+  height: calc((100vh - 2rem) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
 }
