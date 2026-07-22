@@ -4,6 +4,7 @@ import { escapeHtml, escapeAttr, autoGrowTextarea } from "../../utils/dom.js";
 import * as calendarEntriesService from "../../services/calendarEntriesService.js";
 import * as calendarTagsService from "../../services/calendarTagsService.js";
 import { pushLayer, setViewEscape } from "../../utils/escapeLayers.js";
+import { consumePendingTarget } from "../../search/searchTarget.js";
 
 let state = null;
 
@@ -19,8 +20,27 @@ export async function renderCalendarView(container) {
     tags: await calendarTagsService.listTags(),
     selectedTagId: null, // тег, который прикрепится к следующей создаваемой записи
     eventsPanelOpen: false, // сквозной список всех событий слева от календаря
+    flashEntryId: null, // запись, найденная поиском, — мигнуть ею один раз
   };
+  await applySearchTarget();
   await render(container);
+}
+
+// Пришли по результату поиска: открываем месяц и день найденной записи — ровно
+// так же, как это делает клик по строке в панели событий.
+async function applySearchTarget() {
+  const target = consumePendingTarget("calendar");
+  if (!target) return;
+
+  const entry = (await calendarEntriesService.listAll()).find((item) => item.id === target.id);
+  if (!entry) return;
+
+  const [year, month] = entry.date.split("-").map(Number);
+  state.view = "month";
+  state.year = year;
+  state.month = month - 1;
+  state.selectedDate = entry.date;
+  state.flashEntryId = entry.id;
 }
 
 async function render(container) {
@@ -384,6 +404,13 @@ async function renderDayPanel(container) {
       renderDayPanel(container);
     });
   });
+
+  // Пришли из поиска: показываем, какая именно запись нашлась. Метка одноразовая.
+  if (state.flashEntryId) {
+    const found = panelEl.querySelector(`[data-entry-id="${state.flashEntryId}"]`);
+    if (found) found.classList.add("is-search-flash");
+    state.flashEntryId = null;
+  }
 
   panelEl.querySelectorAll("[data-entry-id]").forEach((row) => {
     const entryId = row.dataset.entryId;

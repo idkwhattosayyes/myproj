@@ -693,6 +693,8 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     // Высоту страницы можно измерить только когда узел уже в документе, поэтому
     // вызывающий код дёргает это после вставки в DOM.
     refreshLayout: refreshPages,
+    // Переход по результату поиска: прокрутить к нужному вхождению и мигнуть им.
+    highlightMatch: (query, occurrence) => highlightMatch(contentEl, query, occurrence),
     // Переход из поля названия в текст: каретка встаёт в начало первой страницы.
     focusContent: () => {
       const first = getPages()[0];
@@ -707,6 +709,89 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       selection.addRange(range);
     },
   };
+}
+
+// Имя подсветки, под которым диапазон регистрируется в CSS.highlights;
+// цвет задан в styles/editor.css через ::highlight(search-hit).
+const SEARCH_HIGHLIGHT = "search-hit";
+const SEARCH_HIGHLIGHT_MS = 2500;
+let searchHighlightTimer = null;
+
+/**
+ * Подсвечивает occurrence-е вхождение query в тексте заметки и прокручивает к
+ * нему. Текст заметки при этом НЕ меняется: диапазон красит CSS Custom Highlight
+ * API, который рисует поверх, ничего не вставляя в DOM. Иначе подсветка попала
+ * бы в contenteditable, а оттуда — в сохранённый HTML.
+ */
+function highlightMatch(contentEl, query, occurrence = 0) {
+  clearSearchHighlight();
+  const range = findOccurrenceRange(contentEl, query, occurrence);
+  if (!range) return;
+
+  const target = range.startContainer.parentElement;
+  if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+
+  if (typeof Highlight === "undefined" || !CSS.highlights) {
+    // Старый браузер без Custom Highlight API — показываем найденное обычным
+    // выделением. Оно тоже ничего не вставляет в текст.
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+
+  CSS.highlights.set(SEARCH_HIGHLIGHT, new Highlight(range));
+  searchHighlightTimer = setTimeout(clearSearchHighlight, SEARCH_HIGHLIGHT_MS);
+}
+
+function clearSearchHighlight() {
+  clearTimeout(searchHighlightTimer);
+  if (CSS.highlights) CSS.highlights.delete(SEARCH_HIGHLIGHT);
+}
+
+/**
+ * Ищет вхождение по всем текстовым узлам страниц подряд, поэтому находит и то,
+ * что разорвано форматированием (жирное слово внутри предложения). Считаем
+ * именно порядковый номер вхождения — по нему список результатов и различает
+ * несколько совпадений в одной заметке.
+ */
+function findOccurrenceRange(contentEl, query, occurrence) {
+  const needle = (query || "").toLowerCase();
+  if (!needle) return null;
+
+  const nodes = [];
+  let text = "";
+  contentEl.querySelectorAll(".rte-page").forEach((page) => {
+    const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      nodes.push({ node, start: text.length });
+      text += node.textContent;
+    }
+  });
+
+  const haystack = text.toLowerCase();
+  let from = haystack.indexOf(needle);
+  for (let i = 0; i < occurrence && from !== -1; i++) {
+    from = haystack.indexOf(needle, from + needle.length);
+  }
+  if (from === -1) return null;
+
+  const range = document.createRange();
+  const startPoint = pointAt(nodes, from);
+  const endPoint = pointAt(nodes, from + needle.length);
+  if (!startPoint || !endPoint) return null;
+  range.setStart(startPoint.node, startPoint.offset);
+  range.setEnd(endPoint.node, endPoint.offset);
+  return range;
+}
+
+// Позиция в склеенном тексте → узел и смещение внутри него.
+function pointAt(nodes, position) {
+  for (const entry of nodes) {
+    const length = entry.node.textContent.length;
+    if (position <= entry.start + length) return { node: entry.node, offset: position - entry.start };
+  }
+  return null;
 }
 
 // Prompt — асинхронная модалка, за время её открытия редактор теряет фокус

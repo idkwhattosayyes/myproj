@@ -71,7 +71,16 @@ window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
   applyBorderSetting();
   watchUiScale();
-  mountSearch();
+  // Полоска поиска сама не знает про роутер: она отдаёт нужный раздел, а переход
+  // делаем здесь. Если раздел уже открыт (локальный поиск внутри него),
+  // hashchange не сработает — перерисовываем вручную.
+  mountSearch({
+    onNavigate: (route) => {
+      const target = `#/${route}`;
+      if (window.location.hash === target) renderRoute();
+      else window.location.hash = target;
+    },
+  });
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
   // перерисовать текущий раздел и полоску поиска на новом языке.
   mountSettings({

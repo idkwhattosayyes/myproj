@@ -2,6 +2,7 @@ import { t } from "../i18n/i18n.js";
 import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { search } from "./searchService.js";
+import { setPendingTarget } from "./searchTarget.js";
 
 /**
  * Полоска поиска в верхней части экрана. Живёт вне маршрутов и монтируется один
@@ -25,11 +26,14 @@ let rows = [];
 let activeRow = 0;
 let searchTimer = null;
 let unregisterLayer = null;
+let onNavigateCallback = null;
 
 // Пауза перед поиском: при быстром наборе не пересчитываем список на каждую букву.
 const INPUT_DELAY = 150;
 
-export function mountSearch() {
+/** @param {{onNavigate: (route: string) => void}} options переход к разделу, где лежит найденное */
+export function mountSearch({ onNavigate }) {
+  onNavigateCallback = onNavigate;
   if (barEl) return;
 
   barEl = document.createElement("div");
@@ -182,8 +186,20 @@ function markActiveRow() {
 function openRow(rowIndex) {
   const row = rows[rowIndex];
   if (!row) return;
+  const group = groups[row.groupIndex];
+  if (!group) return;
+
+  setPendingTarget({
+    kind: group.kind,
+    id: group.id,
+    query: group.query,
+    matchIndex: row.matchIndex,
+  });
   closeResults();
-  // Переход к найденному подключается отдельным шагом.
+  // Раздел, где лежит найденное. Задачи и Документы делят данные, поэтому
+  // открываем тот раздел, в котором заметка была создана.
+  const route = group.kind === "calendar" ? "calendar" : group.section === "tasks" ? "tasks" : "documents";
+  onNavigateCallback(route);
 }
 
 function openResults() {

@@ -189,6 +189,14 @@
 
 .rte-page:focus { outline: none; }
 
+/* Вспышка на найденном по поиску. Рисуется CSS Custom Highlight API поверх
+   текста — в сам текст заметки ничего не вставляется (см. highlightMatch
+   в richTextEditor.js). */
+::highlight(search-hit) {
+  background: #ffd43b;
+  color: #1f2328;
+}
+
 /* Сплошной режим: страница ничем не выделена, всё выглядит как один лист. */
 .rte-page-frame { position: relative; }
 

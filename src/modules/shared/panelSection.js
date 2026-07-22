@@ -4,6 +4,7 @@ import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
+import { consumePendingTarget } from "../../search/searchTarget.js";
 
 // Что сейчас перетаскивается (id + вид). Модульная переменная, т.к. dragstart и
 // drop навешиваются на разные элементы, пересоздаваемые при каждом render.
@@ -93,9 +94,28 @@ export async function renderPanelSection(container, config) {
     selectedItemId: null,
     foldersCollapsed: false,
     listCollapsed: false,
+    pendingMatch: null, // {query, index} — куда прокрутить открытую заметку
+    flashFolderId: null, // папка, найденная поиском, — мигнуть ею один раз
   };
 
+  applySearchTarget(state);
   render(container, config, state);
+}
+
+// Пришли по результату поиска: открываем нужную папку или заметку. Заметку
+// показываем из "Все" — она может лежать в папке, которая сейчас не выбрана.
+function applySearchTarget(state) {
+  const target = consumePendingTarget("item", "folder");
+  if (!target) return;
+
+  if (target.kind === "folder") {
+    state.selectedFolderId = target.id;
+    state.flashFolderId = target.id;
+    return;
+  }
+  state.selectedFolderId = "all";
+  state.selectedItemId = target.id;
+  state.pendingMatch = { query: target.query, index: target.matchIndex };
 }
 
 function render(container, config, state) {
@@ -219,6 +239,13 @@ function renderFolders(container, config, state) {
         .join("")}
     </ul>
   `;
+
+  // Пришли из поиска: показываем, какая именно папка нашлась. Метка одноразовая.
+  if (state.flashFolderId) {
+    const found = bodyEl.querySelector(`[data-folder-id="${state.flashFolderId}"]`);
+    if (found) found.classList.add("is-search-flash");
+    state.flashFolderId = null;
+  }
 
   bodyEl.querySelectorAll("[data-folder-id]").forEach((el) => {
     const folderId = el.dataset.folderId;
@@ -597,6 +624,13 @@ function renderDetail(container, config, state) {
   detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();
+
+  // Пришли из поиска — прокручиваем к найденному и мигаем им. Цель одноразовая:
+  // следующая перерисовка (правка, переключение папки) прыгать уже не должна.
+  if (state.pendingMatch) {
+    editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index);
+    state.pendingMatch = null;
+  }
 
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
   titleInput.value = item.title;
