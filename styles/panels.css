@@ -163,6 +163,20 @@
   white-space: nowrap;
 }
 
+/* Поле переименования на месте — занимает место подписи, не меняя высоту строки. */
+.inline-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 0.05rem 0.25rem;
+  border: 1px solid #33507e;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+.inline-rename:focus { outline: none; }
+
 /* Счётчик вложенных заметок — виден только при наведении на папку. */
 .folder-count {
   flex-shrink: 0;

@@ -55,8 +55,6 @@ export const translations = {
     "panel.delete": "Delete",
     "panel.deleteItemConfirm": "Delete permanently?",
     "panel.rename": "Rename",
-    "panel.renameFolderPrompt": "New folder name:",
-    "panel.renameItemPrompt": "New note name:",
 
     "editor.boldLabel": "B",
     "editor.italicLabel": "I",
@@ -142,8 +140,6 @@ export const translations = {
     "panel.delete": "Удалить",
     "panel.deleteItemConfirm": "Удалить безвозвратно?",
     "panel.rename": "Переименовать",
-    "panel.renameFolderPrompt": "Новое название папки:",
-    "panel.renameItemPrompt": "Новое название заметки:",
 
     "editor.boldLabel": "Ж",
     "editor.italicLabel": "К",

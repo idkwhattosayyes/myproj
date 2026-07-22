@@ -22,6 +22,62 @@ function countItemsInFolder(state, folderId) {
 }
 
 /**
+ * Переименование прямо в списке: подпись строки превращается в поле ввода, как
+ * при переименовании файла в проводнике — без отдельного окна.
+ *
+ * Enter, Esc и потеря фокуса одинаково ПРИМЕНЯЮТ введённое имя. Esc при этом не
+ * всплывает дальше: общий обработчик в app.js иначе снял бы фокус и увёл на
+ * главную вместо сохранения.
+ *
+ * @param {HTMLElement} rowEl строка списка (.folder-item или .item-list-row)
+ * @param {string} currentValue
+ * @param {(value: string) => void} onCommit вызывается только если имя изменилось
+ */
+function startInlineRename(rowEl, currentValue, onCommit) {
+  const nameEl = rowEl.querySelector(".folder-name, .item-title");
+  if (!nameEl) return;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "inline-rename";
+  input.value = currentValue;
+  nameEl.replaceWith(input);
+
+  // Пока правим имя, строку нельзя тащить — иначе выделение текста мышью
+  // превращается в drag-and-drop.
+  const wasDraggable = rowEl.draggable;
+  rowEl.draggable = false;
+  input.focus();
+  input.select();
+
+  let finished = false;
+  function commit() {
+    if (finished) return;
+    finished = true;
+    rowEl.draggable = wasDraggable;
+    const value = input.value.trim();
+    if (!value || value === currentValue) {
+      input.replaceWith(nameEl);
+      return;
+    }
+    onCommit(value);
+  }
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    commit();
+  });
+  input.addEventListener("blur", commit);
+  // Клики внутри поля не должны попадать в обработчики самой строки — иначе
+  // правка имени переключала бы выбранную заметку или открывала меню.
+  ["mousedown", "click", "dblclick", "contextmenu"].forEach((type) => {
+    input.addEventListener(type, (event) => event.stopPropagation());
+  });
+}
+
+/**
  * Переиспользуемый каркас "папки слева + список заметок + редактор справа",
  * используется и Задачами, и Документами — отличаются только набором кнопок
  * тулбара (config.toolbarButtons) и section-ключом хранения (config.section).
@@ -170,12 +226,12 @@ function renderFolders(container, config, state) {
         showContextMenu(event.clientX, event.clientY, [
           {
             label: t("panel.rename"),
-            onClick: async () => {
-              const name = await openPrompt({ message: t("panel.renameFolderPrompt"), defaultValue: folder.name });
-              if (name === null || !name.trim()) return;
-              await itemsService.updateFolder(folder.id, { name: name.trim() });
-              state.folders = await itemsService.listFolders(config.section);
-              render(container, config, state);
+            onClick: () => {
+              startInlineRename(el, folder.name, async (name) => {
+                await itemsService.updateFolder(folder.id, { name });
+                state.folders = await itemsService.listFolders(config.section);
+                render(container, config, state);
+              });
             },
           },
           {
@@ -356,12 +412,12 @@ function renderList(container, config, state) {
       showContextMenu(event.clientX, event.clientY, [
         {
           label: t("panel.rename"),
-          onClick: async () => {
-            const title = await openPrompt({ message: t("panel.renameItemPrompt"), defaultValue: item.title });
-            if (title === null || !title.trim()) return;
-            await itemsService.updateItem(item.id, { title: title.trim() });
-            state.items = await itemsService.listItems(config.section);
-            render(container, config, state);
+          onClick: () => {
+            startInlineRename(el, item.title, async (title) => {
+              await itemsService.updateItem(item.id, { title });
+              state.items = await itemsService.listItems(config.section);
+              render(container, config, state);
+            });
           },
         },
         {
