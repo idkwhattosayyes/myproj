@@ -543,6 +543,22 @@ function renderDetail(container, config, state) {
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();
 
+  // Раздел без кнопки режима в тулбаре (Заметки): переключать вид можно только
+  // по ПКМ внутри самой открытой заметки. У строк списка слева своё меню —
+  // расширенная опция туда намеренно не попадает.
+  if (config.pageModeInContextMenu) {
+    contentEl.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const paged = editor.getPageMode() === "paged";
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: paged ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
+          onClick: () => editor.togglePageMode(),
+        },
+      ]);
+    });
+  }
+
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
   titleInput.value = item.title;
   titleInput.addEventListener("input", () => scheduleSave({ title: titleInput.value }));
