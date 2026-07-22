@@ -217,12 +217,16 @@ function nowSortKey() {
  * поздним; прошедшие остаются в списке выше, чтобы к ним можно было поднять
  * прокрутку, а ближайшее подсвечено и стоит сразу под последним прошедшим.
  */
-async function renderEventsPanel(container) {
+async function renderEventsPanel(container, { keepScroll = false } = {}) {
   const panelEl = container.querySelector('[data-role="events-panel"]');
   if (!state.eventsPanelOpen) {
     panelEl.innerHTML = "";
     return;
   }
+
+  // Обновление по ходу правки записи не должно дёргать список: возвращаем ту же
+  // прокрутку. К ближайшему событию уводим только при открытии панели.
+  const previousScroll = keepScroll ? panelEl.querySelector('[data-role="events-list"]')?.scrollTop : null;
 
   state.tags = await calendarTagsService.listTags();
   const entries = (await calendarEntriesService.listAll()).sort((a, b) => entrySortKey(a).localeCompare(entrySortKey(b)));
@@ -243,11 +247,15 @@ async function renderEventsPanel(container) {
   const listEl = panelEl.querySelector('[data-role="events-list"]');
   if (!listEl) return;
 
-  // Прокручиваем так, чтобы сверху осталось последнее прошедшее событие, а сразу
-  // под ним — подсвеченное ближайшее.
-  const nextEl = listEl.querySelector(".is-next");
-  const anchor = (nextEl && nextEl.previousElementSibling) || nextEl || listEl.lastElementChild;
-  if (anchor) listEl.scrollTop = anchor.offsetTop;
+  if (previousScroll != null) {
+    listEl.scrollTop = previousScroll;
+  } else {
+    // Прокручиваем так, чтобы сверху осталось последнее прошедшее событие, а
+    // сразу под ним — подсвеченное ближайшее.
+    const nextEl = listEl.querySelector(".is-next");
+    const anchor = (nextEl && nextEl.previousElementSibling) || nextEl || listEl.lastElementChild;
+    if (anchor) listEl.scrollTop = anchor.offsetTop;
+  }
 
   listEl.querySelectorAll("[data-event-date]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -287,6 +295,17 @@ function renderEventRow(entry, index, nextIndex) {
 function formatShortDate(iso) {
   const [, month, day] = iso.split("-");
   return `${day}.${month}`;
+}
+
+/**
+ * Правка записи видна сразу в трёх местах: список дня, маркер на кружке и
+ * открытый список всех событий. Последний раньше забывали обновлять, и новая
+ * запись появлялась в нём только после сворачивания-разворачивания панели.
+ */
+async function refreshAfterEntryChange(container) {
+  await renderDayPanel(container);
+  await refreshDayMarker(container, state.selectedDate);
+  await renderEventsPanel(container, { keepScroll: true });
 }
 
 async function renderDayPanel(container) {
@@ -379,8 +398,7 @@ async function renderDayPanel(container) {
           endTime: row.querySelector('[data-role="edit-end"]').value,
         });
         state.editingEntryId = null;
-        await renderDayPanel(container);
-        await refreshDayMarker(container, state.selectedDate);
+        await refreshAfterEntryChange(container);
       });
       row.querySelector('[data-action="cancel-edit"]').addEventListener("click", () => {
         state.editingEntryId = null;
@@ -394,7 +412,7 @@ async function renderDayPanel(container) {
     if (checkbox) {
       checkbox.addEventListener("change", async (event) => {
         await calendarEntriesService.toggleDone(entryId, event.target.checked);
-        renderDayPanel(container);
+        await refreshAfterEntryChange(container);
       });
     }
     row.querySelector('[data-role="entry-title"]').addEventListener("click", () => {
@@ -403,8 +421,7 @@ async function renderDayPanel(container) {
     });
     row.querySelector('[data-action="delete-entry"]').addEventListener("click", async () => {
       await calendarEntriesService.deleteEntry(entryId);
-      await renderDayPanel(container);
-      await refreshDayMarker(container, state.selectedDate);
+      await refreshAfterEntryChange(container);
     });
   });
 
@@ -432,8 +449,7 @@ async function renderDayPanel(container) {
     startInput.value = "";
     endInput.value = "";
     state.selectedTagId = null;
-    await renderDayPanel(container);
-    await refreshDayMarker(container, state.selectedDate);
+    await refreshAfterEntryChange(container);
   });
 }
 
