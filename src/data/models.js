@@ -13,7 +13,7 @@ export function createFolderModel({ name = "", section }) {
   };
 }
 
-export function createItemModel({ title = "", content = "", folderId = null, section }) {
+export function createItemModel({ title = "", content = "", folderId = null, section, isFavorite = false }) {
   const now = new Date().toISOString();
   return {
     id: generateId(),
@@ -21,7 +21,7 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     content,
     folderId,
     section,
-    isFavorite: false,
+    isFavorite,
     pinned: false, // закреплена наверху внутри своей папки
     pageMode: "flow", // вид редактора: "flow" — сплошной лист, "paged" — постранично
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop

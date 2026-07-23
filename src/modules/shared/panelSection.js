@@ -22,6 +22,15 @@ function countItemsInFolder(state, folderId) {
   return state.items.filter((i) => i.folderId === folderId).length;
 }
 
+// Сколько всего в «Избранном»: считаем только напрямую отмеченные заметки И
+// папки. Обычные заметки внутри избранной папки НЕ учитываем — избранное это
+// плоский набор по флагу isFavorite, а не содержимое папок.
+function countFavorites(state) {
+  const items = state.items.filter((i) => i.isFavorite).length;
+  const folders = state.folders.filter((f) => f.isFavorite).length;
+  return items + folders;
+}
+
 /**
  * Переименование прямо в списке: подпись строки превращается в поле ввода, как
  * при переименовании файла в проводнике — без отдельного окна.
@@ -203,9 +212,19 @@ function wireHeaderActions(container, config, state) {
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
     const folderId = isRealFolderId(state.selectedFolderId) ? state.selectedFolderId : null;
-    const item = await itemsService.createItem(config.section, { title: t("panel.untitled"), content: "", folderId });
+    // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
+    const inFavorites = state.selectedFolderId === "favorites";
+    const item = await itemsService.createItem(config.section, {
+      title: t("panel.untitled"),
+      content: "",
+      folderId,
+      isFavorite: inFavorites,
+    });
     state.items = await itemsService.listItems(config.section);
     state.selectedItemId = item.id;
+    // Разово попросить деталь поставить курсор в поле названия — чтобы печатать
+    // сразу, без клика мышкой.
+    state.focusTitleOnCreate = true;
     render(container, config, state);
   });
 }
@@ -254,7 +273,10 @@ function renderFolders(container, config, state) {
 
   bodyEl.innerHTML = `
     <ul class="folder-list">
-      <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">${t("panel.favorites")}</li>
+      <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">
+        <span class="folder-name">${t("panel.favorites")}</span>
+        <span class="folder-count">(${countFavorites(state)})</span>
+      </li>
       <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
       <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
       ${sortPinnedFirst(state.folders)
@@ -686,6 +708,14 @@ function renderDetail(container, config, state) {
 
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
   titleInput.value = item.title;
+  // Только что созданная заметка: ставим курсор в название и выделяем текст,
+  // чтобы сразу печатать. Флаг одноразовый — при открытии существующей заметки
+  // фокус не воруем.
+  if (state.focusTitleOnCreate) {
+    state.focusTitleOnCreate = false;
+    titleInput.focus();
+    titleInput.select();
+  }
   titleInput.addEventListener("input", () => scheduleSave({ title: titleInput.value }));
   titleInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;

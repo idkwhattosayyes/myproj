@@ -27,8 +27,8 @@ export async function listItems(section) {
   return storage.getItems(section);
 }
 
-export async function createItem(section, { title, content, folderId }) {
-  const item = createItemModel({ title, content, folderId, section });
+export async function createItem(section, { title, content, folderId, isFavorite }) {
+  const item = createItemModel({ title, content, folderId, section, isFavorite });
   return storage.createItem(item);
 }
 
