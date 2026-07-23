@@ -255,3 +255,121 @@ button {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+/* Окно выбора для экспорта/импорта: дерево «папки → заметки» с галочками слева
+   и превью заметки справа. Размер средний — шире обычной модалки, но не на весь
+   экран. */
+.transfer-box {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+
+.transfer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.transfer-title {
+  font-weight: 600;
+}
+
+.transfer-selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #57606a;
+}
+
+.transfer-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  min-height: 0;
+  margin-bottom: 0.9rem;
+}
+
+.transfer-tree,
+.transfer-preview {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.5rem;
+  overflow: auto;
+  min-height: 14rem;
+  max-height: 55vh;
+}
+
+.transfer-group {
+  margin-bottom: 0.25rem;
+}
+
+.transfer-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  font-weight: 600;
+}
+
+.transfer-toggle {
+  border: none;
+  background: none;
+  cursor: pointer;
+  width: 1.1rem;
+  font-size: 0.8rem;
+  color: #57606a;
+  padding: 0;
+}
+
+.transfer-group-count {
+  color: #8b949e;
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.transfer-folder-children {
+  list-style: none;
+  margin: 0.1rem 0 0.35rem 1.6rem;
+}
+
+.transfer-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.12rem 0;
+}
+
+.transfer-item-title {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0.05rem 0.25rem;
+}
+
+.transfer-item-title:hover {
+  background: #f3f4f6;
+}
+
+.transfer-item-title.is-active {
+  background: var(--selection-bg);
+}
+
+.transfer-preview-empty {
+  color: #8b949e;
+  font-size: 0.85rem;
+}
+
+.transfer-preview-title {
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+  word-break: break-word;
+}
+
+.transfer-preview-body {
+  font-size: 0.9rem;
+  word-break: break-word;
+}

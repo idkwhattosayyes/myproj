@@ -4,36 +4,15 @@ import { getStorage } from "../data/storageAdapter.js";
 // прямо в item.content (HTML), поэтому выгрузка моделей сохраняет жирность,
 // цвета, ссылки и вставленные фото как есть — импорт восстанавливает точь-в-точь.
 const EXPORT_VERSION = 1;
-// Задачи и Документы — общий пул (section-алиасы), читаем его целиком.
-const POOL_SECTION = "tasks";
 
-// scope: {kind:"all"} | {kind:"folder", id} | {kind:"item", id}
-export async function buildExport(scope) {
-  const storage = getStorage();
-  const allFolders = await storage.getFolders(POOL_SECTION);
-  const allItems = await storage.getItems(POOL_SECTION);
-
-  let folders = [];
-  let items = [];
-  if (scope.kind === "all") {
-    folders = allFolders;
-    items = allItems;
-  } else if (scope.kind === "folder") {
-    folders = allFolders.filter((folder) => folder.id === scope.id);
-    items = allItems.filter((item) => item.folderId === scope.id);
-  } else if (scope.kind === "item") {
-    const item = allItems.find((entry) => entry.id === scope.id);
-    items = item ? [item] : [];
-    // Папку-владельца тоже кладём — чтобы при импорте заметка легла в неё.
-    const parent = item && item.folderId ? allFolders.find((folder) => folder.id === item.folderId) : null;
-    folders = parent ? [parent] : [];
-  }
-
+// Экспорт из выбранного набора (дерево с галочками). Набор папок/заметок приходит
+// уже согласованным: дерево добавляет папки-владельцев выбранных заметок само.
+export function buildExportFrom(folders, items) {
   return {
     app: "myproj",
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
-    scope: scope.kind,
+    scope: "custom",
     folders,
     items,
   };

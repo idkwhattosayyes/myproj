@@ -3,9 +3,8 @@ import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { openConfirm } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
-import { showContextMenu } from "../modules/shared/contextMenu.js";
-import { buildExport, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
-import { escapeHtml } from "../utils/dom.js";
+import { buildExportFrom, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
+import { openTransferPicker } from "./transferPicker.js";
 
 // Одна шестерёнка в углу вместо россыпи плавающих переключателей: язык,
 // обводка панелей и опасное действие "очистить данные" живут в одной панели.
@@ -109,9 +108,7 @@ function renderPanel() {
     applyBorderSetting();
   });
 
-  panelEl.querySelector('[data-action="export"]').addEventListener("click", (event) => {
-    openExportMenu(event.clientX, event.clientY);
-  });
+  panelEl.querySelector('[data-action="export"]').addEventListener("click", runExport);
 
   panelEl.querySelector('[data-action="import"]').addEventListener("click", runImport);
 
@@ -124,48 +121,30 @@ function renderPanel() {
   });
 }
 
-// Экспорт: сначала выбор охвата (всё / папка / заметка), затем — при выборе
-// папки или заметки — второе меню с их списком. Имена пользовательские, поэтому
-// экранируем: showContextMenu вставляет label как HTML.
-async function openExportMenu(x, y) {
+// Экспорт: открываем дерево «папки → заметки» с галочками и превью. Выбранное
+// уходит в файл. Пул — Задачи (Документы — его алиас, общий набор).
+async function runExport() {
   const storage = getStorage();
   const folders = await storage.getFolders("tasks");
   const items = await storage.getItems("tasks");
-
-  showContextMenu(x, y, [
-    { label: t("settings.exportScopeAll"), onClick: () => doExport({ kind: "all" }) },
-    // Второе меню открываем следующим тиком: иначе клик по этому пункту всплывёт
-    // к document и обработчик внешнего клика первого меню закроет только что
-    // открытое подменю.
-    { label: t("settings.exportScopeFolder"), onClick: () => setTimeout(() => openEntityMenu(x, y, folders, "name", (f) => doExport({ kind: "folder", id: f.id })), 0) },
-    { label: t("settings.exportScopeItem"), onClick: () => setTimeout(() => openEntityMenu(x, y, items, "title", (i) => doExport({ kind: "item", id: i.id })), 0) },
-  ]);
-}
-
-function openEntityMenu(x, y, entities, labelField, onPick) {
-  if (!entities.length) {
-    showContextMenu(x, y, [{ label: t("settings.exportEmpty"), onClick: () => {} }]);
-    return;
-  }
-  showContextMenu(
-    x,
-    y,
-    entities.map((entity) => ({
-      label: escapeHtml(entity[labelField] || t("panel.untitled")),
-      onClick: () => onPick(entity),
-    })),
-  );
-}
-
-async function doExport(scope) {
-  const data = await buildExport(scope);
-  if (!data.folders.length && !data.items.length) {
+  if (!folders.length && !items.length) {
     await openConfirm({ message: t("settings.exportEmpty") });
     return;
   }
-  downloadJson(data, "myproj-export.json");
+  closePanel();
+  openTransferPicker({
+    mode: "export",
+    folders,
+    items,
+    onConfirm: ({ folders: pickedFolders, items: pickedItems }) => {
+      if (!pickedFolders.length && !pickedItems.length) return;
+      downloadJson(buildExportFrom(pickedFolders, pickedItems), "myproj-export.json");
+    },
+  });
 }
 
+// Импорт: читаем файл, затем тем же деревом даём выбрать, что именно влить.
+// Импортируются только отмеченные папки/заметки.
 async function runImport() {
   closePanel();
   let data;
@@ -180,11 +159,16 @@ async function runImport() {
     await openConfirm({ message: t("settings.importBadFormat") });
     return;
   }
-  const counts = `${(data.folders || []).length} / ${data.items.length}`;
-  const ok = await openConfirm({ message: `${t("settings.importConfirm")} (${counts})` });
-  if (!ok) return;
-  await importData(data);
-  location.reload();
+  openTransferPicker({
+    mode: "import",
+    folders: data.folders || [],
+    items: data.items,
+    onConfirm: async ({ folders, items }) => {
+      if (!folders.length && !items.length) return;
+      await importData({ folders, items });
+      location.reload();
+    },
+  });
 }
 
 /** Класс на body, по которому styles/panels.css убирает рамки панелей. */
