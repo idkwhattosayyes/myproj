@@ -96,6 +96,24 @@
 
 .rte-btn.is-active:hover { background: #cfe1f0; }
 
+/* Идёт запись голоса — кнопка микрофона пульсирует красным. */
+.rte-btn.is-recording {
+  background: #ffe3e3;
+  box-shadow: inset 0 0 0 2px #e03131;
+  animation: rte-voice-pulse 1s ease-in-out infinite;
+}
+
+@keyframes rte-voice-pulse {
+  50% { background: #ffc9c9; }
+}
+
+/* Промежуточный (ещё не финализированный) текст диктовки: приглушённый и
+   подчёркнутый пунктиром, чтобы отличать от уже вставленных слов. */
+.rte-interim {
+  color: #9ca3af;
+  text-decoration: underline dotted;
+}
+
 /* Иконки подчёркивания и зачёркивания: буква плюс линия — как в привычных
    текстовых редакторах. Линия рисуется границей и псевдоэлементом, а не
    text-decoration: так она заметно толще и не съезжает вместе со шрифтом. */

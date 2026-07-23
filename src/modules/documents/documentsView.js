@@ -8,7 +8,7 @@ export async function renderDocumentsView(container) {
     toolbarButtons: [
       "bold", "underline", "strikethrough", "textColor", "highlight",
       "h1", "h2", "alignLeft", "alignCenter", "alignRight",
-      "bulletList", "orderedList", "checklist", "table", "pageMode",
+      "bulletList", "orderedList", "checklist", "table", "voice", "pageMode",
     ],
   });
 }

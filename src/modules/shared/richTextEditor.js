@@ -1,4 +1,4 @@
-import { t } from "../../i18n/i18n.js";
+import { t, getLang } from "../../i18n/i18n.js";
 import { openTablePrompt, openConfirm } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { showContextMenu } from "./contextMenu.js";
@@ -93,10 +93,34 @@ function getButtonDefs() {
       isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Голосовой ввод: ЛКМ — старт/стоп записи, ПКМ — выбор языка распознавания.
+    // Обрабатывается отдельно в createRichTextEditor (см. isVoice).
+    voice: { label: "🎤", title: t("editor.voice"), isVoice: true },
     // Не команда форматирования, а переключатель вида — обрабатывается отдельно
     // в createRichTextEditor (см. isPageMode).
     pageMode: { label: "▤", title: t("editor.pageMode"), isPageMode: true },
   };
+}
+
+// Языки распознавания речи. Подписи — на самих языках (имена собственные), через
+// t() не гоняем. Выбранный код хранится в localStorage под VOICE_LANG_KEY.
+const VOICE_LANG_KEY = "app:voiceLang";
+const VOICE_LANGS = [
+  { code: "ru-RU", label: "Русский" },
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "uk-UA", label: "Українська" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "fr-FR", label: "Français" },
+  { code: "es-ES", label: "Español" },
+];
+
+// Web Speech API — единственный способ распознавания без сторонних зависимостей.
+// В части браузеров его нет вовсе; тогда кнопку показываем неактивной.
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function currentVoiceLang() {
+  return localStorage.getItem(VOICE_LANG_KEY) || (getLang() === "ru" ? "ru-RU" : "en-US");
 }
 
 // Высота листа A4 при 96 dpi. То же значение стоит в min-height у .rte-page
@@ -141,7 +165,13 @@ function createHeadingSpan(className) {
  */
 function serializeEditor(editorEl) {
   return [...editorEl.querySelectorAll(".rte-page")]
-    .map((page) => `<div class="rte-page">${page.innerHTML}</div>`)
+    .map((page) => {
+      // Промежуточный (ещё не финализированный) текст диктовки лежит во временном
+      // span.rte-interim — в сохраняемый HTML он попадать не должен.
+      const clone = page.cloneNode(true);
+      clone.querySelectorAll(".rte-interim").forEach((node) => node.remove());
+      return `<div class="rte-page">${clone.innerHTML}</div>`;
+    })
     .join("")
     .split(CARET_ANCHOR)
     .join("")
@@ -564,6 +594,124 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     });
   }
 
+  // --- Голосовой ввод (диктовка) ---------------------------------------
+  // Финальные фрагменты вставляются в текст навсегда, промежуточные показываются
+  // во временном span.rte-interim у каретки и заменяются по мере уточнения — так
+  // слова появляются потоково, а не одним блоком в конце.
+  let recognition = null;
+  let recording = false;
+  let voiceBtn = null;
+  let interimSpan = null;
+
+  // Каретка внутри редактора, иначе — конец активной страницы: диктовать можно
+  // и не поставив курсор вручную.
+  function ensureEditorCaret() {
+    const sel = window.getSelection();
+    if (sel.rangeCount && contentEl.contains(sel.anchorNode)) return;
+    const page = activePageEl && contentEl.contains(activePageEl) ? activePageEl : getPages()[0];
+    if (!page) return;
+    const range = document.createRange();
+    range.selectNodeContents(page);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  // Временный span промежуточного текста всегда стоит на месте каретки; финальный
+  // текст вставляем перед ним, поэтому каретка «едет» вслед за надиктованным.
+  function ensureInterimSpan() {
+    if (interimSpan && contentEl.contains(interimSpan)) return;
+    ensureEditorCaret();
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    interimSpan = document.createElement("span");
+    interimSpan.className = "rte-interim";
+    const range = sel.getRangeAt(0);
+    range.collapse(false);
+    range.insertNode(interimSpan);
+  }
+
+  function showInterim(text) {
+    if (!text) {
+      if (interimSpan) { interimSpan.remove(); interimSpan = null; }
+      return;
+    }
+    ensureInterimSpan();
+    if (interimSpan) interimSpan.textContent = text;
+  }
+
+  function commitFinal(text) {
+    ensureInterimSpan();
+    if (!interimSpan) return;
+    const node = document.createTextNode(text);
+    interimSpan.parentNode.insertBefore(node, interimSpan);
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.setStartAfter(node);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function onVoiceResult(event) {
+    let interim = "";
+    let finalText = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const seg = event.results[i];
+      if (seg.isFinal) finalText += seg[0].transcript;
+      else interim += seg[0].transcript;
+    }
+    if (finalText) commitFinal(finalText);
+    showInterim(interim);
+    onChange(serializeEditor(contentEl));
+    refreshPages();
+  }
+
+  function startVoice() {
+    if (!SpeechRecognitionCtor || recording) return;
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = currentVoiceLang();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = onVoiceResult;
+    recognition.onend = stopVoice;
+    recognition.onerror = stopVoice;
+    focusActivePage();
+    ensureEditorCaret();
+    recording = true;
+    if (voiceBtn) voiceBtn.classList.add("is-recording");
+    recognition.start();
+  }
+
+  function stopVoice() {
+    if (!recording) return;
+    recording = false;
+    if (voiceBtn) voiceBtn.classList.remove("is-recording");
+    showInterim(""); // снять недописанный промежуточный текст
+    if (recognition) {
+      try { recognition.stop(); } catch { /* уже остановлено */ }
+      recognition = null;
+    }
+    onChange(serializeEditor(contentEl));
+  }
+
+  function openVoiceLangMenu(event) {
+    const cur = currentVoiceLang();
+    showContextMenu(
+      event.clientX,
+      event.clientY,
+      VOICE_LANGS.map((lang) => ({
+        label: (lang.code === cur ? "✓ " : "") + lang.label,
+        onClick: () => {
+          localStorage.setItem(VOICE_LANG_KEY, lang.code);
+          // На ходу сменить язык у запущенного распознавания нельзя — перезапускаем.
+          if (recording) { stopVoice(); startVoice(); }
+        },
+      })),
+    );
+  }
+  // ---------------------------------------------------------------------
+
   buttons.forEach((key) => {
     const def = buttonDefs[key];
     if (!def) return;
@@ -599,6 +747,21 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         event.preventDefault();
         toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState, focusActivePage);
       });
+    } else if (def.isVoice) {
+      voiceBtn = btn;
+      if (!SpeechRecognitionCtor) {
+        btn.disabled = true;
+        btn.title = t("editor.voiceUnsupported");
+      } else {
+        btn.addEventListener("click", () => {
+          if (recording) stopVoice();
+          else startVoice();
+        });
+        btn.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          openVoiceLangMenu(event);
+        });
+      }
     } else if (def.isPageMode) {
       btn.addEventListener("click", () => {
         togglePageMode();
