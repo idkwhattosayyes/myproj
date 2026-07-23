@@ -111,12 +111,8 @@ function getButtonDefs() {
 const VOICE_LANG_KEY = "app:voiceLang";
 const VOICE_LANGS = [
   { code: "ru-RU", label: "Русский" },
-  { code: "en-US", label: "English (US)" },
-  { code: "en-GB", label: "English (UK)" },
-  { code: "uk-UA", label: "Українська" },
-  { code: "de-DE", label: "Deutsch" },
-  { code: "fr-FR", label: "Français" },
-  { code: "es-ES", label: "Español" },
+  { code: "en-US", label: "English" },
+  { code: "he-IL", label: "עברית" },
 ];
 
 // Web Speech API — единственный способ распознавания без сторонних зависимостей.
