@@ -7,6 +7,7 @@ import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { watchUiScale } from "./utils/uiScale.js";
 import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels } from "./search/searchBar.js";
+import { mountQuickNote } from "./search/quickNote.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -74,13 +75,14 @@ window.addEventListener("DOMContentLoaded", () => {
   // Полоска поиска сама не знает про роутер: она отдаёт нужный раздел, а переход
   // делаем здесь. Если раздел уже открыт (локальный поиск внутри него),
   // hashchange не сработает — перерисовываем вручную.
-  mountSearch({
-    onNavigate: (route) => {
-      const target = `#/${route}`;
-      if (window.location.hash === target) renderRoute();
-      else window.location.hash = target;
-    },
-  });
+  const navigate = (route) => {
+    const target = `#/${route}`;
+    if (window.location.hash === target) renderRoute();
+    else window.location.hash = target;
+  };
+  mountSearch({ onNavigate: navigate });
+  // Быстрая заметка живёт рядом с поиском и переносит текст в тот же раздел.
+  mountQuickNote({ onNavigate: navigate });
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
   // перерисовать текущий раздел и полоску поиска на новом языке.
   mountSettings({

@@ -39,10 +39,12 @@ export function mountSearch({ onNavigate }) {
   barEl = document.createElement("div");
   barEl.className = "search-bar";
   barEl.innerHTML = `
-    <div class="search-field">
-      <span class="search-icon">⌕</span>
-      <input type="text" class="search-input" data-role="search-input">
-      <button type="button" class="search-scope" data-role="search-scope"></button>
+    <div class="search-topline">
+      <div class="search-field">
+        <span class="search-icon">⌕</span>
+        <input type="text" class="search-input" data-role="search-input">
+        <button type="button" class="search-scope" data-role="search-scope"></button>
+      </div>
     </div>
     <div class="search-results" data-role="search-results" hidden></div>
   `;

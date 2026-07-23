@@ -19,6 +19,11 @@ export const translations = {
     "nav.backHome": "← Home",
 
     "search.placeholder": "Search…",
+    "quicknote.add": "Quick note",
+    "quicknote.accept": "Accept",
+    "quicknote.cancel": "Cancel",
+    "quicknote.toNotes": "To Notes",
+    "quicknote.toDocuments": "To Documents",
     "search.scopeGlobal": "Everywhere",
     "search.scopeLocal": "This section",
     "search.scopeHint": "Search scope (Tab to switch)",
@@ -140,6 +145,11 @@ export const translations = {
     "nav.backHome": "← На главную",
 
     "search.placeholder": "Поиск…",
+    "quicknote.add": "Быстрая заметка",
+    "quicknote.accept": "Принять",
+    "quicknote.cancel": "Отмена",
+    "quicknote.toNotes": "В Заметки",
+    "quicknote.toDocuments": "В Документы",
     "search.scopeGlobal": "Везде",
     "search.scopeLocal": "В разделе",
     "search.scopeHint": "Область поиска (Tab — переключить)",

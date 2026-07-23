@@ -10,7 +10,15 @@
   width: min(34rem, calc(100% - 8rem));
 }
 
+/* Верхняя строка: поле поиска и отдельная круглая кнопка быстрой заметки рядом. */
+.search-topline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .search-field {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -19,6 +27,62 @@
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+/* Кнопка «+» — не приклеена к полю, самостоятельный круг. */
+.quicknote-add {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #33507e;
+  cursor: pointer;
+}
+
+.quicknote-add:hover {
+  background: #f3f4f6;
+  border-color: #33507e;
+}
+
+/* Компактная панель быстрой заметки — под строкой поиска, по центру. */
+.quicknote-panel {
+  position: fixed;
+  top: 3.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  width: min(34rem, calc(100% - 4rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+.quicknote-body-slot {
+  max-height: min(50vh, 22rem);
+  overflow-y: auto;
+}
+
+.quicknote-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.quicknote-actions-left,
+.quicknote-actions-right {
+  display: flex;
+  gap: 0.3rem;
 }
 
 .search-field:focus-within {
