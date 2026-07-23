@@ -52,6 +52,7 @@ export function openConfirm({ message, confirmLabel = t("modal.yes"), cancelLabe
     overlay.querySelector(".modal-message").textContent = message;
 
     const finish = (result) => {
+      document.removeEventListener("keydown", onKey);
       unwire();
       overlay.remove();
       resolve(result);
@@ -59,8 +60,22 @@ export function openConfirm({ message, confirmLabel = t("modal.yes"), cancelLabe
 
     const unwire = wireDismiss(overlay, () => finish(false));
 
-    overlay.querySelector('[data-action="confirm"]').addEventListener("click", () => finish(true));
+    const confirmBtn = overlay.querySelector('[data-action="confirm"]');
+    confirmBtn.addEventListener("click", () => finish(true));
     overlay.querySelector('[data-action="cancel"]').addEventListener("click", () => finish(false));
+
+    // Подтверждение с клавиатуры: Enter и Space срабатывают как «Да», без
+    // наведения мышкой на кнопку. Esc (отмену) обрабатывает общий слой в app.js.
+    // Слушаем на document, а не на кнопке — фокус в приложении не всегда попадает
+    // на неё, а модалка всё равно перекрывает страницу.
+    const onKey = (event) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        finish(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    confirmBtn.focus();
   });
 }
 
