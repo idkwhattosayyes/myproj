@@ -10,6 +10,22 @@ import { consumePendingTarget } from "../../search/searchTarget.js";
 // drop навешиваются на разные элементы, пересоздаваемые при каждом render.
 let dragged = null; // { kind: "item" | "folder", id } | null
 
+// История undo/redo хранится вне редактора — иначе она терялась бы при каждом
+// пересоздании редактора (переключение заметок). Ключ — id заметки, значение —
+// { history, historyIndex }. Держим в памяти сессии и только для последних
+// HISTORY_NOTES_LIMIT редактированных заметок: полная история для всех съела бы
+// слишком много памяти. Map хранит порядок вставки — самый старый ключ первый.
+const HISTORY_NOTES_LIMIT = 5;
+const historyStore = new Map();
+
+function saveNoteHistory(itemId, state) {
+  historyStore.delete(itemId); // переставить в конец (освежить в LRU)
+  historyStore.set(itemId, state);
+  while (historyStore.size > HISTORY_NOTES_LIMIT) {
+    historyStore.delete(historyStore.keys().next().value);
+  }
+}
+
 // "Пустая" заметка = в теле нет текста (заголовок не считается). От этого
 // зависит, показывать ли крестик мгновенного удаления в списке.
 function isItemEmpty(item) {
@@ -680,6 +696,9 @@ function renderDetail(container, config, state) {
     pageMode: item.pageMode,
     onChange: (html) => scheduleSave({ content: html }),
     onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
+    // История undo/redo привязана к id заметки и переживает выход/повторный вход.
+    initialHistory: historyStore.get(item.id) || null,
+    onHistoryChange: (histState) => saveNoteHistory(item.id, histState),
     // Раздел без кнопки режима в тулбаре (Заметки): переключать вид можно только
     // по ПКМ внутри открытой заметки. Пункт отдаём редактору, а не вешаем своё
     // меню — иначе поверх его меню открывалось бы второе. У строк списка слева

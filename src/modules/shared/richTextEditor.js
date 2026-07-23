@@ -462,7 +462,7 @@ function isColorActive(editorEl, cssProp) {
  * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[]}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -595,21 +595,119 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   }
 
   // --- История отмены/повтора ------------------------------------------
-  // Снимок — это serializeEditor(): тот же HTML, что уходит в хранилище, поэтому
-  // восстановление точно повторяет любое форматирование. Записываем изменения
-  // через MutationObserver — так в историю попадает всё (ввод, кнопки, диктовка,
-  // чек-листы) без ручных вызовов на каждом действии. Быстрый набор коалесится
-  // таймером в один шаг, как в привычном редакторе.
+  // Снимок — объект { html, caret }: html это serializeEditor() (тот же, что
+  // уходит в хранилище — восстановление точно повторяет форматирование), а caret
+  // — позиция каретки в символах, чтобы после отмены курсор остался на месте, а
+  // не прыгал в начало. Записываем через MutationObserver — так в историю
+  // попадает всё (ввод, кнопки, диктовка, чек-листы) без ручных вызовов. Быстрый
+  // набор коалесится таймером в один шаг.
+  //
+  // История может прийти извне (initialHistory) и отдаваться наружу
+  // (onHistoryChange) — так panelSection хранит её отдельно для каждой заметки и
+  // возвращает при повторном заходе. Внутри работаем со своей копией массива.
   const HISTORY_LIMIT = 100;
-  let history = [serializeEditor(contentEl)];
-  let historyIndex = 0;
+  let history =
+    initialHistory && Array.isArray(initialHistory.history) && initialHistory.history.length
+      ? initialHistory.history.slice()
+      : [{ html: serializeEditor(contentEl), caret: -1 }];
+  let historyIndex =
+    initialHistory && Number.isInteger(initialHistory.historyIndex)
+      ? Math.max(0, Math.min(initialHistory.historyIndex, history.length - 1))
+      : history.length - 1;
   let historyTimer = null;
   let isRestoring = false;
 
+  function notifyHistoryChange() {
+    if (onHistoryChange) onHistoryChange({ history, historyIndex });
+  }
+
+  // Символьное смещение каретки в тексте всех страниц (по порядку). Промежуточный
+  // текст диктовки (.rte-interim) не считаем — его нет в сохраняемом html, иначе
+  // смещение разъехалось бы с восстанавливаемым содержимым. -1 = каретки нет.
+  function getCaretOffset() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return -1;
+    const { focusNode, focusOffset } = sel;
+    if (!focusNode || !contentEl.contains(focusNode)) return -1;
+    let offset = 0;
+    for (const page of getPages()) {
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) =>
+          node.parentElement && node.parentElement.closest(".rte-interim")
+            ? NodeFilter.FILTER_REJECT
+            : NodeFilter.FILTER_ACCEPT,
+      });
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node === focusNode) return offset + focusOffset;
+        offset += node.textContent.length;
+      }
+      // Каретка стоит на самом элементе страницы (пустая строка) — прибавлять
+      // нечего, вернём накопленное.
+      if (focusNode === page) return offset;
+    }
+    return offset;
+  }
+
+  // Ставит каретку на символьное смещение offset, обходя текстовые узлы страниц.
+  // За концом текста — в конец последней страницы. Обновляет активную страницу и
+  // фокус, чтобы последующий focusActivePage() не сбил позицию.
+  function setCaretOffset(offset) {
+    const pages = getPages();
+    if (!pages.length) return;
+    if (offset < 0) {
+      activePageEl = pages[0];
+      focusActivePage();
+      return;
+    }
+    let remaining = offset;
+    let lastPage = pages[0];
+    let lastNode = null;
+    for (const page of pages) {
+      lastPage = page;
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, null);
+      let node;
+      while ((node = walker.nextNode())) {
+        lastNode = node;
+        const len = node.textContent.length;
+        if (remaining <= len) {
+          placeCaret(page, node, remaining);
+          return;
+        }
+        remaining -= len;
+      }
+    }
+    // Смещение вышло за конец текста — встаём в конец последнего текстового узла
+    // (или самой последней страницы, если текста нет).
+    if (lastNode) placeCaret(lastPage, lastNode, lastNode.textContent.length);
+    else {
+      activePageEl = lastPage;
+      const range = document.createRange();
+      range.selectNodeContents(lastPage);
+      range.collapse(false);
+      applyRange(range);
+    }
+  }
+
+  function placeCaret(page, node, pos) {
+    activePageEl = page;
+    const range = document.createRange();
+    range.setStart(node, Math.min(pos, node.textContent.length));
+    range.collapse(true);
+    applyRange(range);
+  }
+
+  function applyRange(range) {
+    if (activePageEl) activePageEl.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function recordHistory() {
     clearTimeout(historyTimer);
-    const snapshot = serializeEditor(contentEl);
-    if (snapshot === history[historyIndex]) return;
+    const snapshot = { html: serializeEditor(contentEl), caret: getCaretOffset() };
+    if (history[historyIndex] && snapshot.html === history[historyIndex].html) return;
     // Обрезаем «хвост» повтора: после новой правки вперёд идти уже некуда.
     history = history.slice(0, historyIndex + 1);
     history.push(snapshot);
@@ -618,6 +716,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       history.shift();
       historyIndex--;
     }
+    notifyHistoryChange();
   }
 
   function scheduleHistory() {
@@ -635,14 +734,15 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     characterData: true,
   });
 
-  function restoreSnapshot(html) {
+  function restoreSnapshot(entry) {
     isRestoring = true;
     getPages().forEach((page) => page.parentElement.remove());
-    parsePages(html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
+    parsePages(entry.html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
     upgradeLegacyChecklists(contentEl);
     activePageEl = getPages()[0] || null;
-    focusActivePage();
-    onChange(html);
+    // Курсор возвращаем туда, где он был при записи снимка, а не в начало.
+    setCaretOffset(entry.caret);
+    onChange(entry.html);
     refreshPages();
     refreshToolbarState();
     isRestoring = false;
@@ -653,12 +753,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (historyIndex <= 0) return;
     historyIndex--;
     restoreSnapshot(history[historyIndex]);
+    notifyHistoryChange();
   }
 
   function redo() {
     if (historyIndex >= history.length - 1) return;
     historyIndex++;
     restoreSnapshot(history[historyIndex]);
+    notifyHistoryChange();
   }
   // ---------------------------------------------------------------------
 
