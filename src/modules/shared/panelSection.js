@@ -231,10 +231,22 @@ function clearDropMarks(el) {
   el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
 }
 
-// Маркер избранного — сердечко цвета #E8C0B5 (стиль в panels.css). Избранное
-// глобальное, поэтому значок показываем во всех видах: и у папок, и у заметок.
-function favoriteBadge(entity) {
-  return entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
+// Значки у строки: сердечко избранного и булавка закрепления.
+// Сердечко — глобальное свойство, показываем везде. Булавку показываем, только
+// когда закрепление реально влияет на порядок в текущем виде (pinActive): у папок
+// это всегда (закрепление папок глобальное), а у заметок — лишь внутри их
+// собственной папки; в "Все"/"Избранное"/"Без папки" закрепление игнорируется.
+function rowBadges(entity, pinActive) {
+  const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
+  const pin = pinActive && entity.pinned ? `<span class="pin-badge" title="${t("panel.pinned")}">📌</span>` : "";
+  return heart + pin;
+}
+
+// Закреплённые — наверх, остальные ниже. Стабильно: массив приходит уже
+// отсортированным по order, а фильтры сохраняют порядок, поэтому внутри каждой
+// группы относительный порядок (в т.ч. порядок среди закреплённых) не рушится.
+function sortPinnedFirst(list) {
+  return [...list.filter((e) => e.pinned), ...list.filter((e) => !e.pinned)];
 }
 
 function renderFolders(container, config, state) {
@@ -245,13 +257,13 @@ function renderFolders(container, config, state) {
       <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">${t("panel.favorites")}</li>
       <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
       <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
-      ${state.folders
+      ${sortPinnedFirst(state.folders)
         .map((folder) => {
           const count = countItemsInFolder(state, folder.id);
           return `
         <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}" draggable="true">
           <span class="folder-name">${escapeHtml(folder.name)}</span>
-          ${favoriteBadge(folder)}
+          ${rowBadges(folder, true)}
           <span class="folder-count">(${count})</span>
           ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
         </li>`;
@@ -316,6 +328,14 @@ function renderFolders(container, config, state) {
             label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
             onClick: async () => {
               await itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite });
+              state.folders = await itemsService.listFolders(config.section);
+              render(container, config, state);
+            },
+          },
+          {
+            label: folder.pinned ? t("panel.unpin") : t("panel.pin"),
+            onClick: async () => {
+              await itemsService.updateFolder(folder.id, { pinned: !folder.pinned });
               state.folders = await itemsService.listFolders(config.section);
               render(container, config, state);
             },
@@ -434,6 +454,8 @@ function renderList(container, config, state) {
   // на эту папку в обычном виде (у папки нет собственного контента).
   const favFolders = state.selectedFolderId === "favorites" ? state.folders.filter((f) => f.isFavorite) : [];
   const isEmpty = !favFolders.length && !items.length;
+  // Закрепление заметок привязано к папке — булавку показываем только в реальной папке.
+  const pinActive = isRealFolderId(state.selectedFolderId);
 
   titleEl.textContent = getListTitle(state);
 
@@ -448,7 +470,7 @@ function renderList(container, config, state) {
           return `
         <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}" draggable="true">
           <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
-          ${favoriteBadge(item)}
+          ${rowBadges(item, pinActive)}
           ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
         </li>`;
         })
@@ -517,6 +539,14 @@ function renderList(container, config, state) {
           },
         },
         {
+          label: item.pinned ? t("panel.unpin") : t("panel.pin"),
+          onClick: async () => {
+            await itemsService.updateItem(item.id, { pinned: !item.pinned });
+            state.items = await itemsService.listItems(config.section);
+            render(container, config, state);
+          },
+        },
+        {
           label: t("panel.delete"),
           onClick: () => deleteItemFlow(item.id, container, config, state, true),
         },
@@ -571,7 +601,8 @@ function getFilteredItems(state) {
   if (state.selectedFolderId === "favorites") return state.items.filter((item) => item.isFavorite);
   if (state.selectedFolderId === "unfiled") return state.items.filter((item) => !item.folderId);
   if (state.selectedFolderId === "all") return state.items;
-  return state.items.filter((item) => item.folderId === state.selectedFolderId);
+  // Внутри конкретной папки закреплённые заметки поднимаются наверх.
+  return sortPinnedFirst(state.items.filter((item) => item.folderId === state.selectedFolderId));
 }
 
 function getListTitle(state) {

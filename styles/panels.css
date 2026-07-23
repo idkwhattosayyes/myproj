@@ -243,6 +243,13 @@
   line-height: 1;
 }
 
+/* Булавка закрепления. Значок-эмодзи, поэтому цвет не задаём. */
+.pin-badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
 .folder-delete,
 .item-delete {
   border: none;

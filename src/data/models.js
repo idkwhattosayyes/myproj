@@ -8,6 +8,7 @@ export function createFolderModel({ name = "", section }) {
     name,
     section,
     isFavorite: false,
+    pinned: false, // закреплена наверху списка папок (глобально)
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
   };
 }
@@ -21,6 +22,7 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     folderId,
     section,
     isFavorite: false,
+    pinned: false, // закреплена наверху внутри своей папки
     pageMode: "flow", // вид редактора: "flow" — сплошной лист, "paged" — постранично
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,
