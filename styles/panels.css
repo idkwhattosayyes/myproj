@@ -234,6 +234,15 @@
 
 .folder-item:hover .folder-count { opacity: 1; }
 
+/* Сердечко избранного. Цвет задан владельцем (#E8C0B5). flex-shrink: 0 —
+   значок не сжимается, когда подпись длинная. */
+.fav-heart {
+  flex-shrink: 0;
+  color: #E8C0B5;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
 .folder-delete,
 .item-delete {
   border: none;

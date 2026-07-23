@@ -231,6 +231,12 @@ function clearDropMarks(el) {
   el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
 }
 
+// Маркер избранного — сердечко цвета #E8C0B5 (стиль в panels.css). Избранное
+// глобальное, поэтому значок показываем во всех видах: и у папок, и у заметок.
+function favoriteBadge(entity) {
+  return entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
+}
+
 function renderFolders(container, config, state) {
   const bodyEl = container.querySelector('[data-role="folder-body"]');
 
@@ -245,6 +251,7 @@ function renderFolders(container, config, state) {
           return `
         <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}" draggable="true">
           <span class="folder-name">${escapeHtml(folder.name)}</span>
+          ${favoriteBadge(folder)}
           <span class="folder-count">(${count})</span>
           ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
         </li>`;
@@ -441,6 +448,7 @@ function renderList(container, config, state) {
           return `
         <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}" draggable="true">
           <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
+          ${favoriteBadge(item)}
           ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
         </li>`;
         })
