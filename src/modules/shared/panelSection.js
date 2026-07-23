@@ -2,7 +2,7 @@ import * as itemsService from "../../services/itemsService.js";
 import { createRichTextEditor } from "./richTextEditor.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
-import { escapeHtml } from "../../utils/dom.js";
+import { escapeHtml, escapeAttr } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
 
@@ -119,13 +119,23 @@ function applySearchTarget(state) {
 }
 
 function render(container, config, state) {
-  // Свёрнутый список заметок не исчезает, а складывается в панель папок
-  // отдельной вкладкой — из неё же и разворачивается обратно.
-  const listTab = state.listCollapsed
+  // Свёрнутый список заметок не исчезает. Пока панель папок развёрнута — он
+  // складывается в неё горизонтальной вкладкой. Но когда и сами папки свёрнуты
+  // в полоску, этой вкладке внутри них места нет (её содержимое скрыто вместе с
+  // телом папок) — поэтому список показываем отдельной вертикальной полоской
+  // рядом. Так обе панели сворачиваются и разворачиваются независимо.
+  const listAsTab = state.listCollapsed && !state.foldersCollapsed;
+  const listAsStrip = state.listCollapsed && state.foldersCollapsed;
+
+  const listTab = listAsTab
     ? `<button type="button" class="panel-tab" data-action="toggle-list" title="${t("panel.togglePanel")}">
          <span class="panel-tab-title">${escapeHtml(getListTitle(state))}</span>
          <span class="panel-tab-icon">›</span>
        </button>`
+    : "";
+
+  const listStrip = listAsStrip
+    ? `<button type="button" class="panel-strip panel-strip-list" data-action="toggle-list" title="${escapeAttr(getListTitle(state))}"></button>`
     : "";
 
   container.innerHTML = `
@@ -139,6 +149,8 @@ function render(container, config, state) {
         ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
       </aside>
+
+      ${listStrip}
 
       <section class="panel panel-list ${state.listCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
@@ -160,11 +172,12 @@ function render(container, config, state) {
 }
 
 function wireHeaderActions(container, config, state) {
-  // Панель папок сворачивается в тонкую полоску у левого края. Достаточно
-  // переключить класс на существующем узле — разметка при этом не меняется.
+  // Панель папок сворачивается в тонкую полоску у левого края. Нужен полный
+  // render: если список тоже свёрнут, его индикатор при сворачивании папок
+  // переезжает из вкладки внутри папок в отдельную полоску рядом (и обратно).
   container.querySelector('[data-action="toggle-folders"]').addEventListener("click", () => {
     state.foldersCollapsed = !state.foldersCollapsed;
-    container.querySelector(".panel-folders").classList.toggle("is-collapsed", state.foldersCollapsed);
+    render(container, config, state);
   });
 
   // Список заметок переезжает в панель папок и обратно, поэтому здесь нужен

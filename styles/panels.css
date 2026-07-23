@@ -81,10 +81,27 @@
 }
 
 .panel-folders.is-collapsed .panel-body,
-.panel-folders.is-collapsed .panel-title,
-.panel-folders.is-collapsed .panel-tab {
+.panel-folders.is-collapsed .panel-title {
   display: none;
 }
+
+/* Отдельная вертикальная полоска свёрнутого списка заметок. Появляется только
+   когда свёрнуты и папки: тогда горизонтальной вкладке .panel-tab внутри папок
+   места нет. Полоска — сама себе кнопка разворачивания, как у свёрнутых папок. */
+.panel-strip-list {
+  flex: 0 0 10px;
+  height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
+  zoom: var(--ui-scale, 1);
+  position: sticky;
+  top: calc((1rem + var(--topbar-height)) / var(--ui-scale, 1));
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: #d8dbdf;
+  cursor: pointer;
+}
+
+.panel-strip-list:hover { background: #b6bcc4; }
 
 .panel-folders.is-collapsed .panel-header {
   flex: 1;
