@@ -93,6 +93,10 @@ function getButtonDefs() {
       isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
+    // откатывает наши <u>/<s> и заголовки-span). Обрабатываются в createRichTextEditor.
+    undo: { label: "↶", title: t("editor.undo"), isHistory: "undo" },
+    redo: { label: "↷", title: t("editor.redo"), isHistory: "redo" },
     // Голосовой ввод: ЛКМ — старт/стоп записи, ПКМ — выбор языка распознавания.
     // Обрабатывается отдельно в createRichTextEditor (см. isVoice).
     voice: { label: "🎤", title: t("editor.voice"), isVoice: true },
@@ -594,6 +598,74 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     });
   }
 
+  // --- История отмены/повтора ------------------------------------------
+  // Снимок — это serializeEditor(): тот же HTML, что уходит в хранилище, поэтому
+  // восстановление точно повторяет любое форматирование. Записываем изменения
+  // через MutationObserver — так в историю попадает всё (ввод, кнопки, диктовка,
+  // чек-листы) без ручных вызовов на каждом действии. Быстрый набор коалесится
+  // таймером в один шаг, как в привычном редакторе.
+  const HISTORY_LIMIT = 100;
+  let history = [serializeEditor(contentEl)];
+  let historyIndex = 0;
+  let historyTimer = null;
+  let isRestoring = false;
+
+  function recordHistory() {
+    clearTimeout(historyTimer);
+    const snapshot = serializeEditor(contentEl);
+    if (snapshot === history[historyIndex]) return;
+    // Обрезаем «хвост» повтора: после новой правки вперёд идти уже некуда.
+    history = history.slice(0, historyIndex + 1);
+    history.push(snapshot);
+    historyIndex = history.length - 1;
+    if (history.length > HISTORY_LIMIT) {
+      history.shift();
+      historyIndex--;
+    }
+  }
+
+  function scheduleHistory() {
+    if (isRestoring) return;
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(recordHistory, 400);
+  }
+
+  // Любое изменение содержимого страниц откладывает запись снимка. Классы/титулы
+  // рамок и промежуточный текст диктовки на serialize не влияют, поэтому такие
+  // мутации в итоге дают тот же снимок и просто игнорируются.
+  new MutationObserver(scheduleHistory).observe(contentEl, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+  });
+
+  function restoreSnapshot(html) {
+    isRestoring = true;
+    getPages().forEach((page) => page.parentElement.remove());
+    parsePages(html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
+    upgradeLegacyChecklists(contentEl);
+    activePageEl = getPages()[0] || null;
+    focusActivePage();
+    onChange(html);
+    refreshPages();
+    refreshToolbarState();
+    isRestoring = false;
+  }
+
+  function undo() {
+    recordHistory(); // зафиксировать несохранённый ввод перед шагом назад
+    if (historyIndex <= 0) return;
+    historyIndex--;
+    restoreSnapshot(history[historyIndex]);
+  }
+
+  function redo() {
+    if (historyIndex >= history.length - 1) return;
+    historyIndex++;
+    restoreSnapshot(history[historyIndex]);
+  }
+  // ---------------------------------------------------------------------
+
   // --- Голосовой ввод (диктовка) ---------------------------------------
   // Финальные фрагменты вставляются в текст навсегда, промежуточные показываются
   // во временном span.rte-interim у каретки и заменяются по мере уточнения — так
@@ -747,6 +819,12 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         event.preventDefault();
         toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState, focusActivePage);
       });
+    } else if (def.isHistory) {
+      btn.addEventListener("click", () => {
+        if (def.isHistory === "undo") undo();
+        else redo();
+        focusActivePage();
+      });
     } else if (def.isVoice) {
       voiceBtn = btn;
       if (!SpeechRecognitionCtor) {
@@ -829,6 +907,20 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (event.clientX - li.getBoundingClientRect().left > CHECKLIST_MARKER_WIDTH) return;
     li.classList.toggle("is-done");
     onChange(serializeEditor(contentEl));
+  });
+
+  // Отмена/повтор с клавиатуры. Перехватываем сами: нативный undo не знает про
+  // наш стек снимков и откатывал бы <u>/<s>/заголовки некорректно.
+  contentEl.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      undo();
+    } else if (key === "y" || (key === "z" && event.shiftKey)) {
+      event.preventDefault();
+      redo();
+    }
   });
 
   contentEl.addEventListener("keydown", (event) => {
