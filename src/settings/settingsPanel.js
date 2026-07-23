@@ -3,6 +3,9 @@ import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { openConfirm } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
+import { showContextMenu } from "../modules/shared/contextMenu.js";
+import { buildExport, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
+import { escapeHtml } from "../utils/dom.js";
 
 // Одна шестерёнка в углу вместо россыпи плавающих переключателей: язык,
 // обводка панелей и опасное действие "очистить данные" живут в одной панели.
@@ -81,6 +84,13 @@ function renderPanel() {
       <span class="settings-label">${t("settings.toggleBorders")}</span>
       <input type="checkbox" data-role="borders" ${getBorderEnabled() ? "checked" : ""}>
     </label>
+    <div class="settings-row">
+      <span class="settings-label">${t("settings.dataTransfer")}</span>
+      <div class="settings-io">
+        <button type="button" class="btn btn-small" data-action="export">${t("settings.export")}</button>
+        <button type="button" class="btn btn-small" data-action="import">${t("settings.import")}</button>
+      </div>
+    </div>
     <button type="button" class="btn btn-danger btn-small settings-clear" data-action="clear-data">${t("settings.clearData")}</button>
   `;
 
@@ -99,6 +109,12 @@ function renderPanel() {
     applyBorderSetting();
   });
 
+  panelEl.querySelector('[data-action="export"]').addEventListener("click", (event) => {
+    openExportMenu(event.clientX, event.clientY);
+  });
+
+  panelEl.querySelector('[data-action="import"]').addEventListener("click", runImport);
+
   panelEl.querySelector('[data-action="clear-data"]').addEventListener("click", async () => {
     closePanel();
     const ok = await openConfirm({ message: t("settings.clearDataConfirm") });
@@ -106,6 +122,69 @@ function renderPanel() {
     await getStorage().clearAll();
     location.reload();
   });
+}
+
+// Экспорт: сначала выбор охвата (всё / папка / заметка), затем — при выборе
+// папки или заметки — второе меню с их списком. Имена пользовательские, поэтому
+// экранируем: showContextMenu вставляет label как HTML.
+async function openExportMenu(x, y) {
+  const storage = getStorage();
+  const folders = await storage.getFolders("tasks");
+  const items = await storage.getItems("tasks");
+
+  showContextMenu(x, y, [
+    { label: t("settings.exportScopeAll"), onClick: () => doExport({ kind: "all" }) },
+    // Второе меню открываем следующим тиком: иначе клик по этому пункту всплывёт
+    // к document и обработчик внешнего клика первого меню закроет только что
+    // открытое подменю.
+    { label: t("settings.exportScopeFolder"), onClick: () => setTimeout(() => openEntityMenu(x, y, folders, "name", (f) => doExport({ kind: "folder", id: f.id })), 0) },
+    { label: t("settings.exportScopeItem"), onClick: () => setTimeout(() => openEntityMenu(x, y, items, "title", (i) => doExport({ kind: "item", id: i.id })), 0) },
+  ]);
+}
+
+function openEntityMenu(x, y, entities, labelField, onPick) {
+  if (!entities.length) {
+    showContextMenu(x, y, [{ label: t("settings.exportEmpty"), onClick: () => {} }]);
+    return;
+  }
+  showContextMenu(
+    x,
+    y,
+    entities.map((entity) => ({
+      label: escapeHtml(entity[labelField] || t("panel.untitled")),
+      onClick: () => onPick(entity),
+    })),
+  );
+}
+
+async function doExport(scope) {
+  const data = await buildExport(scope);
+  if (!data.folders.length && !data.items.length) {
+    await openConfirm({ message: t("settings.exportEmpty") });
+    return;
+  }
+  downloadJson(data, "myproj-export.json");
+}
+
+async function runImport() {
+  closePanel();
+  let data;
+  try {
+    data = await readJsonFile();
+  } catch {
+    await openConfirm({ message: t("settings.importBadFormat") });
+    return;
+  }
+  if (!data) return; // выбор файла отменён
+  if (!isValidExport(data)) {
+    await openConfirm({ message: t("settings.importBadFormat") });
+    return;
+  }
+  const counts = `${(data.folders || []).length} / ${data.items.length}`;
+  const ok = await openConfirm({ message: `${t("settings.importConfirm")} (${counts})` });
+  if (!ok) return;
+  await importData(data);
+  location.reload();
 }
 
 /** Класс на body, по которому styles/panels.css убирает рамки панелей. */

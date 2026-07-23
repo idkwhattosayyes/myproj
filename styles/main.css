@@ -145,6 +145,12 @@ button {
   gap: 0.25rem;
 }
 
+/* Кнопки экспорта и импорта — рядом, как переключатели языка. */
+.settings-io {
+  display: flex;
+  gap: 0.3rem;
+}
+
 .settings-lang-btn {
   padding: 0.15rem 0.5rem;
   border: 1px solid #d0d7de;
