@@ -82,7 +82,9 @@ window.addEventListener("DOMContentLoaded", () => {
   };
   mountSearch({ onNavigate: navigate });
   // Быстрая заметка живёт рядом с поиском и переносит текст в тот же раздел.
-  mountQuickNote({ onNavigate: navigate });
+  // onSaved перерисовывает текущий раздел, чтобы новая заметка появилась в
+  // открытом списке сразу, а не после переключения вкладок.
+  mountQuickNote({ onNavigate: navigate, onSaved: () => renderRoute() });
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
   // перерисовать текущий раздел и полоску поиска на новом языке.
   mountSettings({

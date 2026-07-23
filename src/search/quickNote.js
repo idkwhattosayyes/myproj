@@ -11,14 +11,16 @@ import { setPendingTarget } from "./searchTarget.js";
  * редактор соответствующего раздела, ничего не теряя.
  */
 let onNavigate = null;
+let onSaved = null;
 let panelEl = null;
 let editor = null;
 let latestHtml = "";
 let unregisterLayer = null;
 
-/** @param {{onNavigate: (route: string) => void}} options */
-export function mountQuickNote({ onNavigate: navigate }) {
+/** @param {{onNavigate: (route: string) => void, onSaved?: () => void}} options */
+export function mountQuickNote({ onNavigate: navigate, onSaved: saved }) {
   onNavigate = navigate;
+  onSaved = saved || null;
   // Кнопка живёт в верхней строке поиска, но визуально отдельной круглой кнопкой.
   const topline = document.querySelector(".search-topline") || document.querySelector(".search-bar");
   if (!topline) return;
@@ -111,6 +113,8 @@ async function saveAndClose() {
   teardown();
   if (isBlank(html)) return; // пустую заметку не создаём
   await itemsService.createItem("tasks", { title: deriveTitle(html), content: html, folderId: null });
+  // Перерисовать открытый раздел, чтобы заметка появилась в списке сразу.
+  if (onSaved) onSaved();
 }
 
 async function carryToSection(section) {
