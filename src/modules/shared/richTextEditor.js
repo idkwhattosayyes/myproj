@@ -7,9 +7,13 @@ const TEXT_COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#49
 // Заливка идёт под текст, поэтому палитра своя — светлая, иначе текст не читается.
 const HIGHLIGHT_COLORS = ["#fff3a3", "#ffd8a8", "#b2f2bb", "#a5d8ff", "#d0bfff", "#ffc9c9"];
 
-// Перо рисования пока без выбора цвета/толщины — фиксированный дефолт.
+// Перо рисования: последние выбранные цвет/толщина — в localStorage, тем же
+// приёмом, что и последний цвет текста/заливки (getLastColor/setLastColor).
+const DRAW_COLOR_KEY = "app:lastDrawColor";
+const DRAW_WIDTH_KEY = "app:lastDrawWidth";
 const DRAW_DEFAULT_COLOR = "#1f2328";
-const DRAW_DEFAULT_WIDTH = 2.5;
+const DRAW_DEFAULT_WIDTH = 3;
+const DRAW_WIDTHS = [1.5, 3, 5]; // тонкая / средняя / толстая
 
 // Последний выбранный цвет запоминается: ЛКМ по кнопке красит именно им.
 function getLastColor(storageKey, fallback) {
@@ -103,7 +107,9 @@ function getButtonDefs() {
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
     // Рисование поверх документа — не команда форматирования, а переключатель
     // режима, как pageMode/voice. Обрабатывается отдельно в createRichTextEditor.
-    draw: { label: "✏", title: t("editor.draw"), isDraw: true },
+    // storageKey/defaultColor — только для индикатора цвета на самой кнопке
+    // (тот же приём, что у textColor/highlight, см. updateSwatch).
+    draw: { label: "✏", title: t("editor.draw"), isDraw: true, storageKey: DRAW_COLOR_KEY, defaultColor: DRAW_DEFAULT_COLOR },
     // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
     // откатывает наши <u>/<s> и заголовки-span). Обрабатываются в createRichTextEditor.
     undo: { label: "↶", title: t("editor.undo"), isHistory: "undo" },
@@ -882,6 +888,73 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     refreshToolbarState();
   }
 
+  function currentDrawWidth() {
+    return parseFloat(localStorage.getItem(DRAW_WIDTH_KEY)) || DRAW_DEFAULT_WIDTH;
+  }
+
+  // ПКМ на кнопке рисования — толщина, цвет (та же палитра, что у текста) и
+  // тумблер ластика. Каждый выбор мгновенно закрывает поповер — как и у цвета
+  // текста/заливки, второй вложенный уровень здесь не нужен.
+  function toggleDrawPopover(btn, def) {
+    const existing = btn.querySelector(".rte-color-popover");
+    closeColorPopovers();
+    if (existing) return;
+
+    const popover = document.createElement("div");
+    popover.className = "rte-color-popover rte-draw-popover";
+
+    DRAW_WIDTHS.forEach((width) => {
+      const swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "rte-draw-width-swatch";
+      swatch.style.setProperty("--dot", `${width * 2}px`);
+      swatch.title = String(width);
+      swatch.addEventListener("mousedown", (event) => event.preventDefault());
+      swatch.addEventListener("click", (event) => {
+        event.stopPropagation();
+        localStorage.setItem(DRAW_WIDTH_KEY, String(width));
+        closeColorPopovers();
+        focusActivePage();
+      });
+      popover.appendChild(swatch);
+    });
+
+    TEXT_COLORS.forEach((color) => {
+      const swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "rte-color-swatch";
+      swatch.style.background = color;
+      swatch.addEventListener("mousedown", (event) => event.preventDefault());
+      swatch.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setLastColor(def.storageKey, color);
+        updateSwatch(btn, def);
+        closeColorPopovers();
+        focusActivePage();
+      });
+      popover.appendChild(swatch);
+    });
+
+    const eraserBtn = document.createElement("button");
+    eraserBtn.type = "button";
+    eraserBtn.className = "rte-color-swatch rte-draw-eraser";
+    eraserBtn.title = t("editor.eraser");
+    eraserBtn.textContent = "⌫";
+    eraserBtn.classList.toggle("is-active", erasingActive);
+    eraserBtn.addEventListener("mousedown", (event) => event.preventDefault());
+    eraserBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      erasingActive = !erasingActive;
+      closeColorPopovers();
+      focusActivePage();
+    });
+    popover.appendChild(eraserBtn);
+
+    btn.appendChild(popover);
+    unregisterPopoverLayer = pushLayer(closeColorPopovers);
+    setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
+  }
+
   // Слушатели висят всегда, но выходят сразу, если инструмент выключен — не
   // мешают обычному выделению и клику по тексту.
   contentEl.addEventListener("pointerdown", (event) => {
@@ -900,8 +973,8 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     const svg = getDrawingLayer(page, true);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", DRAW_DEFAULT_COLOR);
-    path.setAttribute("stroke-width", String(DRAW_DEFAULT_WIDTH));
+    path.setAttribute("stroke", getLastColor(DRAW_COLOR_KEY, DRAW_DEFAULT_COLOR));
+    path.setAttribute("stroke-width", String(currentDrawWidth()));
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
     const start = drawPoint(page, event);
@@ -1121,9 +1194,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         focusActivePage();
       });
     } else if (def.isDraw) {
+      updateSwatch(btn, def); // полоска снизу — как у textColor, текущий цвет пера
       btn.addEventListener("click", () => {
         toggleDrawing();
         focusActivePage();
+      });
+      btn.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        toggleDrawPopover(btn, def);
       });
     } else {
       btn.addEventListener("click", async () => {
