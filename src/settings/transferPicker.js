@@ -17,10 +17,18 @@ import { escapeHtml } from "../utils/dom.js";
  */
 export function openTransferPicker({ mode, folders, items, onConfirm }) {
   // Заметки, сгруппированные по папке. Ключ null-папки — отдельная псевдо-группа
-  // «Без папки», как и в самих разделах.
+  // «Без папки», как и в самих разделах. Удалённое (deletedAt) в обычные группы
+  // не попадает — у удалённых заметок folderIds уже пуст (см. moveItemToTrash),
+  // и без этой развилки они неотличимо утонули бы среди обычных «без папки».
   const UNFILED = "__unfiled__";
+  const TRASH = "__trash__";
   const itemsByGroup = new Map();
+  const trashedItems = [];
   for (const item of items) {
+    if (item.deletedAt) {
+      trashedItems.push(item);
+      continue;
+    }
     // Заметка может быть в нескольких папках — в дереве показываем её под первой
     // (полное «во всех папках сразу» дерево — вне объёма этой задачи).
     const key = (item.folderIds && item.folderIds[0]) || UNFILED;
@@ -28,12 +36,24 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
     itemsByGroup.get(key).push(item);
   }
 
+  const activeFolders = folders.filter((f) => !f.deletedAt);
+  const trashedFolders = folders.filter((f) => f.deletedAt);
+
   const groups = [];
-  for (const folder of folders) {
+  for (const folder of activeFolders) {
     groups.push({ id: folder.id, name: folder.name, children: itemsByGroup.get(folder.id) || [] });
   }
   const unfiled = itemsByGroup.get(UNFILED) || [];
   if (unfiled.length) groups.push({ id: UNFILED, name: t("panel.unfiled"), children: unfiled });
+
+  // Корзина — отдельный бакет. Удалённые папки лежат в нём плоскими строками
+  // (kind:"folder"), не контейнерами со своим деревом: детей у них уже нет —
+  // заметки отвязаны в момент удаления (см. moveFolderToTrash).
+  const trashChildren = [
+    ...trashedFolders.map((f) => ({ kind: "folder", id: f.id, name: f.name })),
+    ...trashedItems,
+  ];
+  if (trashChildren.length) groups.push({ id: TRASH, name: t("panel.trash"), children: trashChildren });
 
   const title = mode === "export" ? t("transfer.exportTitle") : t("transfer.importTitle");
   const confirmLabel = mode === "export" ? t("transfer.doExport") : t("transfer.doImport");
@@ -72,8 +92,10 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
   // "неопределённым" состоянием. Галочка заметки, наоборот, обновляет состояние
   // своей папки. Читаем/пишем прямо по DOM — отдельное состояние здесь только
   // усложнило бы синхронизацию.
+  // .transfer-check стоит и у заметок, и у удалённых папок внутри бакета
+  // "Корзина" (см. renderChild) — общий класс, чтобы не разбирать здесь два вида.
   function folderChecks(groupId) {
-    return [...treeEl.querySelectorAll(`[data-children="${CSS.escape(groupId)}"] input[data-item-id]`)];
+    return [...treeEl.querySelectorAll(`[data-children="${CSS.escape(groupId)}"] input.transfer-check`)];
   }
 
   function syncFolderState(groupId) {
@@ -90,7 +112,7 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
       const groupId = target.dataset.folderId;
       folderChecks(groupId).forEach((cb) => (cb.checked = target.checked));
       target.indeterminate = false;
-    } else if (target.matches("input[data-item-id]")) {
+    } else if (target.matches("input[data-item-id], input[data-trash-folder-id]")) {
       const groupId = target.closest("[data-children]").dataset.children;
       syncFolderState(groupId);
     }
@@ -167,7 +189,11 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
       folders
         .filter((f) => {
           const cb = treeEl.querySelector(`input[data-folder-id="${CSS.escape(f.id)}"]`);
-          return cb && (cb.checked || cb.indeterminate);
+          if (cb) return cb.checked || cb.indeterminate;
+          // Удалённые папки не заводят свою группу — лежат плоской строкой в
+          // "Корзине" со своей собственной галочкой (см. renderChild).
+          const trashCb = treeEl.querySelector(`input[data-trash-folder-id="${CSS.escape(f.id)}"]`);
+          return trashCb && trashCb.checked;
         })
         .map((f) => f.id),
     );
@@ -177,16 +203,26 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
     return { folders: chosenFolders, items: chosenItems };
   }
 
-  function renderGroup(group) {
-    const children = group.children
-      .map(
-        (item) => `
+  // Обычная заметка — чекбокс по data-item-id, кликабельный заголовок с превью.
+  // Удалённая папка внутри "Корзины" (child.kind === "folder") — плоская строка
+  // без превью (нечего показывать) со своим отдельным чекбоксом.
+  function renderChild(child) {
+    if (child.kind === "folder") {
+      return `
         <li class="transfer-item-row">
-          <input type="checkbox" class="transfer-check" data-item-id="${escapeHtml(item.id)}" checked>
-          <span class="transfer-item-title" data-preview-id="${escapeHtml(item.id)}">${escapeHtml(item.title || t("panel.untitled"))}</span>
-        </li>`,
-      )
-      .join("");
+          <input type="checkbox" class="transfer-check" data-trash-folder-id="${escapeHtml(child.id)}" checked>
+          <span class="transfer-item-title">${escapeHtml(child.name)}</span>
+        </li>`;
+    }
+    return `
+        <li class="transfer-item-row">
+          <input type="checkbox" class="transfer-check" data-item-id="${escapeHtml(child.id)}" checked>
+          <span class="transfer-item-title" data-preview-id="${escapeHtml(child.id)}">${escapeHtml(child.title || t("panel.untitled"))}</span>
+        </li>`;
+  }
+
+  function renderGroup(group) {
+    const children = group.children.map(renderChild).join("");
     return `
       <div class="transfer-group">
         <div class="transfer-folder-row">

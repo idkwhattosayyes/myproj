@@ -122,20 +122,27 @@ function renderPanel() {
 }
 
 // Экспорт: открываем дерево «папки → заметки» с галочками и превью. Выбранное
-// уходит в файл. Пул — Задачи (Документы — его алиас, общий набор).
+// уходит в файл. Пул — Задачи (Документы — его алиас, общий набор). Корзина
+// подтягивается отдельно: обычные getFolders/getItems её уже не возвращают.
 async function runExport() {
   const storage = getStorage();
-  const folders = await storage.getFolders("tasks");
-  const items = await storage.getItems("tasks");
-  if (!folders.length && !items.length) {
+  const [folders, items, trashedFolders, trashedItems] = await Promise.all([
+    storage.getFolders("tasks"),
+    storage.getItems("tasks"),
+    storage.getTrashedFolders("tasks"),
+    storage.getTrashedItems("tasks"),
+  ]);
+  const allFolders = [...folders, ...trashedFolders];
+  const allItems = [...items, ...trashedItems];
+  if (!allFolders.length && !allItems.length) {
     await openConfirm({ message: t("settings.exportEmpty") });
     return;
   }
   closePanel();
   openTransferPicker({
     mode: "export",
-    folders,
-    items,
+    folders: allFolders,
+    items: allItems,
     onConfirm: ({ folders: pickedFolders, items: pickedItems }) => {
       if (!pickedFolders.length && !pickedItems.length) return;
       downloadJson(buildExportFrom(pickedFolders, pickedItems), "myproj-export.json");
