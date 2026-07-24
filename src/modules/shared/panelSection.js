@@ -10,6 +10,11 @@ import { consumePendingTarget } from "../../search/searchTarget.js";
 // drop навешиваются на разные элементы, пересоздаваемые при каждом render.
 let dragged = null; // { kind: "item" | "folder", id } | null
 
+// Ссылка на смонтированный сейчас раздел — чтобы внешние источники (быстрая
+// заметка) могли попросить обновить список без перемонтирования. { container,
+// config, state } или null. См. refreshActivePanelItems.
+let activePanel = null;
+
 // История undo/redo хранится вне редактора — иначе она терялась бы при каждом
 // пересоздании редактора (переключение заметок). Ключ — id заметки, значение —
 // { history, historyIndex }. Держим в памяти сессии и только для последних
@@ -124,7 +129,22 @@ export async function renderPanelSection(container, config) {
   };
 
   applySearchTarget(state);
+  activePanel = { container, config, state };
   render(container, config, state);
+}
+
+// Просьба извне (быстрая заметка) обновить список открытого раздела, не трогая
+// открытую справа заметку. Если раздел Заметок/Документов сейчас не смонтирован
+// (открыта главная/календарь) — тихо ничего не делаем (guard по наличию списка в
+// DOM), заметка просто останется сохранённой в фоне.
+export async function refreshActivePanelItems() {
+  if (!activePanel) return;
+  const { container, config, state } = activePanel;
+  if (!container.querySelector('[data-role="list-body"]')) return;
+  state.items = await itemsService.listItems(config.section);
+  state.folders = await itemsService.listFolders(config.section);
+  renderFolders(container, config, state);
+  renderList(container, config, state);
 }
 
 // Пришли по результату поиска: открываем нужную папку или заметку. Заметку

@@ -8,6 +8,7 @@ import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayer
 import { watchUiScale } from "./utils/uiScale.js";
 import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
+import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -81,10 +82,11 @@ window.addEventListener("DOMContentLoaded", () => {
     else window.location.hash = target;
   };
   mountSearch({ onNavigate: navigate });
-  // Быстрая заметка живёт рядом с поиском. «Принять» сохраняет запись в фоне и
-  // НЕ трогает текущий экран; переносят текст в раздел только кнопки «В Заметки»/
-  // «В Документы» (через onNavigate).
-  mountQuickNote({ onNavigate: navigate });
+  // Быстрая заметка живёт рядом с поиском. «Принять» сохраняет запись в фоне;
+  // onSaved обновляет список открытого раздела Заметок/Документов, если он сейчас
+  // смонтирован (иначе тихий no-op — экран не трогаем). Переносят текст в раздел
+  // только кнопки «В Заметки»/«В Документы» (через onNavigate).
+  mountQuickNote({ onNavigate: navigate, onSaved: refreshActivePanelItems });
   // Панель настроек сама перерисовывает свои подписи; роутеру остаётся
   // перерисовать текущий раздел и полоску поиска на новом языке.
   mountSettings({
