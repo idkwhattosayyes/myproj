@@ -546,7 +546,8 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   function focusActivePage() {
     const pages = getPages();
     if (!activePageEl || !contentEl.contains(activePageEl)) activePageEl = pages[0] || null;
-    if (activePageEl) activePageEl.focus();
+    // preventScroll — та же причина, что и в applyRange: фокус не двигает вьюпорт.
+    if (activePageEl) activePageEl.focus({ preventScroll: true });
   }
 
   function addPage() {
@@ -738,7 +739,9 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   }
 
   function applyRange(range) {
-    if (activePageEl) activePageEl.focus();
+    // preventScroll: возврат каретки не должен дёргать прокрутку окна — иначе при
+    // undo/redo экран прыгает к каретке (на свежесобранном DOM — к началу).
+    if (activePageEl) activePageEl.focus({ preventScroll: true });
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
@@ -776,6 +779,11 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
 
   function restoreSnapshot(entry) {
     isRestoring = true;
+    // Прокрутка живёт на уровне окна (панель детали своего скролла не имеет).
+    // Пересборка страниц схлопывает высоту и сбрасывает scroll к началу —
+    // запоминаем позицию и возвращаем её после восстановления.
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     getPages().forEach((page) => page.parentElement.remove());
     parsePages(entry.html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
     upgradeLegacyChecklists(contentEl);
@@ -785,6 +793,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(entry.html);
     refreshPages();
     refreshToolbarState();
+    window.scrollTo(scrollX, scrollY);
     isRestoring = false;
   }
 
