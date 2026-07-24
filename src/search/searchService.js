@@ -3,9 +3,11 @@ import * as calendarEntriesService from "../services/calendarEntriesService.js";
 import * as calendarTagsService from "../services/calendarTagsService.js";
 import { htmlToText } from "../utils/dom.js";
 
-// Сколько вхождений одного и того же слова показывать внутри одной заметки:
-// остальные прячем за подписью "и ещё N", иначе длинный текст занял бы весь список.
-const MATCHES_PER_ITEM = 3;
+// Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
+// по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
+// кликабельной подписью "Ещё совпадений: N" — она догружает их из этого запаса.
+// Потолок нужен, чтобы запрос вроде одной буквы не собрал тысячи вхождений.
+const MATCH_FETCH_CAP = 200;
 // Сколько символов текста показывать вокруг найденного.
 const SNIPPET_PADDING = 40;
 // Предел на весь список — защита от запроса вроде одной буквы "а".
@@ -70,7 +72,7 @@ async function searchItems(query) {
     const title = item.title || "";
     const text = htmlToText(item.content);
     const inTitle = findMatches(title, query, 1);
-    const inText = findMatches(text, query, MATCHES_PER_ITEM);
+    const inText = findMatches(text, query, MATCH_FETCH_CAP);
     if (!inTitle.matches.length && !inText.matches.length) return;
 
     groups.push({
@@ -101,7 +103,7 @@ async function searchCalendar(query) {
   entries.forEach((entry) => {
     const text = (entry.title || "").replace(/\s+/g, " ").trim();
     const tagName = tagNames.get(entry.tagId) || "";
-    const inText = findMatches(text, query, MATCHES_PER_ITEM);
+    const inText = findMatches(text, query, MATCH_FETCH_CAP);
     const inTag = findMatches(tagName, query, 1);
     if (!inText.matches.length && !inTag.matches.length) return;
 

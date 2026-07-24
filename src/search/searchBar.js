@@ -28,8 +28,17 @@ let searchTimer = null;
 let unregisterLayer = null;
 let onNavigateCallback = null;
 
+// Сколько совпадений внутри одной группы показано сейчас. Ключ — индекс группы,
+// значение — сколько строк раскрыто. Клик по «Ещё совпадений» добавляет по
+// EXPAND_STEP. Карта разово живёт для текущего списка: при закрытии поиска и при
+// новом запросе очищается, поэтому при повторном открытии список снова свёрнут.
+let visibleByGroup = new Map();
+
 // Пауза перед поиском: при быстром наборе не пересчитываем список на каждую букву.
 const INPUT_DELAY = 150;
+// Сколько совпадений в группе показываем по умолчанию и на сколько раскрываем за клик.
+const INITIAL_VISIBLE = 3;
+const EXPAND_STEP = 10;
 
 /** @param {{onNavigate: (route: string) => void}} options переход к разделу, где лежит найденное */
 export function mountSearch({ onNavigate }) {
@@ -138,7 +147,17 @@ async function runSearch() {
   }
   groups = await search(query, currentScopeKey());
   activeRow = 0;
+  // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
+  visibleByGroup.clear();
   renderResults();
+}
+
+// Сколько совпадений группы показываем сейчас (с учётом раскрытия и того, что
+// реально собрано в group.matches).
+function visibleCount(groupIndex, group) {
+  const stored = visibleByGroup.get(groupIndex);
+  const wanted = stored === undefined ? INITIAL_VISIBLE : stored;
+  return Math.min(wanted, group.matches.length);
 }
 
 function renderResults() {
@@ -152,7 +171,9 @@ function renderResults() {
           ${group.subtitle ? `<span class="search-row-sub">${escapeHtml(group.subtitle)}</span>` : ""}
         </button>`;
 
+      const visible = visibleCount(groupIndex, group);
       const matches = group.matches
+        .slice(0, visible)
         .map(
           (match) => `
         <button type="button" class="search-row search-row--match" data-row="${rows.push({ groupIndex, matchIndex: match.index }) - 1}">
@@ -161,8 +182,15 @@ function renderResults() {
         )
         .join("");
 
-      const more = group.moreCount
-        ? `<div class="search-more">${escapeHtml(t("search.moreMatches").replace("{n}", group.moreCount))}</div>`
+      // Скрытых совпадений: ещё не показанные из собранных + те, что не влезли в
+      // потолок сбора (group.moreCount). Пока есть что догрузить (loadable) —
+      // подпись кликабельная; если остаток только за потолком — просто текст.
+      const loadable = group.matches.length - visible;
+      const hidden = loadable + group.moreCount;
+      const more = hidden
+        ? loadable > 0
+          ? `<button type="button" class="search-more" data-more="${groupIndex}">${escapeHtml(t("search.moreMatches").replace("{n}", hidden))}</button>`
+          : `<div class="search-more">${escapeHtml(t("search.moreMatches").replace("{n}", hidden))}</div>`
         : "";
 
       return `<div class="search-group">${head}${matches}${more}</div>`;
@@ -172,6 +200,18 @@ function renderResults() {
   resultsEl.innerHTML = html || `<div class="search-empty">${t("search.nothing")}</div>`;
   resultsEl.querySelectorAll("[data-row]").forEach((btn) => {
     btn.addEventListener("click", () => openRow(Number(btn.dataset.row)));
+  });
+  // «Ещё совпадений» раскрывает группу на EXPAND_STEP и перерисовывает список.
+  // Прокрутку сохраняем, иначе перерисовка через innerHTML вернёт её к началу.
+  resultsEl.querySelectorAll("[data-more]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const groupIndex = Number(btn.dataset.more);
+      const current = visibleByGroup.get(groupIndex) ?? INITIAL_VISIBLE;
+      visibleByGroup.set(groupIndex, current + EXPAND_STEP);
+      const keepScroll = resultsEl.scrollTop;
+      renderResults();
+      resultsEl.scrollTop = keepScroll;
+    });
   });
   openResults();
   markActiveRow();
@@ -216,6 +256,8 @@ function openResults() {
 function closeResults() {
   groups = [];
   rows = [];
+  // Закрытие поиска сбрасывает раскрытие групп — при следующем открытии список свёрнут.
+  visibleByGroup.clear();
   if (resultsEl.hidden) return;
   resultsEl.hidden = true;
   resultsEl.innerHTML = "";

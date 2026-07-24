@@ -206,9 +206,25 @@
 }
 
 .search-more {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  font-family: inherit;
   padding: 0.15rem 0.5rem 0.35rem 1.6rem;
   font-size: 0.75rem;
   color: #9ca3af;
+}
+
+/* Кликабельный вариант (есть что догрузить) — показываем, что по нему можно нажать. */
+button.search-more {
+  cursor: pointer;
+}
+
+button.search-more:hover {
+  color: #6b7280;
+  text-decoration: underline;
 }
 
 .search-empty {
