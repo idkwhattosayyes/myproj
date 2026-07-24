@@ -7,6 +7,10 @@ const TEXT_COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#49
 // Заливка идёт под текст, поэтому палитра своя — светлая, иначе текст не читается.
 const HIGHLIGHT_COLORS = ["#fff3a3", "#ffd8a8", "#b2f2bb", "#a5d8ff", "#d0bfff", "#ffc9c9"];
 
+// Перо рисования пока без выбора цвета/толщины — фиксированный дефолт.
+const DRAW_DEFAULT_COLOR = "#1f2328";
+const DRAW_DEFAULT_WIDTH = 2.5;
+
 // Последний выбранный цвет запоминается: ЛКМ по кнопке красит именно им.
 function getLastColor(storageKey, fallback) {
   return localStorage.getItem(storageKey) || fallback;
@@ -97,6 +101,9 @@ function getButtonDefs() {
       caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Рисование поверх документа — не команда форматирования, а переключатель
+    // режима, как pageMode/voice. Обрабатывается отдельно в createRichTextEditor.
+    draw: { label: "✏", title: t("editor.draw"), isDraw: true },
     // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
     // откатывает наши <u>/<s> и заголовки-span). Обрабатываются в createRichTextEditor.
     undo: { label: "↶", title: t("editor.undo"), isHistory: "undo" },
@@ -535,6 +542,11 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   let currentPageMode = pageMode === "paged" ? "paged" : "flow";
   buttonDefs.pageMode.isActive = () => currentPageMode === "paged";
 
+  // Включённость инструмента рисования — как и pageMode, это переключатель
+  // режима, а не состояние текста под кареткой.
+  let drawingActive = false;
+  buttonDefs.draw.isActive = () => drawingActive;
+
   // Страница, в которой последний раз стояла каретка: именно её возвращаем в
   // фокус после нажатия кнопки тулбара.
   let activePageEl = getPages()[0] || null;
@@ -763,7 +775,11 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   }
 
   function scheduleHistory() {
-    if (isRestoring) return;
+    // drawState непустой всё время, пока штрих/стирание в процессе (см. ниже) —
+    // снимок посреди штриха не нужен, иначе долгий штрих мог бы разрезаться
+    // debounce-таймером на две отменяемые по отдельности половины. Один снимок на
+    // весь жест пишется явно в pointerup.
+    if (isRestoring || drawState) return;
     clearTimeout(historyTimer);
     historyTimer = setTimeout(recordHistory, 400);
   }
@@ -811,6 +827,108 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     restoreSnapshot(history[historyIndex]);
     notifyHistoryChange();
   }
+  // ---------------------------------------------------------------------
+
+  // --- Рисование поверх документа ---------------------------------------
+  // Рисунок — <svg class="rte-drawing-layer"> с <path> на каждый штрих, лежащий
+  // прямо внутри .rte-page: serializeEditor() берёт innerHTML страницы как есть,
+  // поэтому рисунок сохраняется/загружается вместе с текстом без отдельного поля
+  // в модели заметки, а MutationObserver истории (см. выше) подхватывает
+  // добавление/удаление <path> автоматически — свой стек отмены не нужен.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  let erasingActive = false;
+  let drawState = null; // { pointerId, page, path } — path === null во время стирания
+
+  function getDrawingLayer(page, create) {
+    let svg = page.querySelector(":scope > svg.rte-drawing-layer");
+    if (!svg && create) {
+      svg = document.createElementNS(SVG_NS, "svg");
+      svg.setAttribute("class", "rte-drawing-layer");
+      // Неедактируемый остров внутри contenteditable-страницы: браузер не лезет
+      // курсором внутрь и удаляет его целиком, а не по кусочкам.
+      svg.setAttribute("contenteditable", "false");
+      page.appendChild(svg);
+    }
+    return svg;
+  }
+
+  // Координаты события → локальные координаты страницы. SVG без viewBox, значит
+  // 1 единица = 1 CSS-пиксель немасштабированного слоя; --page-fit — тот же зум,
+  // каким постраничный режим уменьшает страницу целиком (см. updatePageFit). В
+  // сплошном режиме переменная не задана, и деление на 1 ничего не меняет.
+  function drawPoint(page, event) {
+    const rect = page.getBoundingClientRect();
+    const zoom = parseFloat(getComputedStyle(contentEl).getPropertyValue("--page-fit")) || 1;
+    return { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom };
+  }
+
+  // Ластик трогает только узлы внутри слоя рисования — текст физически не
+  // задет. isPointInStroke — нативная геометрия SVG, без ручного подсчёта
+  // расстояния до ломаной.
+  function eraseAt(page, event) {
+    const svg = getDrawingLayer(page, false);
+    if (!svg) return;
+    const { x, y } = drawPoint(page, event);
+    const point = new DOMPoint(x, y);
+    svg.querySelectorAll("path").forEach((path) => {
+      if (path.isPointInStroke(point)) path.remove();
+    });
+  }
+
+  function toggleDrawing() {
+    drawingActive = !drawingActive;
+    if (!drawingActive) erasingActive = false; // выключили кисть — выключаем и ластик
+    contentEl.classList.toggle("is-drawing", drawingActive);
+    refreshToolbarState();
+  }
+
+  // Слушатели висят всегда, но выходят сразу, если инструмент выключен — не
+  // мешают обычному выделению и клику по тексту.
+  contentEl.addEventListener("pointerdown", (event) => {
+    if (!drawingActive) return;
+    const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
+    if (!page) return;
+    event.preventDefault(); // не ставить каретку и не начинать выделение текста
+    contentEl.setPointerCapture(event.pointerId);
+
+    if (erasingActive) {
+      eraseAt(page, event);
+      drawState = { pointerId: event.pointerId, page, path: null };
+      return;
+    }
+
+    const svg = getDrawingLayer(page, true);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", DRAW_DEFAULT_COLOR);
+    path.setAttribute("stroke-width", String(DRAW_DEFAULT_WIDTH));
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    const start = drawPoint(page, event);
+    path.setAttribute("d", `M${start.x} ${start.y}`);
+    svg.appendChild(path);
+    drawState = { pointerId: event.pointerId, page, path };
+  });
+
+  contentEl.addEventListener("pointermove", (event) => {
+    if (!drawState || event.pointerId !== drawState.pointerId) return;
+    if (!drawState.path) {
+      eraseAt(drawState.page, event);
+      return;
+    }
+    const { x, y } = drawPoint(drawState.page, event);
+    drawState.path.setAttribute("d", `${drawState.path.getAttribute("d")} L${x} ${y}`);
+  });
+
+  contentEl.addEventListener("pointerup", (event) => {
+    if (!drawState || event.pointerId !== drawState.pointerId) return;
+    contentEl.releasePointerCapture(event.pointerId);
+    drawState = null;
+    // Снимок всего штриха/стирания одним шагом — записываем явно, только когда
+    // жест завершён (пока drawState не пуст, scheduleHistory ничего не пишет).
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  });
   // ---------------------------------------------------------------------
 
   // --- Голосовой ввод (диктовка) ---------------------------------------
@@ -1000,6 +1118,11 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     } else if (def.isPageMode) {
       btn.addEventListener("click", () => {
         togglePageMode();
+        focusActivePage();
+      });
+    } else if (def.isDraw) {
+      btn.addEventListener("click", () => {
+        toggleDrawing();
         focusActivePage();
       });
     } else {

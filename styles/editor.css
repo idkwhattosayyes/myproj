@@ -207,6 +207,33 @@
 
 .rte-page:focus { outline: none; }
 
+/* Слой рисования — прямой потомок страницы, поэтому попадает в её innerHTML и
+   сохраняется вместе с текстом (см. richTextEditor.js). position:relative на
+   самой странице, а не только на рамке вокруг неё — иначе в постраничном
+   режиме (с отступом рамки в 1px) слой съезжал бы на пиксель от текста. */
+.rte-page { position: relative; }
+
+/* pointer-events всегда none: инструмент включён или выключен решает JS
+   (drawingActive в richTextEditor.js), а не эта CSS-свойство — иначе слой
+   перехватывал бы клики по тексту даже при выключенном инструменте. */
+.rte-drawing-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.rte-content.is-drawing .rte-page { cursor: crosshair; }
+
+/* В сплошном режиме страница по умолчанию высотой ровно в свой текст — рисовать
+   ниже последней строки было бы некуда (слой рисования размером inset:0 обрезан
+   по границе страницы, свойство overflow у <svg> по умолчанию hidden). Страница
+   всегда занимает видимую область редактора целиком, даже если текста мало. */
+.rte-content:not(.is-paged) .rte-page {
+  min-height: calc(340px - 1.7rem); /* .rte-content: min-height 340px минус его вертикальный padding 0.85rem×2 */
+}
+
 /* Вспышка на найденном по поиску. Рисуется CSS Custom Highlight API поверх
    текста — в сам текст заметки ничего не вставляется (см. highlightMatch
    в richTextEditor.js). */
