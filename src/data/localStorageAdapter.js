@@ -45,15 +45,25 @@ function byOrder(a, b) {
 function normalizeItem(item) {
   const folderIds = Array.isArray(item.folderIds) ? item.folderIds : item.folderId ? [item.folderId] : [];
   const pinnedIn = Array.isArray(item.pinnedIn) ? item.pinnedIn : item.pinned ? ["all"] : [];
-  return { ...item, folderIds, pinnedIn };
+  return { ...item, folderIds, pinnedIn, deletedAt: item.deletedAt || null };
+}
+
+// Недавно удалённое — сверху.
+function byDeletedAtDesc(a, b) {
+  return new Date(b.deletedAt) - new Date(a.deletedAt);
 }
 
 export const localStorageAdapter = {
   // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getFolders(section) {
     return readCollection(STORAGE_KEYS.folders)
-      .filter((folder) => matchesSection(folder.section, section))
+      .filter((folder) => matchesSection(folder.section, section) && !folder.deletedAt)
       .sort(byOrder);
+  },
+  async getTrashedFolders(section) {
+    return readCollection(STORAGE_KEYS.folders)
+      .filter((folder) => matchesSection(folder.section, section) && folder.deletedAt)
+      .sort(byDeletedAtDesc);
   },
   async createFolder(folder) {
     const folders = readCollection(STORAGE_KEYS.folders);
@@ -77,9 +87,15 @@ export const localStorageAdapter = {
   // Items (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getItems(section) {
     return readCollection(STORAGE_KEYS.items)
-      .filter((item) => matchesSection(item.section, section))
+      .filter((item) => matchesSection(item.section, section) && !item.deletedAt)
       .map(normalizeItem)
       .sort(byOrder);
+  },
+  async getTrashedItems(section) {
+    return readCollection(STORAGE_KEYS.items)
+      .filter((item) => matchesSection(item.section, section) && item.deletedAt)
+      .map(normalizeItem)
+      .sort(byDeletedAtDesc);
   },
   async getItem(id) {
     const item = readCollection(STORAGE_KEYS.items).find((item) => item.id === id);

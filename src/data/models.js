@@ -10,6 +10,7 @@ export function createFolderModel({ name = "", section }) {
     isFavorite: false,
     pinned: false, // закреплена наверху списка папок (глобально)
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
+    deletedAt: null, // время попадания в Корзину; null = папка на своём месте
   };
 }
 
@@ -31,6 +32,7 @@ export function createItemModel({ title = "", content = "", folderIds = [], sect
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,
     updatedAt: now,
+    deletedAt: null, // время попадания в Корзину; null = заметка на своём месте
   };
 }
 

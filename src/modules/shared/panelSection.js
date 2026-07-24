@@ -456,7 +456,7 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
     const ok = await openConfirm({ message: t("panel.deleteFolderConfirm") });
     if (!ok) return;
   }
-  await itemsService.deleteFolder(config.section, folderId);
+  await itemsService.moveFolderToTrash(config.section, folderId);
   state.folders = await itemsService.listFolders(config.section);
   state.items = await itemsService.listItems(config.section);
   if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
@@ -680,7 +680,7 @@ async function deleteItemFlow(itemId, container, config, state, confirm) {
     const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
     if (!ok) return;
   }
-  await itemsService.deleteItem(itemId);
+  await itemsService.moveItemToTrash(itemId);
   state.items = await itemsService.listItems(config.section);
   if (state.selectedItemId === itemId) state.selectedItemId = null;
   render(container, config, state);
@@ -813,7 +813,7 @@ function renderDetail(container, config, state) {
     const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
     if (!ok) return;
     clearTimeout(saveTimer);
-    await itemsService.deleteItem(item.id);
+    await itemsService.moveItemToTrash(item.id);
     state.items = await itemsService.listItems(config.section);
     state.selectedItemId = null;
     render(container, config, state);
