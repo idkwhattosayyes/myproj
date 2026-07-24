@@ -35,7 +35,7 @@ function isItemEmpty(item) {
 }
 
 function countItemsInFolder(state, folderId) {
-  return state.items.filter((i) => i.folderId === folderId).length;
+  return state.items.filter((i) => i.folderIds.includes(folderId)).length;
 }
 
 // Сколько всего в «Избранном»: считаем только напрямую отмеченные заметки И
@@ -227,13 +227,13 @@ function wireHeaderActions(container, config, state) {
   });
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
-    const folderId = isRealFolderId(state.selectedFolderId) ? state.selectedFolderId : null;
+    const folderIds = isRealFolderId(state.selectedFolderId) ? [state.selectedFolderId] : [];
     // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
     const inFavorites = state.selectedFolderId === "favorites";
     const item = await itemsService.createItem(config.section, {
       title: t("panel.untitled"),
       content: "",
-      folderId,
+      folderIds,
       isFavorite: inFavorites,
     });
     state.items = await itemsService.listItems(config.section);
@@ -469,11 +469,15 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
       if (drop.kind === "item") await itemsService.updateItem(drop.id, { isFavorite: true });
       else await itemsService.updateFolder(drop.id, { isFavorite: true });
     } else if (folderId === "unfiled") {
-      // Только заметку — вынуть из папки.
-      if (drop.kind === "item") await itemsService.updateItem(drop.id, { folderId: null });
+      // Только заметку — вынуть из ВСЕХ папок (сделать «Без папки»).
+      if (drop.kind === "item") await itemsService.updateItem(drop.id, { folderIds: [] });
     } else if (drop.kind === "item") {
-      // Заметку — в эту папку.
-      await itemsService.updateItem(drop.id, { folderId });
+      // Заметку — ДОБАВить в эту папку (не перемещаем: заметка может быть сразу
+      // в нескольких папках). Если уже там — ничего не меняем.
+      const item = state.items.find((i) => i.id === drop.id);
+      if (item && !item.folderIds.includes(folderId)) {
+        await itemsService.updateItem(drop.id, { folderIds: [...item.folderIds, folderId] });
+      }
     } else if (drop.kind === "folder" && drop.id !== folderId) {
       // Папку на папку — переупорядочить.
       await reorderFolder(drop.id, folderId, state, after);
@@ -609,6 +613,22 @@ function renderList(container, config, state) {
             render(container, config, state);
           },
         },
+        // «Убрать из этой папки» — только когда открыт вид конкретной папки и
+        // заметка в ней числится. Перетаскивание в папку теперь добавляет, а не
+        // перемещает, поэтому убрать из одной папки можно отсюда.
+        ...(isRealFolderId(state.selectedFolderId) && item.folderIds.includes(state.selectedFolderId)
+          ? [
+              {
+                label: t("panel.removeFromFolder"),
+                onClick: async () => {
+                  const key = state.selectedFolderId;
+                  await itemsService.updateItem(item.id, { folderIds: item.folderIds.filter((f) => f !== key) });
+                  state.items = await itemsService.listItems(config.section);
+                  render(container, config, state);
+                },
+              },
+            ]
+          : []),
         {
           label: t("panel.delete"),
           onClick: () => deleteItemFlow(item.id, container, config, state, true),
@@ -665,9 +685,9 @@ function getFilteredItems(state) {
   // Закреплённые наверх — но отдельно для каждого места показа (ключ = вид списка).
   const key = state.selectedFolderId;
   if (key === "favorites") return sortItemsByPin(state.items.filter((item) => item.isFavorite), key);
-  if (key === "unfiled") return sortItemsByPin(state.items.filter((item) => !item.folderId), key);
+  if (key === "unfiled") return sortItemsByPin(state.items.filter((item) => item.folderIds.length === 0), key);
   if (key === "all") return sortItemsByPin(state.items, key);
-  return sortItemsByPin(state.items.filter((item) => item.folderId === key), key);
+  return sortItemsByPin(state.items.filter((item) => item.folderIds.includes(key)), key);
 }
 
 function getListTitle(state) {

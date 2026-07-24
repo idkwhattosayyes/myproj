@@ -113,13 +113,13 @@ async function saveAndClose() {
   // Сохраняем в фоне и НЕ перерисовываем текущий раздел: быстрая заметка не
   // должна закрывать открытую заметку или сбрасывать прокрутку. Новая запись
   // появится в списке при следующей отрисовке раздела.
-  await itemsService.createItem("tasks", { title: deriveTitle(html), content: html, folderId: null });
+  await itemsService.createItem("tasks", { title: deriveTitle(html), content: html, folderIds: [] });
 }
 
 async function carryToSection(section) {
   const html = latestHtml;
   teardown();
-  const item = await itemsService.createItem(section, { title: deriveTitle(html), content: html, folderId: null });
+  const item = await itemsService.createItem(section, { title: deriveTitle(html), content: html, folderIds: [] });
   // Раздел откроет именно эту заметку в полном редакторе — текст продолжит жить.
   setPendingTarget({ kind: "item", id: item.id, query: "", matchIndex: 0 });
   if (onNavigate) onNavigate(section);

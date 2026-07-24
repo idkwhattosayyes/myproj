@@ -80,7 +80,7 @@ async function searchItems(query) {
       id: item.id,
       section: item.section,
       title,
-      subtitle: folderNames.get(item.folderId) || "",
+      subtitle: item.folderIds.map((id) => folderNames.get(id)).filter(Boolean).join(", "),
       query,
       // Совпадение в названии само по себе строкой не идёт: заголовок группы и
       // так виден. Строки — это места в тексте, к которым можно перейти.

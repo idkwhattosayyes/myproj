@@ -13,13 +13,15 @@ export function createFolderModel({ name = "", section }) {
   };
 }
 
-export function createItemModel({ title = "", content = "", folderId = null, section, isFavorite = false }) {
+export function createItemModel({ title = "", content = "", folderIds = [], section, isFavorite = false }) {
   const now = new Date().toISOString();
   return {
     id: generateId(),
     title,
     content,
-    folderId,
+    // Папки, в которых числится заметка (может быть сразу в нескольких).
+    // Пустой массив = «Без папки». Заметка всегда видна и в «Все».
+    folderIds,
     section,
     isFavorite,
     // Места, где заметка закреплена (наверху списка): "all" / "favorites" /

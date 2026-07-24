@@ -63,8 +63,9 @@ export function isValidExport(data) {
 }
 
 // Создаёт новые записи, не затирая существующие. Старые id папок перемаппливаем
-// на свежие, чтобы folderId импортируемых заметок указывал на вновь созданные
-// папки, а не на возможно чужие/несуществующие.
+// на свежие, чтобы принадлежность импортируемых заметок указывала на вновь
+// созданные папки, а не на возможно чужие/несуществующие. Поддерживаем и старый
+// формат (folderId/pinned скаляры), и новый (folderIds/pinnedIn массивы).
 export async function importData(data) {
   const storage = getStorage();
   const now = new Date().toISOString();
@@ -77,11 +78,19 @@ export async function importData(data) {
   }
 
   for (const item of data.items) {
-    const newFolderId = item.folderId ? folderIdMap.get(item.folderId) ?? null : null;
+    const srcFolderIds = Array.isArray(item.folderIds) ? item.folderIds : item.folderId ? [item.folderId] : [];
+    // Папки не из набора экспорта отбрасываем (folderIdMap.get вернёт undefined).
+    const folderIds = srcFolderIds.map((id) => folderIdMap.get(id)).filter(Boolean);
+    const srcPinnedIn = Array.isArray(item.pinnedIn) ? item.pinnedIn : item.pinned ? ["all"] : [];
+    // Спец-ключи мест оставляем как есть, id папок ремапим (неизвестные отбрасываем).
+    const pinnedIn = srcPinnedIn
+      .map((key) => (key === "all" || key === "favorites" || key === "unfiled" ? key : folderIdMap.get(key)))
+      .filter(Boolean);
     await storage.createItem({
       ...item,
       id: crypto.randomUUID(),
-      folderId: newFolderId,
+      folderIds,
+      pinnedIn,
       createdAt: item.createdAt || now,
       updatedAt: now,
     });

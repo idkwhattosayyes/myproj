@@ -11,7 +11,7 @@ import { escapeHtml } from "../utils/dom.js";
  * @param {{
  *   mode: "export" | "import",
  *   folders: Array<{id: string, name: string}>,
- *   items: Array<{id: string, title: string, content: string, folderId: string|null}>,
+ *   items: Array<{id: string, title: string, content: string, folderIds: string[]}>,
  *   onConfirm: (selection: {folders: Array, items: Array}) => void
  * }} options
  */
@@ -21,7 +21,9 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
   const UNFILED = "__unfiled__";
   const itemsByGroup = new Map();
   for (const item of items) {
-    const key = item.folderId || UNFILED;
+    // Заметка может быть в нескольких папках — в дереве показываем её под первой
+    // (полное «во всех папках сразу» дерево — вне объёма этой задачи).
+    const key = (item.folderIds && item.folderIds[0]) || UNFILED;
     if (!itemsByGroup.has(key)) itemsByGroup.set(key, []);
     itemsByGroup.get(key).push(item);
   }
@@ -169,8 +171,8 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
         })
         .map((f) => f.id),
     );
-    // Плюс папки-владельцы выбранных заметок — чтобы заметка не «потеряла» папку.
-    for (const item of chosenItems) if (item.folderId) chosenFolderIds.add(item.folderId);
+    // Плюс папки-владельцы выбранных заметок — чтобы заметка не «потеряла» папки.
+    for (const item of chosenItems) for (const fid of item.folderIds || []) chosenFolderIds.add(fid);
     const chosenFolders = folders.filter((f) => chosenFolderIds.has(f.id));
     return { folders: chosenFolders, items: chosenItems };
   }
