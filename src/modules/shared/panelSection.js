@@ -266,14 +266,16 @@ function clearDropMarks(el) {
   el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
 }
 
-// Значки у строки: сердечко избранного и булавка закрепления.
-// Сердечко — глобальное свойство, показываем везде. Булавку показываем, только
-// когда закрепление реально влияет на порядок в текущем виде (pinActive): у папок
-// это всегда (закрепление папок глобальное), а у заметок — лишь внутри их
-// собственной папки; в "Все"/"Избранное"/"Без папки" закрепление игнорируется.
+// Значки у строки: сердечко избранного и булавка закрепления. Оба свойства
+// глобальные, поэтому показываем везде (pinActive у заметок теперь всегда true; у
+// папок закрепление тоже глобальное). Закреплённые поднимаются наверх списка.
 function rowBadges(entity, pinActive) {
   const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
-  const pin = pinActive && entity.pinned ? `<span class="pin-badge" title="${t("panel.pinned")}">📌</span>` : "";
+  // Булавка — инлайн-SVG с fill="currentColor": цвет задаём в CSS (#C2D1C9), как у
+  // сердечка. Эмодзи 📌 не красится, поэтому именно SVG.
+  const pin = pinActive && entity.pinned
+    ? `<span class="pin-badge" title="${t("panel.pinned")}"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M8 1c-2.5 0-4.5 2-4.5 4.5 0 3.4 4.5 9 4.5 9s4.5-5.6 4.5-9C12.5 3 10.5 1 8 1zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z"/></svg></span>`
+    : "";
   return heart + pin;
 }
 
@@ -299,7 +301,7 @@ function renderFolders(container, config, state) {
         .map((folder) => {
           const count = countItemsInFolder(state, folder.id);
           return `
-        <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""}" data-folder-id="${folder.id}" draggable="true">
+        <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}" data-folder-id="${folder.id}" draggable="true">
           <span class="folder-name">${escapeHtml(folder.name)}</span>
           ${rowBadges(folder, true)}
           <span class="folder-count">(${count})</span>
@@ -492,8 +494,9 @@ function renderList(container, config, state) {
   // на эту папку в обычном виде (у папки нет собственного контента).
   const favFolders = state.selectedFolderId === "favorites" ? state.folders.filter((f) => f.isFavorite) : [];
   const isEmpty = !favFolders.length && !items.length;
-  // Закрепление заметок привязано к папке — булавку показываем только в реальной папке.
-  const pinActive = isRealFolderId(state.selectedFolderId);
+  // Закрепление заметок глобальное: булавка, оттенок и подъём наверх работают во
+  // всех видах списка (Все / Без папки / Избранное / конкретная папка).
+  const pinActive = true;
 
   titleEl.textContent = getListTitle(state);
 
@@ -506,7 +509,7 @@ function renderList(container, config, state) {
         .map((item) => {
           const empty = isItemEmpty(item);
           return `
-        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""}" data-item-id="${item.id}" draggable="true">
+        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""} ${pinActive && item.pinned ? "is-pinned" : ""}" data-item-id="${item.id}" draggable="true">
           <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
           ${rowBadges(item, pinActive)}
           ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
@@ -636,10 +639,10 @@ async function reorderItem(draggedId, targetId, state, after) {
 }
 
 function getFilteredItems(state) {
-  if (state.selectedFolderId === "favorites") return state.items.filter((item) => item.isFavorite);
-  if (state.selectedFolderId === "unfiled") return state.items.filter((item) => !item.folderId);
-  if (state.selectedFolderId === "all") return state.items;
-  // Внутри конкретной папки закреплённые заметки поднимаются наверх.
+  // Закреплённые заметки поднимаются наверх в любом виде списка.
+  if (state.selectedFolderId === "favorites") return sortPinnedFirst(state.items.filter((item) => item.isFavorite));
+  if (state.selectedFolderId === "unfiled") return sortPinnedFirst(state.items.filter((item) => !item.folderId));
+  if (state.selectedFolderId === "all") return sortPinnedFirst(state.items);
   return sortPinnedFirst(state.items.filter((item) => item.folderId === state.selectedFolderId));
 }
 

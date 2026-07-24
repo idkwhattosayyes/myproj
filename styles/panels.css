@@ -190,6 +190,14 @@
   font-size: 0.88rem;
 }
 
+/* Закреплённые строки — лёгкий зеленоватый оттенок (в тон булавке #C2D1C9),
+   чтобы отличались от обычных. Правило стоит ДО :hover и .is-active, поэтому
+   наведение и выделение перекрывают оттенок. */
+.folder-item.is-pinned,
+.item-list-row.is-pinned {
+  background: #edf3f0;
+}
+
 .folder-item:hover,
 .item-list-row:hover {
   background: #f3f4f6;
@@ -243,11 +251,13 @@
   line-height: 1;
 }
 
-/* Булавка закрепления. Значок-эмодзи, поэтому цвет не задаём. */
+/* Булавка закрепления. Инлайн-SVG красится через currentColor; цвет задан
+   владельцем (#C2D1C9). */
 .pin-badge {
   flex-shrink: 0;
-  font-size: 0.72rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  color: #C2D1C9;
 }
 
 .folder-delete,
