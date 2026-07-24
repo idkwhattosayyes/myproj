@@ -323,9 +323,12 @@ function renderFolders(container, config, state) {
     const folderId = el.dataset.folderId;
 
     el.addEventListener("click", () => {
+      // Клик по папке меняет только список заметок; открытую справа заметку не
+      // закрываем. Перерисовываем лишь панели папок и списка — полный render()
+      // пересоздал бы редактор и сбросил каретку/прокрутку.
       state.selectedFolderId = folderId;
-      state.selectedItemId = null;
-      render(container, config, state);
+      renderFolders(container, config, state);
+      renderList(container, config, state);
     });
 
     // Настоящие папки можно тащить; псевдо-папки — нет.
@@ -605,9 +608,10 @@ function renderList(container, config, state) {
 
   bodyEl.querySelectorAll("[data-jump-folder-id]").forEach((el) => {
     el.addEventListener("click", () => {
+      // Как и обычный клик по папке — открытую заметку не сбрасываем.
       state.selectedFolderId = el.dataset.jumpFolderId;
-      state.selectedItemId = null;
-      render(container, config, state);
+      renderFolders(container, config, state);
+      renderList(container, config, state);
     });
   });
 }
