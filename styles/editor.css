@@ -5,6 +5,28 @@
   margin: 0.75rem 0 1rem;
 }
 
+/* Просмотр удалённого — упрощённая карточка вместо редактора (см. renderTrashDetail
+   в panelSection.js): заголовок, пояснение/содержимое, две кнопки действий. */
+.trash-detail-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.trash-detail-hint {
+  margin: 0 0 0.75rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.trash-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.trash-detail-content {
+  margin-top: 0.75rem;
+}
+
 .item-title-input {
   flex: 1;
   min-width: 0; /* у input своя min-content ширина — без этого он распирает строку */

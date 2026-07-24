@@ -120,8 +120,14 @@ export async function renderPanelSection(container, config) {
   const state = {
     folders: await itemsService.listFolders(config.section),
     items: await itemsService.listItems(config.section),
-    selectedFolderId: "all", // "all" | "unfiled" | id папки
+    trash: await itemsService.listTrash(config.section),
+    selectedFolderId: "all", // "all" | "unfiled" | "trash" | id папки
     selectedItemId: null,
+    // Что показано в детали справа, если это удалённый элемент — { kind, id }.
+    // Приоритетнее selectedItemId (см. renderDetail), сбрасывается при выборе
+    // обычной заметки. Раздел "Корзина" в списке слева можно просто открыть, не
+    // трогая деталь — как и обычные папки; конкретную строку внутри выбирают отдельно.
+    selectedTrash: null,
     foldersCollapsed: false,
     listCollapsed: false,
     pendingMatch: null, // {query, index} — куда прокрутить открытую заметку
@@ -258,6 +264,7 @@ function wireHeaderActions(container, config, state) {
     });
     state.items = await itemsService.listItems(config.section);
     state.selectedItemId = item.id;
+    state.selectedTrash = null;
     // Разово попросить деталь поставить курсор в поле названия — чтобы печатать
     // сразу, без клика мышкой.
     state.focusTitleOnCreate = true;
@@ -266,7 +273,26 @@ function wireHeaderActions(container, config, state) {
 }
 
 function isRealFolderId(id) {
-  return id && id !== "all" && id !== "unfiled" && id !== "favorites";
+  return id && id !== "all" && id !== "unfiled" && id !== "favorites" && id !== "trash";
+}
+
+function countTrash(state) {
+  return state.trash.folders.length + state.trash.items.length;
+}
+
+// Перечитывает папки/заметки/корзину и делает полный render. Общая точка после
+// любой операции с Корзиной (удаление в неё, восстановление, удаление навсегда,
+// очистка) — счётчик и видимость раздела "Корзина" должны обновиться сразу.
+async function refreshTrashState(container, config, state) {
+  state.trash = await itemsService.listTrash(config.section);
+  state.folders = await itemsService.listFolders(config.section);
+  state.items = await itemsService.listItems(config.section);
+  // Корзина опустела, пока была открыта, — раздел исчезнет из списка слева,
+  // самим собой оставаться в нём было бы некуда.
+  if (state.selectedFolderId === "trash" && countTrash(state) === 0) {
+    state.selectedFolderId = "all";
+  }
+  render(container, config, state);
 }
 
 // Ниже или выше строки встанет перетаскиваемый элемент — по тому, в какую
@@ -321,8 +347,16 @@ function sortItemsByPin(list, locationKey) {
 function renderFolders(container, config, state) {
   const bodyEl = container.querySelector('[data-role="folder-body"]');
 
+  const trashCount = countTrash(state);
+
   bodyEl.innerHTML = `
     <ul class="folder-list">
+      ${trashCount > 0
+        ? `<li class="folder-item ${state.selectedFolderId === "trash" ? "is-active" : ""}" data-folder-id="trash">
+        <span class="folder-name">${t("panel.trash")}</span>
+        <span class="folder-count">(${trashCount})</span>
+      </li>`
+        : ""}
       <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">
         <span class="folder-name">${t("panel.favorites")}</span>
         <span class="folder-count">(${countFavorites(state)})</span>
@@ -422,6 +456,32 @@ function renderFolders(container, config, state) {
         ]);
       });
     }
+
+    // ПКМ на самом разделе "Корзина" (не на элементе внутри неё) — массовые операции.
+    if (folderId === "trash") {
+      el.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showContextMenu(event.clientX, event.clientY, [
+          {
+            label: t("panel.restoreAll"),
+            onClick: async () => {
+              await itemsService.restoreAllTrash(config.section);
+              await refreshTrashState(container, config, state);
+            },
+          },
+          {
+            label: t("panel.emptyTrash"),
+            onClick: async () => {
+              const ok = await openConfirm({ message: t("panel.emptyTrashConfirm") });
+              if (!ok) return;
+              await itemsService.emptyTrash(config.section);
+              await refreshTrashState(container, config, state);
+            },
+          },
+        ]);
+      });
+    }
   });
 
   // Крестик виден только у пустой папки — удаляет мгновенно, без подтверждения.
@@ -459,6 +519,7 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
   await itemsService.moveFolderToTrash(config.section, folderId);
   state.folders = await itemsService.listFolders(config.section);
   state.items = await itemsService.listItems(config.section);
+  state.trash = await itemsService.listTrash(config.section);
   if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
   render(container, config, state);
 }
@@ -524,9 +585,84 @@ async function reorderFolder(draggedId, targetId, state, after) {
   }
 }
 
+// Все удалённые папки и заметки одним списком — недавно удалённое сверху,
+// вперемешку по типу, как в обычной корзине файловой системы.
+function getTrashRows(state) {
+  return [
+    ...state.trash.folders.map((f) => ({ ...f, kind: "folder" })),
+    ...state.trash.items.map((i) => ({ ...i, kind: "item" })),
+  ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+}
+
+// Содержимое Корзины — тот же визуальный стиль строки, что у обычного списка
+// заметок (.item-list-row/.item-title), но без перетаскивания и с другим
+// контекстным меню (Восстановить / Удалить навсегда вместо обычных пунктов).
+function renderTrashList(bodyEl, titleEl, container, config, state) {
+  const rows = getTrashRows(state);
+  titleEl.textContent = getListTitle(state);
+
+  bodyEl.innerHTML = `
+    <ul class="item-list">
+      ${rows
+        .map((row) => {
+          const title = row.kind === "folder" ? row.name : row.title || t("panel.untitled");
+          const active = state.selectedTrash && state.selectedTrash.kind === row.kind && state.selectedTrash.id === row.id;
+          return `
+        <li class="item-list-row ${active ? "is-active" : ""}" data-trash-kind="${row.kind}" data-trash-id="${row.id}">
+          <span class="item-title">${escapeHtml(title)}</span>
+        </li>`;
+        })
+        .join("")}
+      ${!rows.length ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
+    </ul>
+  `;
+
+  bodyEl.querySelectorAll("[data-trash-id]").forEach((el) => {
+    const id = el.dataset.trashId;
+    const kind = el.dataset.trashKind;
+
+    el.addEventListener("click", () => {
+      state.selectedTrash = { kind, id };
+      render(container, config, state);
+    });
+
+    el.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: t("panel.restore"),
+          onClick: async () => {
+            if (kind === "folder") await itemsService.restoreFolder(id);
+            else await itemsService.restoreItem(id);
+            if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+            await refreshTrashState(container, config, state);
+          },
+        },
+        {
+          label: t("panel.deleteForever"),
+          onClick: async () => {
+            const ok = await openConfirm({ message: t("panel.deleteForeverConfirm") });
+            if (!ok) return;
+            if (kind === "folder") await itemsService.deleteFolderForever(id);
+            else await itemsService.deleteItemForever(id);
+            if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+            await refreshTrashState(container, config, state);
+          },
+        },
+      ]);
+    });
+  });
+}
+
 function renderList(container, config, state) {
   const bodyEl = container.querySelector('[data-role="list-body"]');
   const titleEl = container.querySelector('[data-role="list-title"]');
+
+  if (state.selectedFolderId === "trash") {
+    renderTrashList(bodyEl, titleEl, container, config, state);
+    return;
+  }
+
   const items = getFilteredItems(state);
   // В разделе "Избранное" папки не являются заметками — показываем их
   // отдельными строками-ссылками сверху, клик по ним просто переключает
@@ -565,6 +701,7 @@ function renderList(container, config, state) {
 
     el.addEventListener("click", () => {
       state.selectedItemId = itemId;
+      state.selectedTrash = null;
       render(container, config, state);
     });
 
@@ -682,6 +819,7 @@ async function deleteItemFlow(itemId, container, config, state, confirm) {
   }
   await itemsService.moveItemToTrash(itemId);
   state.items = await itemsService.listItems(config.section);
+  state.trash = await itemsService.listTrash(config.section);
   if (state.selectedItemId === itemId) state.selectedItemId = null;
   render(container, config, state);
 }
@@ -711,6 +849,7 @@ function getFilteredItems(state) {
 }
 
 function getListTitle(state) {
+  if (state.selectedFolderId === "trash") return t("panel.trash");
   if (state.selectedFolderId === "favorites") return t("panel.favorites");
   if (state.selectedFolderId === "all") return t("panel.all");
   if (state.selectedFolderId === "unfiled") return t("panel.unfiled");
@@ -718,8 +857,80 @@ function getListTitle(state) {
   return folder ? folder.name : "";
 }
 
+// Просмотр удалённого — упрощённая read-only карточка, не полноценный редактор
+// (истории/тулбара для удалённого не нужно). item.content вставляется как есть,
+// тем же приёмом, что и превью в transferPicker.js — это собственный прошлый
+// HTML заметки, не чужой ввод.
+function renderTrashDetail(detailEl, container, config, state) {
+  const sel = state.selectedTrash;
+  if (!sel) {
+    detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
+    return;
+  }
+
+  function wireActions(kind, id) {
+    detailEl.querySelector('[data-action="trash-restore"]').addEventListener("click", async () => {
+      if (kind === "folder") await itemsService.restoreFolder(id);
+      else await itemsService.restoreItem(id);
+      state.selectedTrash = null;
+      await refreshTrashState(container, config, state);
+    });
+    detailEl.querySelector('[data-action="trash-delete-forever"]').addEventListener("click", async () => {
+      const ok = await openConfirm({ message: t("panel.deleteForeverConfirm") });
+      if (!ok) return;
+      if (kind === "folder") await itemsService.deleteFolderForever(id);
+      else await itemsService.deleteItemForever(id);
+      state.selectedTrash = null;
+      await refreshTrashState(container, config, state);
+    });
+  }
+
+  if (sel.kind === "folder") {
+    const folder = state.trash.folders.find((f) => f.id === sel.id);
+    if (!folder) {
+      detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
+      return;
+    }
+    detailEl.innerHTML = `
+      <div class="trash-detail">
+        <h2 class="trash-detail-title">${escapeHtml(folder.name)}</h2>
+        <p class="trash-detail-hint">${t("panel.trashFolderHint")}</p>
+        <div class="trash-detail-actions">
+          <button type="button" class="btn btn-small" data-action="trash-restore">${t("panel.restore")}</button>
+          <button type="button" class="btn btn-danger btn-small" data-action="trash-delete-forever">${t("panel.deleteForever")}</button>
+        </div>
+      </div>
+    `;
+    wireActions("folder", folder.id);
+    return;
+  }
+
+  const item = state.trash.items.find((i) => i.id === sel.id);
+  if (!item) {
+    detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
+    return;
+  }
+  detailEl.innerHTML = `
+    <div class="trash-detail">
+      <h2 class="trash-detail-title">${escapeHtml(item.title || t("panel.untitled"))}</h2>
+      <div class="trash-detail-actions">
+        <button type="button" class="btn btn-small" data-action="trash-restore">${t("panel.restore")}</button>
+        <button type="button" class="btn btn-danger btn-small" data-action="trash-delete-forever">${t("panel.deleteForever")}</button>
+      </div>
+      <div class="rte-content trash-detail-content">${item.content}</div>
+    </div>
+  `;
+  wireActions("item", item.id);
+}
+
 function renderDetail(container, config, state) {
   const detailEl = container.querySelector('[data-role="detail"]');
+
+  if (state.selectedTrash) {
+    renderTrashDetail(detailEl, container, config, state);
+    return;
+  }
+
   const item = state.items.find((i) => i.id === state.selectedItemId);
 
   if (!item) {
@@ -815,6 +1026,7 @@ function renderDetail(container, config, state) {
     clearTimeout(saveTimer);
     await itemsService.moveItemToTrash(item.id);
     state.items = await itemsService.listItems(config.section);
+    state.trash = await itemsService.listTrash(config.section);
     state.selectedItemId = null;
     render(container, config, state);
   });
