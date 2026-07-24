@@ -91,6 +91,10 @@ function getButtonDefs() {
       apply: (color) => document.execCommand("hiliteColor", false, color),
       reset: () => document.execCommand("hiliteColor", false, "transparent"),
       isActive: (editorEl) => isColorActive(editorEl, "backgroundColor"),
+      // Заливка = <span style="background-color">. При схлопнутой каретке
+      // включаем/выключаем её через DOM-тумблер (см. toggleColorAtCaret), иначе
+      // нативный hiliteColor не снимается по ходу печати.
+      caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
     // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
@@ -387,6 +391,42 @@ function placeCaretAfter(node, offset) {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+// Носитель цвета: ближайший предок каретки (в пределах страницы), чей инлайн-стиль
+// задаёт нужное свойство. hiliteColor при styleWithCSS=false кладёт заливку в
+// <span style="background-color:…"> — его и ловим по el.style[styleProp].
+function colorCarrier(editorEl, node, styleProp) {
+  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  while (el && editorEl.contains(el) && !el.classList.contains("rte-page")) {
+    if (el.style && el.style[styleProp]) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+// Тумблер цвета при СХЛОПНУТОЙ каретке. Нативный execCommand в этом случае не
+// разрывает залитый span и не выводит каретку наружу — печать продолжается с
+// заливкой, пока не кликнешь мышью в другое место. Поэтому здесь та же механика,
+// что у <u>/<s>: внутри залитого span — разрезать его и увести каретку в
+// ZWSP-якорь снаружи (exitInlineFormat); вне заливки — вставить пустой залитый
+// span с якорем и поставить каретку внутрь.
+function toggleColorAtCaret(editorEl, styleProp, color) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return;
+
+  const carrier = colorCarrier(editorEl, range.startContainer, styleProp);
+  if (carrier) {
+    exitInlineFormat(carrier, range);
+  } else {
+    const wrapper = document.createElement("span");
+    wrapper.style[styleProp] = color;
+    wrapper.appendChild(document.createTextNode(CARET_ANCHOR));
+    range.insertNode(wrapper);
+    placeCaretAfter(wrapper.firstChild, wrapper.firstChild.length);
+  }
 }
 
 // Ближайший блочный элемент, содержащий каретку (внутри редактора, но не сам
@@ -907,8 +947,18 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       updateSwatch(btn, def);
       // ЛКМ — быстрый переключатель последним выбранным цветом, ПКМ — палитра.
       btn.addEventListener("click", () => {
-        if (def.isActive(contentEl)) def.reset();
-        else def.apply(getLastColor(def.storageKey, def.defaultColor));
+        const selection = window.getSelection();
+        const collapsed = selection.rangeCount && selection.getRangeAt(0).collapsed;
+        // Схлопнутая каретка + стиль, который умеем тумблить через DOM (заливка):
+        // разрезаем/оборачиваем span сами, иначе нативная команда не снимается при
+        // печати. С реальным выделением execCommand корректно оборачивает диапазон.
+        if (def.caretStyleProp && collapsed) {
+          toggleColorAtCaret(contentEl, def.caretStyleProp, getLastColor(def.storageKey, def.defaultColor));
+        } else if (def.isActive(contentEl)) {
+          def.reset();
+        } else {
+          def.apply(getLastColor(def.storageKey, def.defaultColor));
+        }
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
