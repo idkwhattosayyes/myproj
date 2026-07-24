@@ -1032,10 +1032,48 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (page) activePageEl = page;
   });
 
+  // Мини-меню форматирования выделенного текста — 4 пункта (подчёркивание,
+  // зачёркивание, цвет текста, заливка), каждый применяется одним кликом без
+  // вложенной палитры: специально узкий набор, полная палитра цвета по-прежнему
+  // доступна через ПКМ на кнопке тулбара. У кнопок showContextMenu нет
+  // mousedown-preventDefault, поэтому клик по пункту может прийти уже после того,
+  // как выделение схлопнулось, — сохраняем Range заранее и восстанавливаем перед
+  // применением формата (тот же приём, что insertTable использует вокруг модалки).
+  function applyColorToggle(def) {
+    if (def.isActive(contentEl)) def.reset();
+    else def.apply(getLastColor(def.storageKey, def.defaultColor));
+  }
+
+  function showSelectionMenu(event, savedRange) {
+    const applyFormat = (action) => {
+      restoreRange(savedRange);
+      action();
+      focusActivePage();
+      onChange(serializeEditor(contentEl));
+      refreshToolbarState();
+    };
+    showContextMenu(event.clientX, event.clientY, [
+      { label: t("editor.underline"), onClick: () => applyFormat(() => buttonDefs.underline.command(contentEl)) },
+      { label: t("editor.strikethrough"), onClick: () => applyFormat(() => buttonDefs.strikethrough.command(contentEl)) },
+      { label: t("editor.textColor"), onClick: () => applyFormat(() => applyColorToggle(buttonDefs.textColor)) },
+      { label: t("editor.highlight"), onClick: () => applyFormat(() => applyColorToggle(buttonDefs.highlight)) },
+    ]);
+  }
+
   // Единственное контекстное меню редактора: сюда же попадают пункты раздела
-  // (в Заметках — переключение режима отображения). Два независимых обработчика
-  // открывали бы два меню одно поверх другого.
+  // (в Заметках — переключение режима отображения) и мини-меню форматирования на
+  // выделении. Два независимых обработчика открывали бы два меню одно поверх
+  // другого.
   contentEl.addEventListener("contextmenu", (event) => {
+    const selection = window.getSelection();
+    const hasTextSelection = selection.rangeCount && !selection.isCollapsed
+      && contentEl.contains(selection.getRangeAt(0).commonAncestorContainer);
+    if (hasTextSelection) {
+      event.preventDefault();
+      showSelectionMenu(event, selection.getRangeAt(0).cloneRange());
+      return;
+    }
+
     const items = getExtraMenuItems ? [...getExtraMenuItems()] : [];
     const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
     if (page && currentPageMode === "paged" && getPages().length > 1) {
