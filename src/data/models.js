@@ -22,7 +22,9 @@ export function createItemModel({ title = "", content = "", folderId = null, sec
     folderId,
     section,
     isFavorite,
-    pinned: false, // закреплена наверху внутри своей папки
+    // Места, где заметка закреплена (наверху списка): "all" / "favorites" /
+    // "unfiled" / id папки. Закрепление независимо для каждого места показа.
+    pinnedIn: [],
     pageMode: "flow", // вид редактора: "flow" — сплошной лист, "paged" — постранично
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,

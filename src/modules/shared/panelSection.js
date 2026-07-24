@@ -266,24 +266,36 @@ function clearDropMarks(el) {
   el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
 }
 
-// Значки у строки: сердечко избранного и булавка закрепления. Оба свойства
-// глобальные, поэтому показываем везде (pinActive у заметок теперь всегда true; у
-// папок закрепление тоже глобальное). Закреплённые поднимаются наверх списка.
-function rowBadges(entity, pinActive) {
+// Значки у строки: сердечко избранного и булавка закрепления. showPin — показывать
+// ли булавку в текущем контексте: у папок закрепление глобальное (folder.pinned), у
+// заметок — своё для каждого места показа (см. isPinnedIn).
+function rowBadges(entity, showPin) {
   const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
   // Булавка — инлайн-SVG с fill="currentColor": цвет задаём в CSS (#C2D1C9), как у
   // сердечка. Эмодзи 📌 не красится, поэтому именно SVG.
-  const pin = pinActive && entity.pinned
+  const pin = showPin
     ? `<span class="pin-badge" title="${t("panel.pinned")}"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M8 1c-2.5 0-4.5 2-4.5 4.5 0 3.4 4.5 9 4.5 9s4.5-5.6 4.5-9C12.5 3 10.5 1 8 1zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z"/></svg></span>`
     : "";
   return heart + pin;
 }
 
+// Закреплена ли заметка в конкретном месте показа (ключ: "all"/"favorites"/
+// "unfiled"/id папки). Закрепление независимо для каждого места.
+function isPinnedIn(item, locationKey) {
+  return Array.isArray(item.pinnedIn) && item.pinnedIn.includes(locationKey);
+}
+
 // Закреплённые — наверх, остальные ниже. Стабильно: массив приходит уже
 // отсортированным по order, а фильтры сохраняют порядок, поэтому внутри каждой
 // группы относительный порядок (в т.ч. порядок среди закреплённых) не рушится.
+// Для папок закрепление глобальное (folder.pinned).
 function sortPinnedFirst(list) {
   return [...list.filter((e) => e.pinned), ...list.filter((e) => !e.pinned)];
+}
+
+// То же для заметок, но закрепление берётся для конкретного места показа.
+function sortItemsByPin(list, locationKey) {
+  return [...list.filter((e) => isPinnedIn(e, locationKey)), ...list.filter((e) => !isPinnedIn(e, locationKey))];
 }
 
 function renderFolders(container, config, state) {
@@ -303,7 +315,7 @@ function renderFolders(container, config, state) {
           return `
         <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}" data-folder-id="${folder.id}" draggable="true">
           <span class="folder-name">${escapeHtml(folder.name)}</span>
-          ${rowBadges(folder, true)}
+          ${rowBadges(folder, folder.pinned)}
           <span class="folder-count">(${count})</span>
           ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
         </li>`;
@@ -497,9 +509,10 @@ function renderList(container, config, state) {
   // на эту папку в обычном виде (у папки нет собственного контента).
   const favFolders = state.selectedFolderId === "favorites" ? state.folders.filter((f) => f.isFavorite) : [];
   const isEmpty = !favFolders.length && !items.length;
-  // Закрепление заметок глобальное: булавка, оттенок и подъём наверх работают во
-  // всех видах списка (Все / Без папки / Избранное / конкретная папка).
-  const pinActive = true;
+  // Закрепление заметок независимо для каждого места показа. Текущее место —
+  // это selectedFolderId ("all"/"favorites"/"unfiled"/id папки): булавку, оттенок и
+  // подъём наверх показываем только для заметок, закреплённых именно здесь.
+  const locationKey = state.selectedFolderId;
 
   titleEl.textContent = getListTitle(state);
 
@@ -512,9 +525,9 @@ function renderList(container, config, state) {
         .map((item) => {
           const empty = isItemEmpty(item);
           return `
-        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""} ${pinActive && item.pinned ? "is-pinned" : ""}" data-item-id="${item.id}" draggable="true">
+        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""} ${isPinnedIn(item, locationKey) ? "is-pinned" : ""}" data-item-id="${item.id}" draggable="true">
           <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
-          ${rowBadges(item, pinActive)}
+          ${rowBadges(item, isPinnedIn(item, locationKey))}
           ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
         </li>`;
         })
@@ -583,9 +596,15 @@ function renderList(container, config, state) {
           },
         },
         {
-          label: item.pinned ? t("panel.unpin") : t("panel.pin"),
+          // Закрепление тоглим для ТЕКУЩЕГО места показа (selectedFolderId),
+          // независимо от других мест, где заметка тоже видна.
+          label: isPinnedIn(item, state.selectedFolderId) ? t("panel.unpin") : t("panel.pin"),
           onClick: async () => {
-            await itemsService.updateItem(item.id, { pinned: !item.pinned });
+            const key = state.selectedFolderId;
+            const pinnedIn = isPinnedIn(item, key)
+              ? item.pinnedIn.filter((k) => k !== key)
+              : [...(item.pinnedIn || []), key];
+            await itemsService.updateItem(item.id, { pinnedIn });
             state.items = await itemsService.listItems(config.section);
             render(container, config, state);
           },
@@ -643,11 +662,12 @@ async function reorderItem(draggedId, targetId, state, after) {
 }
 
 function getFilteredItems(state) {
-  // Закреплённые заметки поднимаются наверх в любом виде списка.
-  if (state.selectedFolderId === "favorites") return sortPinnedFirst(state.items.filter((item) => item.isFavorite));
-  if (state.selectedFolderId === "unfiled") return sortPinnedFirst(state.items.filter((item) => !item.folderId));
-  if (state.selectedFolderId === "all") return sortPinnedFirst(state.items);
-  return sortPinnedFirst(state.items.filter((item) => item.folderId === state.selectedFolderId));
+  // Закреплённые наверх — но отдельно для каждого места показа (ключ = вид списка).
+  const key = state.selectedFolderId;
+  if (key === "favorites") return sortItemsByPin(state.items.filter((item) => item.isFavorite), key);
+  if (key === "unfiled") return sortItemsByPin(state.items.filter((item) => !item.folderId), key);
+  if (key === "all") return sortItemsByPin(state.items, key);
+  return sortItemsByPin(state.items.filter((item) => item.folderId === key), key);
 }
 
 function getListTitle(state) {

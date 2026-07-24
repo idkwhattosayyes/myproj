@@ -37,6 +37,17 @@ function byOrder(a, b) {
   return (a.order ?? 0) - (b.order ?? 0);
 }
 
+// Приводим заметку к новой форме на чтении, чтобы код выше по стеку всегда видел
+// массивы, а старые записи не требовали разовой миграции:
+//   folderId (скаляр) → folderIds (массив; заметка может быть сразу в нескольких папках)
+//   pinned (булев)    → pinnedIn (места закрепления: "all"/"favorites"/"unfiled"/id папки)
+// Идемпотентно: если новые поля уже есть, берём их; legacy-скаляры игнорируем.
+function normalizeItem(item) {
+  const folderIds = Array.isArray(item.folderIds) ? item.folderIds : item.folderId ? [item.folderId] : [];
+  const pinnedIn = Array.isArray(item.pinnedIn) ? item.pinnedIn : item.pinned ? ["all"] : [];
+  return { ...item, folderIds, pinnedIn };
+}
+
 export const localStorageAdapter = {
   // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
   async getFolders(section) {
@@ -67,10 +78,12 @@ export const localStorageAdapter = {
   async getItems(section) {
     return readCollection(STORAGE_KEYS.items)
       .filter((item) => matchesSection(item.section, section))
+      .map(normalizeItem)
       .sort(byOrder);
   },
   async getItem(id) {
-    return readCollection(STORAGE_KEYS.items).find((item) => item.id === id) ?? null;
+    const item = readCollection(STORAGE_KEYS.items).find((item) => item.id === id);
+    return item ? normalizeItem(item) : null;
   },
   async createItem(item) {
     const items = readCollection(STORAGE_KEYS.items);
