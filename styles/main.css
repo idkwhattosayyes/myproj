@@ -310,6 +310,63 @@ button {
   inset: 0;
 }
 
+/* Окно ввода/редактирования списка внешних ссылок для выделенного слова
+   (linkEditor.js): по одной строке на URL, круглый крестик убирает свою строку. */
+.link-editor-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.link-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.link-editor-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+.link-editor-row-remove {
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.link-editor-row-remove:hover {
+  color: #b91c1c;
+  border-color: #f3c4c4;
+}
+
+.link-editor-add {
+  display: block;
+  margin-bottom: 0.9rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed #c7ccd3;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.link-editor-add:hover {
+  border-color: #9ca3af;
+  color: #1f2328;
+}
+
 /* Окно выбора для экспорта/импорта: дерево «папки → заметки» с галочками слева
    и превью заметки справа. Размер средний — шире обычной модалки, но не на весь
    экран. */

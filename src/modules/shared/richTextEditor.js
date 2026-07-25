@@ -4,6 +4,7 @@ import { pushLayer } from "../../utils/escapeLayers.js";
 import { showContextMenu } from "./contextMenu.js";
 import { fileToDataUrl, downscaleImage } from "../../utils/image.js";
 import { openPhotoEditor } from "./photoEditor.js";
+import { openLinkEditor } from "./linkEditor.js";
 import { escapeAttr } from "../../utils/dom.js";
 import {
   TEXT_COLORS,
@@ -100,6 +101,10 @@ function getButtonDefs() {
       caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Ссылка на внешний URL для выделенного слова/фразы — не команда форматирования
+    // (нужны модалка ввода и меню Delete/Change), обрабатывается отдельно в
+    // buildToolbarButton (см. isLink).
+    link: { label: "🔗", title: t("editor.setLink"), isLink: true },
     // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
     // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
     // доступ к сохранённому диапазону и serializeEditor.
@@ -163,9 +168,18 @@ const FORMATS = {
   s: { selector: "s", create: () => document.createElement("s") },
   h1: { selector: "span.rte-h1", create: () => createHeadingSpan("rte-h1") },
   h2: { selector: "span.rte-h2", create: () => createHeadingSpan("rte-h2") },
+  linkExternal: {
+    selector: 'a.rte-link[data-link-type="external"]',
+    create: () => {
+      const a = document.createElement("a");
+      a.className = "rte-link";
+      a.dataset.linkType = "external";
+      return a;
+    },
+  },
 };
 
-const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2";
+const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2,a.rte-link";
 
 function createHeadingSpan(className) {
   const span = document.createElement("span");
@@ -273,6 +287,33 @@ function getFormatAncestor(editorEl, format, node) {
   return found && editorEl.contains(found) ? found : null;
 }
 
+// Уникальные обёртки-предки для набора текстовых узлов, в порядке появления —
+// одно выделение может распасться на несколько <a> при пересечении с другим
+// форматом (см. wrapSelection), но данные ссылки (URL, id заметки) должны быть
+// одинаковыми на всех фрагментах разом.
+function uniqueAncestors(editorEl, nodes, format) {
+  const seen = new Set();
+  const result = [];
+  nodes.forEach((node) => {
+    const el = getFormatAncestor(editorEl, format, node);
+    if (el && !seen.has(el)) {
+      seen.add(el);
+      result.push(el);
+    }
+  });
+  return result;
+}
+
+// Бейдж-значок ссылки (см. .rte-link[data-link-start] в styles/editor.css)
+// рисуется только у ПЕРВОГО фрагмента распавшейся ссылки — иначе при пересечении
+// с другим форматом он задваивался бы.
+function markLinkStart(elements) {
+  elements.forEach((el, index) => {
+    if (index === 0) el.dataset.linkStart = "";
+    else delete el.dataset.linkStart;
+  });
+}
+
 // Непустые текстовые узлы, которые пересекает выделение.
 function collectTextNodes(range) {
   const root = range.commonAncestorContainer;
@@ -298,7 +339,7 @@ function wrapSelection(editorEl, format, range) {
   }
 
   const nodes = collectTextNodes(range);
-  if (!nodes.length) return;
+  if (!nodes.length) return nodes;
 
   nodes.forEach((node) => {
     if (getFormatAncestor(editorEl, format, node)) return; // уже оформлен
@@ -308,6 +349,7 @@ function wrapSelection(editorEl, format, range) {
   });
 
   selectNodes(nodes);
+  return nodes;
 }
 
 function unwrapSelection(editorEl, format, range) {
@@ -1518,6 +1560,65 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         // выделение/каретка в редакторе теряются.
         openPhotoPicker(getCurrentRange(contentEl));
       });
+    } else if (def.isLink) {
+      // Диапазон запоминаем сейчас — на время модалки/подменю фокус уходит из
+      // редактора и выделение иначе схлопнулось бы.
+      btn.addEventListener("click", async () => {
+        const range = getCurrentRange(contentEl);
+        if (!range) return;
+
+        if (isInlineFormatActive(contentEl, FORMATS.linkExternal)) {
+          const wrappers = uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkExternal);
+          const currentLinks = wrappers.length ? JSON.parse(wrappers[0].dataset.links || "[]") : [];
+          const rect = btn.getBoundingClientRect();
+          showContextMenu(rect.left, rect.bottom, [
+            {
+              label: t("editor.linkDelete"),
+              onClick: () => {
+                unwrapSelection(contentEl, FORMATS.linkExternal, range);
+                recordHistory();
+                onChange(serializeEditor(contentEl));
+                onApplied();
+              },
+            },
+            {
+              label: t("editor.linkChange"),
+              onClick: async () => {
+                const links = await openLinkEditor(currentLinks);
+                if (links) {
+                  if (!links.length) {
+                    unwrapSelection(contentEl, FORMATS.linkExternal, range);
+                  } else {
+                    const targets = uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkExternal);
+                    targets.forEach((el) => {
+                      el.dataset.links = JSON.stringify(links);
+                      el.title = links.join("\n");
+                    });
+                    markLinkStart(targets);
+                  }
+                  recordHistory();
+                  onChange(serializeEditor(contentEl));
+                }
+                onApplied();
+              },
+            },
+          ]);
+        } else {
+          const links = await openLinkEditor([]);
+          if (links && links.length) {
+            const wrappers = uniqueAncestors(contentEl, wrapSelection(contentEl, FORMATS.linkExternal, range), FORMATS.linkExternal);
+            wrappers.forEach((el) => {
+              el.dataset.links = JSON.stringify(links);
+              el.title = links.join("\n");
+            });
+            markLinkStart(wrappers);
+            focusActivePage();
+            recordHistory();
+            onChange(serializeEditor(contentEl));
+          }
+          onApplied();
+        }
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -1581,7 +1682,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     closeSelectionToolbar();
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
-    ["underline", "strikethrough", "textColor", "highlight"].forEach((key) => {
+    ["underline", "strikethrough", "textColor", "highlight", "link"].forEach((key) => {
       const btn = buildToolbarButton(key, closeSelectionToolbar);
       if (btn) bar.appendChild(btn);
     });
@@ -1649,6 +1750,38 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (event.clientX - li.getBoundingClientRect().left > CHECKLIST_MARKER_WIDTH) return;
     li.classList.toggle("is-done");
     onChange(serializeEditor(contentEl));
+  });
+
+  // Переход по внешней ссылке — обычный клик, всегда (как у ссылки в браузере),
+  // Ctrl/Cmd-клик или средняя кнопка — в новой вкладке. Несколько ссылок сразу —
+  // клик показывает тот же поповер, что и наведение, но кликабельный: неясно,
+  // какую из них открывать.
+  contentEl.addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="external"]') : null;
+    if (!link) return;
+    event.preventDefault();
+    const links = JSON.parse(link.dataset.links || "[]");
+    if (!links.length) return;
+    if (links.length === 1) openExternalLink(links[0], event);
+    else showLinkPreview(link, links, { clickable: true });
+  });
+
+  // Превью ссылок при наведении — mouseover/mouseout вместо mouseenter/mouseleave:
+  // те не всплывают, а слушатель один на contentEl (ссылки создаются динамически).
+  contentEl.addEventListener("mouseover", (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="external"]') : null;
+    if (!link || link.contains(event.relatedTarget)) return;
+    const links = JSON.parse(link.dataset.links || "[]");
+    if (links.length) showLinkPreview(link, links, { clickable: links.length > 1 });
+  });
+  contentEl.addEventListener("mouseout", (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="external"]') : null;
+    if (!link) return;
+    // Не гасим, если курсор перешёл на сам поповер (иначе по кликабельному
+    // списку нельзя было бы кликнуть) или остался внутри той же ссылки.
+    const to = event.relatedTarget;
+    if (link.contains(to) || (linkPreviewEl && linkPreviewEl.contains(to))) return;
+    hideLinkPreview();
   });
 
   // Отмена/повтор с клавиатуры. Перехватываем сами: нативный undo не знает про
@@ -1915,6 +2048,69 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
   btn.appendChild(popover);
   unregisterPopoverLayer = pushLayer(closeColorPopovers);
   setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
+}
+
+// Открывает внешнюю ссылку с учётом модификатора — как обычная ссылка в
+// браузере: ЛКМ переходит в текущей вкладке, Ctrl/Cmd-клик или средняя кнопка —
+// в новой.
+function openExternalLink(url, event) {
+  const newTab = event.ctrlKey || event.metaKey || event.button === 1;
+  if (newTab) window.open(url, "_blank", "noopener");
+  else window.location.href = url;
+}
+
+// Компактный поповер со списком ссылок — по наведению на внешнюю ссылку и (если
+// их несколько) по клику вместо прямого перехода: неясно, какую открывать.
+// Стиль — тот же скруглённый "язык", что у результатов поиска (.search-results
+// в styles/search.css).
+let linkPreviewEl = null;
+let unregisterLinkPreviewLayer = null;
+
+function hideLinkPreview() {
+  if (!linkPreviewEl) return;
+  linkPreviewEl.remove();
+  linkPreviewEl = null;
+  if (unregisterLinkPreviewLayer) {
+    unregisterLinkPreviewLayer();
+    unregisterLinkPreviewLayer = null;
+  }
+}
+
+function showLinkPreview(anchorEl, links, { clickable = false } = {}) {
+  hideLinkPreview();
+  const popover = document.createElement("div");
+  popover.className = "rte-link-preview";
+
+  links.forEach((url) => {
+    const row = document.createElement(clickable ? "button" : "div");
+    if (clickable) row.type = "button";
+    row.className = "rte-link-preview-row";
+    row.textContent = url;
+    if (clickable) {
+      row.addEventListener("click", (event) => {
+        openExternalLink(url, event);
+        hideLinkPreview();
+      });
+    }
+    popover.appendChild(row);
+  });
+
+  document.body.appendChild(popover);
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const box = popover.getBoundingClientRect();
+  popover.style.left = `${clamp(anchorRect.left, 8, window.innerWidth - box.width - 8)}px`;
+  popover.style.top = `${clamp(anchorRect.bottom + 4, 8, window.innerHeight - box.height - 8)}px`;
+
+  // Курсор мог уйти со ссылки прямо на поповер (это два разных элемента) —
+  // закрываем, только когда он покинул и поповер, и саму ссылку.
+  popover.addEventListener("mouseleave", (event) => {
+    const to = event.relatedTarget;
+    if (to && to.closest && to.closest('a.rte-link[data-link-type="external"]') === anchorEl) return;
+    hideLinkPreview();
+  });
+
+  linkPreviewEl = popover;
+  unregisterLinkPreviewLayer = pushLayer(hideLinkPreview);
 }
 
 // Поповер цвета — такой же "слой", как меню и модалки: закрывается кликом вне
