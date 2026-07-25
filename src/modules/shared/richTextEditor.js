@@ -1122,9 +1122,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   }
   // ---------------------------------------------------------------------
 
-  buttons.forEach((key) => {
+  // Сборка одной кнопки тулбара вынесена в helper — этот же код собирает и
+  // кнопки основного тулбара, и кнопки мини-панели форматирования при ПКМ на
+  // выделении (см. showSelectionToolbar ниже): поведение обязано совпадать.
+  // onApplied вызывается после применения формата — основной тулбар передаёт
+  // no-op, мини-панель — своё закрытие.
+  function buildToolbarButton(key, onApplied = () => {}) {
     const def = buttonDefs[key];
-    if (!def) return;
+    if (!def) return null;
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1162,16 +1167,18 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
+        onApplied();
       });
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState, focusActivePage);
+        toggleColorPopover(btn, def, contentEl, onChange, refreshToolbarState, focusActivePage, onApplied);
       });
     } else if (def.isHistory) {
       btn.addEventListener("click", () => {
         if (def.isHistory === "undo") undo();
         else redo();
         focusActivePage();
+        onApplied();
       });
     } else if (def.isVoice) {
       voiceBtn = btn;
@@ -1182,6 +1189,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         btn.addEventListener("click", () => {
           if (recording) stopVoice();
           else startVoice();
+          onApplied();
         });
         btn.addEventListener("contextmenu", (event) => {
           event.preventDefault();
@@ -1192,12 +1200,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       btn.addEventListener("click", () => {
         togglePageMode();
         focusActivePage();
+        onApplied();
       });
     } else if (def.isDraw) {
       updateSwatch(btn, def); // полоска снизу — как у textColor, текущий цвет пера
       btn.addEventListener("click", () => {
         toggleDrawing();
         focusActivePage();
+        onApplied();
       });
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -1211,10 +1221,16 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
+        onApplied();
       });
     }
 
-    toolbarEl.appendChild(btn);
+    return btn;
+  }
+
+  buttons.forEach((key) => {
+    const btn = buildToolbarButton(key);
+    if (btn) toolbarEl.appendChild(btn);
   });
 
   contentEl.addEventListener("input", () => {
@@ -1233,32 +1249,47 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (page) activePageEl = page;
   });
 
-  // Мини-меню форматирования выделенного текста — 4 пункта (подчёркивание,
-  // зачёркивание, цвет текста, заливка), каждый применяется одним кликом без
-  // вложенной палитры: специально узкий набор, полная палитра цвета по-прежнему
-  // доступна через ПКМ на кнопке тулбара. У кнопок showContextMenu нет
-  // mousedown-preventDefault, поэтому клик по пункту может прийти уже после того,
-  // как выделение схлопнулось, — сохраняем Range заранее и восстанавливаем перед
-  // применением формата (тот же приём, что insertTable использует вокруг модалки).
-  function applyColorToggle(def) {
-    if (def.isActive(contentEl)) def.reset();
-    else def.apply(getLastColor(def.storageKey, def.defaultColor));
+  // Мини-панель форматирования выделенного текста при ПКМ — те же самые
+  // кнопки, что и в основном тулбаре (buildToolbarButton), просто в
+  // уменьшенном плавающем блоке: одинаковый вид, активное состояние и
+  // ЛКМ/ПКМ-логика цветовых кнопок. Клик по любой из них закрывает панель.
+  let selectionToolbarEl = null;
+  let unregisterSelectionLayer = null;
+
+  function onSelectionToolbarOutside(event) {
+    if (selectionToolbarEl && !selectionToolbarEl.contains(event.target)) closeSelectionToolbar();
   }
 
-  function showSelectionMenu(event, savedRange) {
-    const applyFormat = (action) => {
-      restoreRange(savedRange);
-      action();
-      focusActivePage();
-      onChange(serializeEditor(contentEl));
-      refreshToolbarState();
-    };
-    showContextMenu(event.clientX, event.clientY, [
-      { label: t("editor.underline"), onClick: () => applyFormat(() => buttonDefs.underline.command(contentEl)) },
-      { label: t("editor.strikethrough"), onClick: () => applyFormat(() => buttonDefs.strikethrough.command(contentEl)) },
-      { label: t("editor.textColor"), onClick: () => applyFormat(() => applyColorToggle(buttonDefs.textColor)) },
-      { label: t("editor.highlight"), onClick: () => applyFormat(() => applyColorToggle(buttonDefs.highlight)) },
-    ]);
+  function closeSelectionToolbar() {
+    if (!selectionToolbarEl) return;
+    closeColorPopovers(); // палитра внутри панели закрывается вместе с ней
+    document.removeEventListener("mousedown", onSelectionToolbarOutside, true);
+    selectionToolbarEl.remove();
+    selectionToolbarEl = null;
+    if (unregisterSelectionLayer) {
+      unregisterSelectionLayer();
+      unregisterSelectionLayer = null;
+    }
+  }
+
+  function showSelectionToolbar(x, y) {
+    closeSelectionToolbar();
+    const bar = document.createElement("div");
+    bar.className = "rte-selection-toolbar";
+    ["underline", "strikethrough", "textColor", "highlight"].forEach((key) => {
+      const btn = buildToolbarButton(key, closeSelectionToolbar);
+      if (btn) bar.appendChild(btn);
+    });
+    document.body.appendChild(bar);
+    // Клампинг по краям вьюпорта — позиция у панели фиксированная.
+    const rect = bar.getBoundingClientRect();
+    bar.style.left = `${clamp(x, 8, window.innerWidth - rect.width - 8)}px`;
+    bar.style.top = `${clamp(y, 8, window.innerHeight - rect.height - 8)}px`;
+    selectionToolbarEl = bar;
+    unregisterSelectionLayer = pushLayer(closeSelectionToolbar);
+    // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
+    // панели с отпусканием снаружи не должно её схлопывать.
+    document.addEventListener("mousedown", onSelectionToolbarOutside, true);
   }
 
   // Единственное контекстное меню редактора: сюда же попадают пункты раздела
@@ -1271,7 +1302,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       && contentEl.contains(selection.getRangeAt(0).commonAncestorContainer);
     if (hasTextSelection) {
       event.preventDefault();
-      showSelectionMenu(event, selection.getRangeAt(0).cloneRange());
+      showSelectionToolbar(event.clientX, event.clientY);
       return;
     }
 
@@ -1487,7 +1518,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, focusEditor) {
+function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, focusEditor, onApplied = () => {}) {
   const existing = btn.querySelector(".rte-color-popover");
   closeColorPopovers();
   if (existing) return;
@@ -1509,6 +1540,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
     focusEditor();
     onChange(serializeEditor(editorEl));
     refreshToolbarState();
+    onApplied();
   });
   popover.appendChild(resetSwatch);
 
@@ -1529,6 +1561,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
       focusEditor();
       onChange(serializeEditor(editorEl));
       refreshToolbarState();
+      onApplied();
     });
     popover.appendChild(swatch);
   });
