@@ -335,6 +335,22 @@
   pointer-events: none;
 }
 
+.rte-photo-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #33507e;
+  pointer-events: auto;
+}
+
+.rte-photo-handle--nw { top: 0; left: 0; cursor: nwse-resize; }
+.rte-photo-handle--ne { top: 0; left: 100%; cursor: nesw-resize; }
+.rte-photo-handle--sw { top: 100%; left: 0; cursor: nesw-resize; }
+.rte-photo-handle--se { top: 100%; left: 100%; cursor: nwse-resize; }
+
 /* Вспышка на найденном по поиску. Рисуется CSS Custom Highlight API поверх
    текста — в сам текст заметки ничего не вставляется (см. highlightMatch
    в richTextEditor.js). */

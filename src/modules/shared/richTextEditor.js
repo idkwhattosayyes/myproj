@@ -1061,6 +1061,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   let handlesEl = null;
   let unregisterPhotoLayer = null;
   let dragPhotoState = null; // { img, startX, startY, startLeft, startTop, moved }
+  let resizePhotoState = null; // { img, corner, startX, startY, startW, startH, startLeft, startTop, ratio }
 
   // Тот же зум-фактор постраничного режима, что использует drawPoint() у слоя
   // рисования — координаты фото считаются в тех же локальных единицах страницы.
@@ -1106,6 +1107,33 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     handlesEl = document.createElement("div");
     handlesEl.className = "rte-photo-handles";
     handlesEl.contentEditable = "false";
+    ["nw", "ne", "sw", "se"].forEach((corner) => {
+      const handle = document.createElement("span");
+      handle.className = `rte-photo-handle rte-photo-handle--${corner}`;
+      handle.dataset.corner = corner;
+      handlesEl.appendChild(handle);
+    });
+    // Обработчик один раз на весь блок маркеров (пересоздаётся вместе с ним при
+    // каждом selectPhoto) — проще, чем вешать по одному на каждый handle.
+    handlesEl.addEventListener("pointerdown", (event) => {
+      const handle = event.target instanceof Element ? event.target.closest(".rte-photo-handle") : null;
+      if (!handle || !selectedPhoto) return;
+      event.preventDefault();
+      event.stopPropagation(); // не даём этому же нажатию всплыть как клик по фото
+      const target = selectedPhoto;
+      resizePhotoState = {
+        img: target,
+        corner: handle.dataset.corner,
+        startX: event.clientX,
+        startY: event.clientY,
+        startW: parseFloat(target.style.width) || target.naturalWidth,
+        startH: parseFloat(target.style.height) || target.naturalHeight,
+        startLeft: parseFloat(target.style.left) || 0,
+        startTop: parseFloat(target.style.top) || 0,
+        ratio: target.naturalWidth / target.naturalHeight,
+      };
+      contentEl.setPointerCapture(event.pointerId);
+    });
     img.after(handlesEl);
     syncHandles();
     unregisterPhotoLayer = pushLayer(deselectPhoto);
@@ -1174,6 +1202,36 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (!moved) return; // просто клик выделения — снимок истории не нужен
     // MutationObserver истории не слушает атрибуты (только childList/characterData),
     // поэтому смену style.left/top снимком не ловит — пишем явно.
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  });
+
+  // Resize за угловые маркеры. Тянем всегда по горизонтали, высоту считаем из
+  // соотношения сторон исходного кадра — свободный перекос не нужен: точный
+  // произвольный размер и так доступен в окне редактирования (поля Ш/В).
+  contentEl.addEventListener("pointermove", (event) => {
+    if (!resizePhotoState) return;
+    const { img, corner, startX, startW, startH, startLeft, startTop, ratio } = resizePhotoState;
+    const zoom = currentZoom();
+    const dx = (event.clientX - startX) / zoom;
+    const sign = corner === "nw" || corner === "sw" ? -1 : 1;
+    const width = Math.max(24, startW + sign * dx);
+    const height = width / ratio;
+    img.style.width = `${Math.round(width)}px`;
+    img.style.height = `${Math.round(height)}px`;
+    // left/top двигаем только у плавающего фото — во flow-режиме верх-лево
+    // держит CSS float, псевдо-абсолютные координаты там ничего не значат.
+    if (img.dataset.layout === "float") {
+      if (corner === "nw" || corner === "sw") img.style.left = `${Math.round(startLeft + (startW - width))}px`;
+      if (corner === "nw" || corner === "ne") img.style.top = `${Math.round(startTop + (startH - height))}px`;
+    }
+    syncHandles();
+  });
+
+  contentEl.addEventListener("pointerup", (event) => {
+    if (!resizePhotoState) return;
+    contentEl.releasePointerCapture(event.pointerId);
+    resizePhotoState = null;
     recordHistory();
     onChange(serializeEditor(contentEl));
   });
