@@ -5,6 +5,7 @@ import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
+import { setNavigateHandler } from "./search/searchTarget.js";
 import { watchUiScale } from "./utils/uiScale.js";
 import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
@@ -82,6 +83,9 @@ window.addEventListener("DOMContentLoaded", () => {
     else window.location.hash = target;
   };
   mountSearch({ onNavigate: navigate });
+  // Внутренние ссылки на заметки (richTextEditor.js) переходят через тот же
+  // роутер, но не могут импортировать app.js напрямую (циклический импорт).
+  setNavigateHandler(navigate);
   // Быстрая заметка живёт рядом с поиском. «Принять» сохраняет запись в фоне;
   // onSaved обновляет список открытого раздела Заметок/Документов, если он сейчас
   // смонтирован (иначе тихий no-op — экран не трогаем). Переносят текст в раздел

@@ -287,6 +287,13 @@
   pointer-events: none;
 }
 
+/* Внутренняя ссылка (на другую заметку/документ) — та же скрепка, но заменена
+   на значок странички, чтобы отличать от внешней (data-link-type задаёт тип,
+   FORMATS.linkInternal в richTextEditor.js). */
+.rte-link[data-link-type="internal"][data-link-start]::before {
+  content: "📄";
+}
+
 /* Компактный поповер превью ссылок — по наведению или по клику, если ссылок
    несколько (showLinkPreview в richTextEditor.js). Тот же язык, что у
    результатов поиска (.search-results в styles/search.css). */

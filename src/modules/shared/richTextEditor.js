@@ -1,11 +1,14 @@
 import { t, getLang } from "../../i18n/i18n.js";
-import { openTablePrompt, openConfirm } from "../../utils/modal.js";
+import { openTablePrompt, openConfirm, openAlert } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { showContextMenu } from "./contextMenu.js";
 import { fileToDataUrl, downscaleImage } from "../../utils/image.js";
 import { openPhotoEditor } from "./photoEditor.js";
 import { openLinkEditor } from "./linkEditor.js";
+import { openInternalLinkPicker } from "./internalLinkPicker.js";
 import { escapeAttr } from "../../utils/dom.js";
+import * as itemsService from "../../services/itemsService.js";
+import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   TEXT_COLORS,
   HIGHLIGHT_COLORS,
@@ -105,6 +108,10 @@ function getButtonDefs() {
     // (нужны модалка ввода и меню Delete/Change), обрабатывается отдельно в
     // buildToolbarButton (см. isLink).
     link: { label: "🔗", title: t("editor.setLink"), isLink: true },
+    // Ссылка на другую заметку/документ — доступна только в Документах (см.
+    // allowInternalLinks в createRichTextEditor), обрабатывается отдельно в
+    // buildToolbarButton (isInternalLink), по той же схеме, что и isLink.
+    internalLink: { label: "📄", title: t("editor.setInternalLink"), isInternalLink: true },
     // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
     // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
     // доступ к сохранённому диапазону и serializeEditor.
@@ -174,6 +181,15 @@ const FORMATS = {
       const a = document.createElement("a");
       a.className = "rte-link";
       a.dataset.linkType = "external";
+      return a;
+    },
+  },
+  linkInternal: {
+    selector: 'a.rte-link[data-link-type="internal"]',
+    create: () => {
+      const a = document.createElement("a");
+      a.className = "rte-link";
+      a.dataset.linkType = "internal";
       return a;
     },
   },
@@ -312,6 +328,22 @@ function markLinkStart(elements) {
     if (index === 0) el.dataset.linkStart = "";
     else delete el.dataset.linkStart;
   });
+}
+
+// Проставляет данные внутренней ссылки на все обёртки сразу и нативный title
+// с заголовком целевой заметки — для превью при наведении (кастомный поповер
+// тут не нужен, ТЗ требует его только для внешних ссылок).
+async function applyInternalLink(editorEl, nodes, picked) {
+  const wrappers = uniqueAncestors(editorEl, nodes, FORMATS.linkInternal);
+  const item = await itemsService.getItem(picked.itemId);
+  const title = item ? t("editor.internalLinkHint").replace("{title}", item.title || t("panel.untitled")) : "";
+  wrappers.forEach((el) => {
+    el.dataset.itemId = picked.itemId;
+    el.dataset.anchorQuery = picked.query;
+    el.dataset.anchorIndex = String(picked.matchIndex);
+    el.title = title;
+  });
+  markLinkStart(wrappers);
 }
 
 // Непустые текстовые узлы, которые пересекает выделение.
@@ -556,10 +588,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[]}} options
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -1619,6 +1651,50 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
           onApplied();
         }
       });
+    } else if (def.isInternalLink) {
+      // Та же схема, что у isLink: выделение уже внутри ссылки — меню
+      // Delete/"set new link", иначе — поиск заметки и выбор слова в ней.
+      btn.addEventListener("click", async () => {
+        const range = getCurrentRange(contentEl);
+        if (!range) return;
+
+        if (isInlineFormatActive(contentEl, FORMATS.linkInternal)) {
+          const rect = btn.getBoundingClientRect();
+          showContextMenu(rect.left, rect.bottom, [
+            {
+              label: t("editor.linkDelete"),
+              onClick: () => {
+                unwrapSelection(contentEl, FORMATS.linkInternal, range);
+                recordHistory();
+                onChange(serializeEditor(contentEl));
+                onApplied();
+              },
+            },
+            {
+              label: t("editor.internalLinkChange"),
+              onClick: async () => {
+                const picked = await openInternalLinkPicker();
+                if (picked) {
+                  await applyInternalLink(contentEl, collectTextNodes(range), picked);
+                  recordHistory();
+                  onChange(serializeEditor(contentEl));
+                }
+                onApplied();
+              },
+            },
+          ]);
+        } else {
+          const picked = await openInternalLinkPicker();
+          if (picked) {
+            const nodes = wrapSelection(contentEl, FORMATS.linkInternal, range);
+            await applyInternalLink(contentEl, nodes, picked);
+            focusActivePage();
+            recordHistory();
+            onChange(serializeEditor(contentEl));
+          }
+          onApplied();
+        }
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -1682,7 +1758,9 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     closeSelectionToolbar();
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
-    ["underline", "strikethrough", "textColor", "highlight", "link"].forEach((key) => {
+    const selectionButtons = ["underline", "strikethrough", "textColor", "highlight", "link"];
+    if (allowInternalLinks) selectionButtons.push("internalLink");
+    selectionButtons.forEach((key) => {
       const btn = buildToolbarButton(key, closeSelectionToolbar);
       if (btn) bar.appendChild(btn);
     });
@@ -1765,6 +1843,32 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (links.length === 1) openExternalLink(links[0], event);
     else showLinkPreview(link, links, { clickable: true });
   });
+
+  // Переход по внутренней ссылке на другую заметку — обычный клик, всегда
+  // (модификатор тут не даёт отдельного эффекта: приложение — SPA без
+  // отдельного URL на заметку, роутер осознанно не кладёт id в hash).
+  contentEl.addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="internal"]') : null;
+    if (!link) return;
+    event.preventDefault();
+    openInternalLink(link);
+  });
+
+  async function openInternalLink(link) {
+    const item = await itemsService.getItem(link.dataset.itemId);
+    if (!item || item.deletedAt) {
+      openAlert({ message: t("editor.internalLinkTargetMissing") });
+      return;
+    }
+    setPendingTarget({
+      kind: "item",
+      id: item.id,
+      query: link.dataset.anchorQuery,
+      matchIndex: Number(link.dataset.anchorIndex),
+    });
+    const navigate = getNavigateHandler();
+    if (navigate) navigate(item.section === "tasks" ? "tasks" : "documents");
+  }
 
   // Превью ссылок при наведении — mouseover/mouseout вместо mouseenter/mouseleave:
   // те не всплывают, а слушатель один на contentEl (ссылки создаются динамически).

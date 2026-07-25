@@ -154,6 +154,11 @@ export const translations = {
     "editor.linkAddRow": "Add link",
     "editor.linkRemoveRow": "Remove",
     "editor.linkConfirm": "Confirm",
+    "editor.setInternalLink": "Link to note",
+    "editor.internalLinkChange": "Set new link",
+    "editor.internalLinkPickWordHint": "Click a word to link to it",
+    "editor.internalLinkTargetMissing": "This note no longer exists.",
+    "editor.internalLinkHint": "Go to: {title}",
 
     "modal.yes": "Yes",
     "modal.cancel": "Cancel",
@@ -313,6 +318,11 @@ export const translations = {
     "editor.linkAddRow": "Добавить ссылку",
     "editor.linkRemoveRow": "Удалить",
     "editor.linkConfirm": "Подтвердить",
+    "editor.setInternalLink": "Ссылка на заметку",
+    "editor.internalLinkChange": "Задать новую ссылку",
+    "editor.internalLinkPickWordHint": "Кликните по слову, чтобы сослаться на него",
+    "editor.internalLinkTargetMissing": "Эта заметка больше не существует.",
+    "editor.internalLinkHint": "Перейти к: {title}",
 
     "modal.yes": "Да",
     "modal.cancel": "Отмена",

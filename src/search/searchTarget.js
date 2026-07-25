@@ -26,3 +26,17 @@ export function consumePendingTarget(...kinds) {
   pending = null;
   return target;
 }
+
+// Переход к разделу (см. navigate в app.js) — нужен внутренним ссылкам в
+// richTextEditor.js, у которого нет доступа к роутеру напрямую (циклический
+// импорт: app.js → documentsView.js → panelSection.js → richTextEditor.js).
+let navigateHandler = null;
+
+/** @param {(route: string) => void} fn */
+export function setNavigateHandler(fn) {
+  navigateHandler = fn;
+}
+
+export function getNavigateHandler() {
+  return navigateHandler;
+}

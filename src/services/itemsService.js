@@ -43,6 +43,12 @@ export async function listItems(section) {
   return storage.getItems(section);
 }
 
+// Заметка по id, без фильтра по разделу — нужна для внутренних ссылок: ссылка
+// может вести на заметку из другого раздела (общий пул tasks/documents).
+export async function getItem(id) {
+  return storage.getItem(id);
+}
+
 export async function createItem(section, { title, content, folderIds, isFavorite }) {
   const item = createItemModel({ title, content, folderIds, section, isFavorite });
   return storage.createItem(item);

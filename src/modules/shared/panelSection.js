@@ -972,6 +972,8 @@ function renderDetail(container, config, state) {
     content: item.content,
     buttons: config.toolbarButtons,
     pageMode: item.pageMode,
+    // Ссылка на другую заметку — инструмент только раздела "Документы" (ТЗ).
+    allowInternalLinks: config.section === "documents",
     onChange: (html) => scheduleSave({ content: html }),
     onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
     // История undo/redo привязана к id заметки и переживает выход/повторный вход.
