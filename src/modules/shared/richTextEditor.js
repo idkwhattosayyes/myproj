@@ -2,27 +2,22 @@ import { t, getLang } from "../../i18n/i18n.js";
 import { openTablePrompt, openConfirm } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { showContextMenu } from "./contextMenu.js";
-
-const TEXT_COLORS = ["#e03131", "#f08c00", "#2f9e44", "#1971c2", "#7048e8", "#495057"];
-// Заливка идёт под текст, поэтому палитра своя — светлая, иначе текст не читается.
-const HIGHLIGHT_COLORS = ["#fff3a3", "#ffd8a8", "#b2f2bb", "#a5d8ff", "#d0bfff", "#ffc9c9"];
-
-// Перо рисования: последние выбранные цвет/толщина — в localStorage, тем же
-// приёмом, что и последний цвет текста/заливки (getLastColor/setLastColor).
-const DRAW_COLOR_KEY = "app:lastDrawColor";
-const DRAW_WIDTH_KEY = "app:lastDrawWidth";
-const DRAW_DEFAULT_COLOR = "#1f2328";
-const DRAW_DEFAULT_WIDTH = 3;
-const DRAW_WIDTHS = [1.5, 3, 5]; // тонкая / средняя / толстая
-
-// Последний выбранный цвет запоминается: ЛКМ по кнопке красит именно им.
-function getLastColor(storageKey, fallback) {
-  return localStorage.getItem(storageKey) || fallback;
-}
-
-function setLastColor(storageKey, color) {
-  localStorage.setItem(storageKey, color);
-}
+import { fileToDataUrl, downscaleImage } from "../../utils/image.js";
+import { openPhotoEditor } from "./photoEditor.js";
+import { escapeAttr } from "../../utils/dom.js";
+import {
+  TEXT_COLORS,
+  HIGHLIGHT_COLORS,
+  DRAW_COLOR_KEY,
+  DRAW_WIDTH_KEY,
+  DRAW_DEFAULT_COLOR,
+  DRAW_DEFAULT_WIDTH,
+  DRAW_WIDTHS,
+  getLastColor,
+  setLastColor,
+  getLastWidth,
+  setLastWidth,
+} from "../../utils/colorPrefs.js";
 
 // Индикатор на кнопке (полоска у цвета текста, обводка у заливки) должен
 // показывать выбранный цвет, а не зашитый в стилях. Цвет отдаём в CSS
@@ -105,6 +100,10 @@ function getButtonDefs() {
       caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
+    // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
+    // доступ к сохранённому диапазону и serializeEditor.
+    insertPhoto: { label: "🖼", title: t("editor.insertPhoto"), isPhoto: true },
     // Рисование поверх документа — не команда форматирования, а переключатель
     // режима, как pageMode/voice. Обрабатывается отдельно в createRichTextEditor.
     // storageKey/defaultColor — только для индикатора цвета на самой кнопке
@@ -889,7 +888,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   }
 
   function currentDrawWidth() {
-    return parseFloat(localStorage.getItem(DRAW_WIDTH_KEY)) || DRAW_DEFAULT_WIDTH;
+    return getLastWidth(DRAW_WIDTH_KEY, DRAW_DEFAULT_WIDTH);
   }
 
   // ПКМ на кнопке рисования — толщина, цвет (та же палитра, что у текста) и
@@ -912,7 +911,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       swatch.addEventListener("mousedown", (event) => event.preventDefault());
       swatch.addEventListener("click", (event) => {
         event.stopPropagation();
-        localStorage.setItem(DRAW_WIDTH_KEY, String(width));
+        setLastWidth(DRAW_WIDTH_KEY, width);
         closeColorPopovers();
         focusActivePage();
       });
@@ -1003,6 +1002,47 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(serializeEditor(contentEl));
   });
   // ---------------------------------------------------------------------
+
+  // --- Вставка фото -----------------------------------------------------
+  // Открывает выбор файла и вставляет выбранное изображение в сохранённый
+  // диапазон. savedRange нужен, потому что фокус на время диалога уходит из
+  // редактора.
+  function openPhotoPicker(savedRange) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+      if (input.files && input.files[0]) insertImageFile(input.files[0], savedRange);
+    });
+    input.click();
+  }
+
+  // Читает файл-картинку, ужимает и открывает окно предпросмотра. Само фото
+  // вставляется только после подтверждения — уже с выбранным размером, названием
+  // и вжатым (если рисовали) карандашом.
+  async function insertImageFile(file, savedRange) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const { dataUrl } = await downscaleImage(await fileToDataUrl(file));
+    const result = await openPhotoEditor(dataUrl);
+    if (!result) return; // отмена
+    insertPhotoElement(result, savedRange);
+  }
+
+  // Вставляет готовое фото как <img> в место каретки. contenteditable=false —
+  // фото ведёт себя как цельный островок, а не набор редактируемых символов;
+  // data-name несёт название (в поиске и «сведениях»), размер — inline-стилем.
+  // Свободное перетаскивание/ресайз и режим интеграции с текстом появятся в
+  // следующих шагах — здесь фото ещё обычный инлайновый элемент.
+  function insertPhotoElement({ dataUrl, width, height, name }, savedRange) {
+    focusActivePage();
+    restoreRange(savedRange);
+    const nameAttr = name ? ` data-name="${escapeAttr(name)}"` : "";
+    const html = `<img class="rte-photo" contenteditable="false" draggable="false" style="width:${width}px;height:${height}px"${nameAttr} src="${dataUrl}">`;
+    document.execCommand("insertHTML", false, html);
+    onChange(serializeEditor(contentEl));
+    refreshPages();
+  }
+  // ------------------------------------------------------------------------
 
   // --- Голосовой ввод (диктовка) ---------------------------------------
   // Финальные фрагменты вставляются в текст навсегда, промежуточные показываются
@@ -1213,6 +1253,12 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         event.preventDefault();
         toggleDrawPopover(btn, def);
       });
+    } else if (def.isPhoto) {
+      btn.addEventListener("click", () => {
+        // Диапазон запоминаем сейчас: пока открыт системный диалог выбора файла,
+        // выделение/каретка в редакторе теряются.
+        openPhotoPicker(getCurrentRange(contentEl));
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -1357,6 +1403,20 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     event.preventDefault();
     document.execCommand(event.shiftKey ? "outdent" : "indent");
     onChange(serializeEditor(contentEl));
+  });
+
+  // Вставка фото из буфера обмена (Ctrl+V со скриншотом/картинкой). Текстовую
+  // вставку не трогаем — только когда в буфере есть изображение.
+  contentEl.addEventListener("paste", (event) => {
+    const items = event.clipboardData ? event.clipboardData.items : null;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        event.preventDefault();
+        insertImageFile(item.getAsFile(), getCurrentRange(contentEl));
+        return;
+      }
+    }
   });
 
   // Курсор/выделение двигаются кликом мыши или клавиатурой без гарантии

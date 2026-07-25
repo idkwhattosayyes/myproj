@@ -9,7 +9,7 @@ export async function renderDocumentsView(container) {
       "undo", "redo",
       "bold", "underline", "strikethrough", "textColor", "highlight",
       "h1", "h2", "alignLeft", "alignCenter", "alignRight",
-      "bulletList", "orderedList", "checklist", "table", "voice", "draw", "pageMode",
+      "bulletList", "orderedList", "checklist", "table", "insertPhoto", "voice", "draw", "pageMode",
     ],
   });
 }

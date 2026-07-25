@@ -169,7 +169,8 @@
   padding: calc(0.3rem - 1px) calc(0.5rem - 1px);
 }
 
-.rte-btn[data-command="draw"] { border-bottom: 3px solid var(--swatch); }
+.rte-btn[data-command="draw"],
+.rte-btn[data-command="photoDraw"] { border-bottom: 3px solid var(--swatch); }
 
 /* Толщина/цвет/ластик пера — тот же поповер, что у цвета текста, только шире и
    в несколько строк (пресетов толщины + вся палитра + ластик не влезают в одну). */

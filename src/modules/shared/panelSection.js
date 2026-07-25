@@ -36,7 +36,7 @@ function saveNoteHistory(itemId, state) {
 function isItemEmpty(item) {
   const div = document.createElement("div");
   div.innerHTML = item.content || "";
-  return div.textContent.trim() === "";
+  return div.textContent.trim() === "" && !div.querySelector("img");
 }
 
 function countItemsInFolder(state, folderId) {

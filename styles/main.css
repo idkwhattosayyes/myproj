@@ -256,6 +256,60 @@ button {
   gap: 0.5rem;
 }
 
+/* Окно предпросмотра/редактирования фото перед вставкой (photoEditor.js):
+   карандаш поверх кадра, ширина/высота в пикселях, название. Шире обычной
+   модалки — внутри превью фото до 480px. */
+.photo-editor {
+  max-width: 560px;
+}
+
+.photo-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.photo-editor-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.photo-editor-field input {
+  width: 4.5rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+.photo-editor-name {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.photo-editor-name input {
+  width: 100%;
+}
+
+.photo-editor-stage {
+  position: relative;
+  margin: 0 auto 1rem;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.photo-editor-stage canvas {
+  position: absolute;
+  inset: 0;
+}
+
 /* Окно выбора для экспорта/импорта: дерево «папки → заметки» с галочками слева
    и превью заметки справа. Размер средний — шире обычной модалки, но не на весь
    экран. */
