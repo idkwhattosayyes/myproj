@@ -1042,9 +1042,19 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   function insertPhotoElement({ dataUrl, width, height, name }, savedRange) {
     focusActivePage();
     restoreRange(savedRange);
+    // Временный id — единственный способ достать именно только что вставленный
+    // узел: execCommand("insertHTML") не возвращает на него ссылку.
+    const marker = `rte-photo-insert-${Date.now()}`;
     const nameAttr = name ? ` data-name="${escapeAttr(name)}"` : "";
-    const html = `<img class="rte-photo" contenteditable="false" draggable="false" style="width:${width}px;height:${height}px"${nameAttr} src="${dataUrl}">`;
+    const html = `<img id="${marker}" class="rte-photo" contenteditable="false" draggable="false" style="width:${width}px;height:${height}px"${nameAttr} src="${dataUrl}">`;
     document.execCommand("insertHTML", false, html);
+    const img = contentEl.querySelector(`#${marker}`);
+    // Сразу плавающее — по умолчанию фото можно таскать, не дожидаясь первого
+    // клика (ensureFloatPosition иначе сработала бы только при выделении).
+    if (img) {
+      img.removeAttribute("id");
+      ensureFloatPosition(img);
+    }
     onChange(serializeEditor(contentEl));
     refreshPages();
   }
@@ -1073,8 +1083,13 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   // заметки), становится плавающим при первом выделении — координаты берём из
   // текущего положения на экране, чтобы оно не прыгнуло. Уже переключённое
   // (float или flow) не трогаем — это осознанный выбор пользователя.
-  function ensureFloatPosition(img) {
-    if (img.dataset.layout) return;
+  function ensureFloatPosition(img, force = false) {
+    // Без force — только для «нетронутого» фото (без data-layout вообще): его
+    // координаты ещё не заданы, и это единственный случай, когда left/top
+    // безопасно посчитать один раз при первом выделении/вставке. С force —
+    // пересчёт нужен и при явном переключении flow → float (togglePhotoLayout),
+    // иначе левая/верхняя граница останется пустой после сброса в flow-режиме.
+    if (img.dataset.layout && !force) return;
     const page = img.closest(".rte-page");
     if (!img.style.width) img.style.width = `${img.naturalWidth}px`;
     if (!img.style.height) img.style.height = `${img.naturalHeight}px`;
@@ -1235,6 +1250,57 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     recordHistory();
     onChange(serializeEditor(contentEl));
   });
+
+  // ПКМ на уже размещённом фото: повторное редактирование (то же окно, что и
+  // при вставке — карандаш/размер/название) или переключение плавающий/
+  // обтекание текстом.
+  function showPhotoContextMenu(event, img) {
+    const isFlow = img.dataset.layout === "flow";
+    showContextMenu(event.clientX, event.clientY, [
+      { label: t("editor.photoEditItem"), onClick: () => reopenPhotoEditor(img) },
+      {
+        label: isFlow ? t("editor.photoMakeFloat") : t("editor.photoIntegrateText"),
+        onClick: () => togglePhotoLayout(img),
+      },
+    ]);
+  }
+
+  // Окно уже содержит поле «Название» — отдельного просмотра «сведений» нет,
+  // это и есть способ увидеть/поменять название у размещённого фото.
+  async function reopenPhotoEditor(img) {
+    const result = await openPhotoEditor(img.src, {
+      width: parseFloat(img.style.width) || img.naturalWidth,
+      height: parseFloat(img.style.height) || img.naturalHeight,
+      name: img.dataset.name || "",
+    });
+    if (!result) return; // отмена
+    img.src = result.dataUrl;
+    img.style.width = `${result.width}px`;
+    img.style.height = `${result.height}px`;
+    if (result.name) img.dataset.name = result.name;
+    else delete img.dataset.name;
+    syncHandles();
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  }
+
+  // float → flow: фото уходит из абсолютного позиционирования, left/top больше
+  // не нужны — их держит CSS float (см. .rte-photo[data-layout="flow"]).
+  // flow → float: возвращаем координаты через ensureFloatPosition, чтобы фото
+  // не прыгнуло с текущего места на экране.
+  function togglePhotoLayout(img) {
+    if (img.dataset.layout === "flow") {
+      ensureFloatPosition(img, true);
+      img.dataset.layout = "float";
+    } else {
+      img.dataset.layout = "flow";
+      img.style.left = "";
+      img.style.top = "";
+    }
+    syncHandles();
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  }
   // ------------------------------------------------------------------------
 
   // --- Голосовой ввод (диктовка) ---------------------------------------
@@ -1536,6 +1602,16 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   // выделении. Два независимых обработчика открывали бы два меню одно поверх
   // другого.
   contentEl.addEventListener("contextmenu", (event) => {
+    // Фото — своё меню (редактировать / переключить режим), проверяем раньше
+    // текстового выделения: у размещённого фото выделения текста не бывает.
+    const photoTarget = event.target instanceof Element ? event.target.closest(".rte-photo") : null;
+    if (photoTarget) {
+      event.preventDefault();
+      selectPhoto(photoTarget);
+      showPhotoContextMenu(event, photoTarget);
+      return;
+    }
+
     const selection = window.getSelection();
     const hasTextSelection = selection.rangeCount && !selection.isCollapsed
       && contentEl.contains(selection.getRangeAt(0).commonAncestorContainer);
