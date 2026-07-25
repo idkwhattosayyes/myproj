@@ -174,12 +174,16 @@ function renderResults() {
       const visible = visibleCount(groupIndex, group);
       const matches = group.matches
         .slice(0, visible)
-        .map(
-          (match) => `
-        <button type="button" class="search-row search-row--match" data-row="${rows.push({ groupIndex, matchIndex: match.index }) - 1}">
-          ${escapeHtml(match.before)}<mark>${escapeHtml(match.hit)}</mark>${escapeHtml(match.after)}
-        </button>`
-        )
+        .map((match) => {
+          // Название фото нигде не отображается в тексте заметки — совпадение
+          // по нему помечаем бейджем, чтобы было видно, что это не текст.
+          const badge = match.photoName ? `<span class="search-kind">${t("search.kindPhoto")}</span>` : "";
+          const row = rows.push({ groupIndex, matchIndex: match.index, photoName: match.photoName }) - 1;
+          return `
+        <button type="button" class="search-row search-row--match" data-row="${row}">
+          ${badge}${escapeHtml(match.before)}<mark>${escapeHtml(match.hit)}</mark>${escapeHtml(match.after)}
+        </button>`;
+        })
         .join("");
 
       // Скрытых совпадений: ещё не показанные из собранных + те, что не влезли в
@@ -236,6 +240,7 @@ function openRow(rowIndex) {
     id: group.id,
     query: group.query,
     matchIndex: row.matchIndex,
+    photoName: row.photoName,
   });
   closeResults();
   // Раздел, где лежит найденное. Задачи и Документы делят данные, поэтому

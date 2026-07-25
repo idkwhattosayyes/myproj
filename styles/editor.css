@@ -367,6 +367,19 @@
   color: #1f2328;
 }
 
+/* То же самое, но для фото, найденного по названию (см. highlightPhoto) —
+   Custom Highlight API умеет красить только текстовые Range, для <img> нужен
+   обычный класс с анимацией на то же время SEARCH_HIGHLIGHT_MS. */
+@keyframes rte-photo-search-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 59, 0.9); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 212, 59, 0.5); }
+}
+
+.rte-photo.is-search-hit {
+  outline: 3px solid #ffd43b;
+  animation: rte-photo-search-pulse 0.6s ease-in-out 2;
+}
+
 /* Сплошной режим: страница ничем не выделена, всё выглядит как один лист. */
 .rte-page-frame { position: relative; }
 

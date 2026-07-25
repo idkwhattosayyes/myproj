@@ -1705,7 +1705,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     // вызывающий код дёргает это после вставки в DOM.
     refreshLayout: refreshPages,
     // Переход по результату поиска: прокрутить к нужному вхождению и мигнуть им.
-    highlightMatch: (query, occurrence) => highlightMatch(contentEl, query, occurrence),
+    highlightMatch: (query, occurrence, photoName) => highlightMatch(contentEl, query, occurrence, photoName),
     // Переход из поля названия в текст: каретка встаёт в начало первой страницы.
     focusContent: () => {
       const first = getPages()[0];
@@ -1734,8 +1734,14 @@ let searchHighlightTimer = null;
  * API, который рисует поверх, ничего не вставляя в DOM. Иначе подсветка попала
  * бы в contenteditable, а оттуда — в сохранённый HTML.
  */
-function highlightMatch(contentEl, query, occurrence = 0) {
+function highlightMatch(contentEl, query, occurrence = 0, photoName) {
   clearSearchHighlight();
+  // Название фото лежит в атрибуте, а не в текстовом узле — findOccurrenceRange
+  // его не найдёт, нужен отдельный путь (см. highlightPhoto).
+  if (photoName) {
+    highlightPhoto(contentEl, photoName);
+    return;
+  }
   const range = findOccurrenceRange(contentEl, query, occurrence);
   if (!range) return;
 
@@ -1758,6 +1764,17 @@ function highlightMatch(contentEl, query, occurrence = 0) {
 function clearSearchHighlight() {
   clearTimeout(searchHighlightTimer);
   if (CSS.highlights) CSS.highlights.delete(SEARCH_HIGHLIGHT);
+  document.querySelectorAll(".rte-photo.is-search-hit").forEach((el) => el.classList.remove("is-search-hit"));
+}
+
+// CSS Custom Highlight API красит только текстовые Range — для <img> нужен
+// отдельный путь: находим сам узел по data-name и мигаем классом с обводкой.
+function highlightPhoto(contentEl, name) {
+  const img = [...contentEl.querySelectorAll("img.rte-photo[data-name]")].find((el) => el.dataset.name === name);
+  if (!img) return;
+  img.scrollIntoView({ block: "center", behavior: "smooth" });
+  img.classList.add("is-search-hit");
+  searchHighlightTimer = setTimeout(() => img.classList.remove("is-search-hit"), SEARCH_HIGHLIGHT_MS);
 }
 
 /**

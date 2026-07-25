@@ -28,6 +28,19 @@ export function htmlToText(html) {
 }
 
 /**
+ * Названия фото (data-name) внутри заметки — для поиска. htmlToText режет ВСЕ
+ * теги вместе с атрибутами, поэтому название, которое нигде не отображается
+ * как текст (см. richTextEditor.js/photoEditor.js), нужно доставать отдельно.
+ */
+export function extractPhotoNames(html) {
+  const holder = document.createElement("div");
+  holder.innerHTML = String(html || "");
+  return [...holder.querySelectorAll("img.rte-photo[data-name]")]
+    .map((img) => img.dataset.name)
+    .filter(Boolean);
+}
+
+/**
  * Textarea растёт вниз по мере ввода вместо того, чтобы прятать текст за
  * нижним краем. Высоту снимаем в auto перед замером — иначе scrollHeight
  * останется равным уже выставленной высоте и поле не сожмётся при удалении.

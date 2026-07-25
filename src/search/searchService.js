@@ -1,7 +1,7 @@
 import * as itemsService from "../services/itemsService.js";
 import * as calendarEntriesService from "../services/calendarEntriesService.js";
 import * as calendarTagsService from "../services/calendarTagsService.js";
-import { htmlToText } from "../utils/dom.js";
+import { htmlToText, extractPhotoNames } from "../utils/dom.js";
 
 // Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
@@ -21,7 +21,7 @@ const MAX_GROUPS = 40;
  *   title: string,
  *   subtitle: string,
  *   query: string,
- *   matches: {index: number, before: string, hit: string, after: string}[],
+ *   matches: {index: number, before: string, hit: string, after: string, photoName?: string}[],
  *   moreCount: number,
  * }} SearchGroup
  */
@@ -73,7 +73,16 @@ async function searchItems(query) {
     const text = htmlToText(item.content);
     const inTitle = findMatches(title, query, 1);
     const inText = findMatches(text, query, MATCH_FETCH_CAP);
-    if (!inTitle.matches.length && !inText.matches.length) return;
+    // Название фото нигде не показывается как текст (см. utils/dom.js), поэтому
+    // htmlToText его не видит — ищем отдельно и помечаем такие совпадения
+    // photoName, чтобы результат перешёл к самому фото, а не к месту в тексте.
+    const photoMatches = extractPhotoNames(item.content)
+      .map((name) => {
+        const found = findMatches(name, query, 1);
+        return found.matches.length ? { ...found.matches[0], photoName: name } : null;
+      })
+      .filter(Boolean);
+    if (!inTitle.matches.length && !inText.matches.length && !photoMatches.length) return;
 
     groups.push({
       kind: "item",
@@ -84,7 +93,7 @@ async function searchItems(query) {
       query,
       // Совпадение в названии само по себе строкой не идёт: заголовок группы и
       // так виден. Строки — это места в тексте, к которым можно перейти.
-      matches: inText.matches,
+      matches: [...inText.matches, ...photoMatches],
       moreCount: inText.total - inText.matches.length,
     });
   });

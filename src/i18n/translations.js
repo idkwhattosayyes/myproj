@@ -40,6 +40,7 @@ export const translations = {
     "search.kindFolder": "Folder",
     "search.kindNote": "Note",
     "search.kindEvent": "Event",
+    "search.kindPhoto": "Photo",
 
     "home.tasks": "Tasks",
     "home.documents": "Documents",
@@ -191,6 +192,7 @@ export const translations = {
     "search.kindFolder": "Папка",
     "search.kindNote": "Заметка",
     "search.kindEvent": "Событие",
+    "search.kindPhoto": "Фото",
 
     "home.tasks": "Задачи",
     "home.documents": "Документы",
