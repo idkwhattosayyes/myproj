@@ -314,6 +314,27 @@
   min-height: calc(340px - 1.7rem); /* .rte-content: min-height 340px минус его вертикальный padding 0.85rem×2 */
 }
 
+/* Плавающее фото — position:absolute внутри .rte-page (см. data-layout в
+   richTextEditor.js). Курсор move только в float-режиме — во flow (появится
+   позже) фото не перетаскивается, там актуален обычный курсор. */
+.rte-photo[data-layout="float"] {
+  position: absolute;
+  cursor: move;
+}
+
+.rte-photo.is-selected {
+  outline: 2px solid #33507e;
+  outline-offset: 1px;
+}
+
+/* Маркеры выделения — отдельный слой рядом с фото (не внутри него, у <img> не
+   может быть детей), координаты синхронизирует JS (syncHandles). Сама рамка
+   кликов не ловит — только точки внутри неё (.rte-photo-handle). */
+.rte-photo-handles {
+  position: absolute;
+  pointer-events: none;
+}
+
 /* Вспышка на найденном по поиску. Рисуется CSS Custom Highlight API поверх
    текста — в сам текст заметки ничего не вставляется (см. highlightMatch
    в richTextEditor.js). */

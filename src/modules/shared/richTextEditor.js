@@ -183,9 +183,12 @@ function serializeEditor(editorEl) {
   return [...editorEl.querySelectorAll(".rte-page")]
     .map((page) => {
       // Промежуточный (ещё не финализированный) текст диктовки лежит во временном
-      // span.rte-interim — в сохраняемый HTML он попадать не должен.
+      // span.rte-interim — в сохраняемый HTML он попадать не должен. Маркеры
+      // выделения фото (.rte-photo-handles) и класс подсветки выделения — тоже
+      // временный UI, не часть содержимого заметки.
       const clone = page.cloneNode(true);
-      clone.querySelectorAll(".rte-interim").forEach((node) => node.remove());
+      clone.querySelectorAll(".rte-interim, .rte-photo-handles").forEach((node) => node.remove());
+      clone.querySelectorAll(".rte-photo.is-selected").forEach((el) => el.classList.remove("is-selected"));
       return `<div class="rte-page">${clone.innerHTML}</div>`;
     })
     .join("")
@@ -520,6 +523,9 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
   // стилями Chrome складывает разные оформления в одно свойство и они
   // затирают друг друга.
   document.execCommand("styleWithCSS", false, false);
+  // Иначе поверх наших угловых маркеров фото (см. блок «Выделение и
+  // перетаскивание фото» ниже) всплывут ещё и родные ручки ресайза Chrome.
+  document.execCommand("enableObjectResizing", false, false);
 
   const toolbarEl = document.createElement("div");
   toolbarEl.className = "rte-toolbar";
@@ -1042,6 +1048,135 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(serializeEditor(contentEl));
     refreshPages();
   }
+  // ------------------------------------------------------------------------
+
+  // --- Выделение и перетаскивание фото -----------------------------------
+  // Плавающее фото — position:absolute внутри .rte-page (та же позиционирующая
+  // страница, что и у слоя рисования). Маркеры выделения — отдельный div-сосед
+  // (не потомок img — у него не может быть детей), синхронизируется с фото по
+  // координатам через getBoundingClientRect(). data-layout="float" — фото можно
+  // свободно таскать; "flow" (появится в шаге с ПКМ-меню) — обтекание текстом,
+  // без перетаскивания.
+  let selectedPhoto = null;
+  let handlesEl = null;
+  let unregisterPhotoLayer = null;
+  let dragPhotoState = null; // { img, startX, startY, startLeft, startTop, moved }
+
+  // Тот же зум-фактор постраничного режима, что использует drawPoint() у слоя
+  // рисования — координаты фото считаются в тех же локальных единицах страницы.
+  function currentZoom() {
+    return parseFloat(getComputedStyle(contentEl).getPropertyValue("--page-fit")) || 1;
+  }
+
+  // Фото, вставленное как обычный элемент (или унаследованное из старой
+  // заметки), становится плавающим при первом выделении — координаты берём из
+  // текущего положения на экране, чтобы оно не прыгнуло. Уже переключённое
+  // (float или flow) не трогаем — это осознанный выбор пользователя.
+  function ensureFloatPosition(img) {
+    if (img.dataset.layout) return;
+    const page = img.closest(".rte-page");
+    if (!img.style.width) img.style.width = `${img.naturalWidth}px`;
+    if (!img.style.height) img.style.height = `${img.naturalHeight}px`;
+    const zoom = currentZoom();
+    const imgRect = img.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    img.dataset.layout = "float";
+    img.style.left = `${Math.round((imgRect.left - pageRect.left) / zoom)}px`;
+    img.style.top = `${Math.round((imgRect.top - pageRect.top) / zoom)}px`;
+  }
+
+  function syncHandles() {
+    if (!selectedPhoto || !handlesEl) return;
+    const page = selectedPhoto.closest(".rte-page");
+    const zoom = currentZoom();
+    const imgRect = selectedPhoto.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    handlesEl.style.left = `${(imgRect.left - pageRect.left) / zoom}px`;
+    handlesEl.style.top = `${(imgRect.top - pageRect.top) / zoom}px`;
+    handlesEl.style.width = `${imgRect.width / zoom}px`;
+    handlesEl.style.height = `${imgRect.height / zoom}px`;
+  }
+
+  function selectPhoto(img) {
+    if (selectedPhoto === img) return;
+    deselectPhoto();
+    ensureFloatPosition(img);
+    selectedPhoto = img;
+    img.classList.add("is-selected");
+    handlesEl = document.createElement("div");
+    handlesEl.className = "rte-photo-handles";
+    handlesEl.contentEditable = "false";
+    img.after(handlesEl);
+    syncHandles();
+    unregisterPhotoLayer = pushLayer(deselectPhoto);
+  }
+
+  function deselectPhoto() {
+    if (!selectedPhoto) return;
+    selectedPhoto.classList.remove("is-selected");
+    selectedPhoto = null;
+    if (handlesEl) {
+      handlesEl.remove();
+      handlesEl = null;
+    }
+    if (unregisterPhotoLayer) {
+      unregisterPhotoLayer();
+      unregisterPhotoLayer = null;
+    }
+  }
+
+  // Клик вне фото/маркеров снимает выделение — тот же приём, что у поповеров.
+  contentEl.addEventListener("mousedown", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest(".rte-photo") || target.closest(".rte-photo-handles")) return;
+    deselectPhoto();
+  });
+
+  contentEl.addEventListener("pointerdown", (event) => {
+    const img = event.target instanceof Element ? event.target.closest(".rte-photo") : null;
+    // Включённый карандаш имеет приоритет: оба инструмента слушают pointerdown
+    // на contentEl, и без этой проверки клик по фото поверх рисования запускал
+    // бы одновременно и штрих, и перетаскивание.
+    if (!img || event.button !== 0 || drawingActive) return;
+    event.preventDefault(); // не ставить каретку, не начинать выделение текста
+    selectPhoto(img);
+    if (img.dataset.layout !== "float") return; // во flow-режиме drag выключен
+    dragPhotoState = {
+      img,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: parseFloat(img.style.left) || 0,
+      startTop: parseFloat(img.style.top) || 0,
+      moved: false,
+    };
+    contentEl.setPointerCapture(event.pointerId);
+  });
+
+  contentEl.addEventListener("pointermove", (event) => {
+    if (!dragPhotoState) return;
+    const zoom = currentZoom();
+    const dx = (event.clientX - dragPhotoState.startX) / zoom;
+    const dy = (event.clientY - dragPhotoState.startY) / zoom;
+    // Порог в 3px — иначе обычный клик выделения (без намерения тащить) уже
+    // считался бы перетаскиванием из-за дрожания курсора между down и up.
+    if (!dragPhotoState.moved && Math.hypot(dx, dy) < 3) return;
+    dragPhotoState.moved = true;
+    dragPhotoState.img.style.left = `${Math.round(dragPhotoState.startLeft + dx)}px`;
+    dragPhotoState.img.style.top = `${Math.round(dragPhotoState.startTop + dy)}px`;
+    syncHandles();
+  });
+
+  contentEl.addEventListener("pointerup", (event) => {
+    if (!dragPhotoState) return;
+    contentEl.releasePointerCapture(event.pointerId);
+    const moved = dragPhotoState.moved;
+    dragPhotoState = null;
+    if (!moved) return; // просто клик выделения — снимок истории не нужен
+    // MutationObserver истории не слушает атрибуты (только childList/characterData),
+    // поэтому смену style.left/top снимком не ловит — пишем явно.
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  });
   // ------------------------------------------------------------------------
 
   // --- Голосовой ввод (диктовка) ---------------------------------------
