@@ -5,7 +5,7 @@ import { showContextMenu } from "./contextMenu.js";
 import { fileToDataUrl, downscaleImage } from "../../utils/image.js";
 import { openPhotoEditor } from "./photoEditor.js";
 import { openLinkEditor } from "./linkEditor.js";
-import { openInternalLinkPicker } from "./internalLinkPicker.js";
+import { openLinkPicker } from "../../search/searchBar.js";
 import { escapeAttr } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
@@ -1673,7 +1673,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
             {
               label: t("editor.internalLinkChange"),
               onClick: async () => {
-                const picked = await openInternalLinkPicker();
+                const picked = await openLinkPicker();
                 if (picked) {
                   await applyInternalLink(contentEl, collectTextNodes(range), picked);
                   recordHistory();
@@ -1684,7 +1684,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
             },
           ]);
         } else {
-          const picked = await openInternalLinkPicker();
+          const picked = await openLinkPicker();
           if (picked) {
             const nodes = wrapSelection(contentEl, FORMATS.linkInternal, range);
             await applyInternalLink(contentEl, nodes, picked);

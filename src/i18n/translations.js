@@ -26,6 +26,7 @@ export const translations = {
     "nav.backHome": "← Home",
 
     "search.placeholder": "Search…",
+    "search.pickNotePlaceholder": "Search for a note to link…",
     "quicknote.add": "Quick note",
     "quicknote.accept": "Accept",
     "quicknote.cancel": "Cancel",
@@ -156,7 +157,6 @@ export const translations = {
     "editor.linkConfirm": "Confirm",
     "editor.setInternalLink": "Link to note",
     "editor.internalLinkChange": "Set new link",
-    "editor.internalLinkPickWordHint": "Click a word to link to it",
     "editor.internalLinkTargetMissing": "This note no longer exists.",
     "editor.internalLinkHint": "Go to: {title}",
 
@@ -191,6 +191,7 @@ export const translations = {
     "nav.backHome": "← На главную",
 
     "search.placeholder": "Поиск…",
+    "search.pickNotePlaceholder": "Поиск заметки для ссылки…",
     "quicknote.add": "Быстрая заметка",
     "quicknote.accept": "Принять",
     "quicknote.cancel": "Отмена",
@@ -320,7 +321,6 @@ export const translations = {
     "editor.linkConfirm": "Подтвердить",
     "editor.setInternalLink": "Ссылка на заметку",
     "editor.internalLinkChange": "Задать новую ссылку",
-    "editor.internalLinkPickWordHint": "Кликните по слову, чтобы сослаться на него",
     "editor.internalLinkTargetMissing": "Эта заметка больше не существует.",
     "editor.internalLinkHint": "Перейти к: {title}",
 

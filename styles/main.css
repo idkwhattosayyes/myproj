@@ -367,35 +367,6 @@ button {
   color: #1f2328;
 }
 
-/* Пикер внутренней ссылки (internalLinkPicker.js): сначала ищем заметку — те же
-   .search-row/.search-kind, что и в обычной полоске поиска (styles/search.css),
-   затем кликаем по слову в превью её содержимого. */
-.internal-link-picker {
-  width: 100%;
-  max-width: 640px;
-}
-
-.internal-link-picker-results {
-  max-height: 16rem;
-  overflow-y: auto;
-  margin: 0.6rem 0;
-}
-
-.internal-link-picker-hint {
-  margin: 0 0 0.6rem;
-  color: #6b7280;
-  font-size: 0.85rem;
-}
-
-/* .rte-content задаёт типографику/списки/чек-листы как в редакторе — тут
-   переопределяем только высоту под модалку. */
-.internal-link-picker-content.rte-content {
-  min-height: 0;
-  max-height: 50vh;
-  overflow-y: auto;
-  margin-bottom: 0.9rem;
-  cursor: text;
-}
 
 /* Окно выбора для экспорта/импорта: дерево «папки → заметки» с галочками слева
    и превью заметки справа. Размер средний — шире обычной модалки, но не на весь

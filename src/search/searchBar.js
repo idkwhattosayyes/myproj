@@ -19,6 +19,13 @@ let resultsEl = null;
 let scope = "global";
 let currentRoute = "home";
 
+// Режим выбора цели для внутренней ссылки (см. openLinkPicker) — та же полоска
+// поиска, но клик по результату не переходит к нему, а возвращает выбор вызывающему
+// коду (richTextEditor.js). pickerResolve — резолвер промиса, отданного наружу.
+let pickerActive = false;
+let pickerResolve = null;
+let pickerUnregisterLayer = null;
+
 // Текущие результаты и строки для клавиатуры: каждая строка — это либо заголовок
 // группы (переход к первому совпадению), либо конкретное совпадение в тексте.
 let groups = [];
@@ -100,7 +107,7 @@ function onInputKeydown(event) {
 }
 
 function toggleScope() {
-  if (currentRoute === "home") return; // на главной переключать не на что
+  if (currentRoute === "home" || pickerActive) return; // на главной переключать не на что, в режиме выбора — незачем
   scope = scope === "global" ? "local" : "global";
   renderLabels();
   scheduleSearch();
@@ -108,9 +115,12 @@ function toggleScope() {
 
 /**
  * Роутер сообщает, какой раздел открыт: по умолчанию на главной ищем везде,
- * внутри раздела — по нему одному.
+ * внутри раздела — по нему одному. Переход в другой раздел прерывает
+ * незавершённый выбор цели ссылки — заметка, из которой его начали, уже не
+ * на экране.
  */
 export function refreshSearchScope(route) {
+  if (pickerActive) finishPicker(null);
   currentRoute = route;
   scope = route === "home" ? "global" : "local";
   renderLabels();
@@ -119,15 +129,17 @@ export function refreshSearchScope(route) {
 /** Смена языка перерисовывает разделы; подписи полоски обновляем вместе с ними. */
 export function renderLabels() {
   if (!barEl) return;
-  inputEl.placeholder = t("search.placeholder");
+  inputEl.placeholder = pickerActive ? t("search.pickNotePlaceholder") : t("search.placeholder");
   scopeBtn.textContent = scope === "global" ? t("search.scopeGlobal") : t("search.scopeLocal");
   scopeBtn.title = t("search.scopeHint");
-  scopeBtn.disabled = currentRoute === "home";
+  scopeBtn.disabled = currentRoute === "home" || pickerActive;
 }
 
 // Какие данные перебирать: "all" — всё, "items" — папки и заметки,
-// "calendar" — записи календаря.
+// "calendar" — записи календаря. В режиме выбора цели ссылки — только
+// заметки, папки и записи календаря ссылкой быть не могут.
 function currentScopeKey() {
+  if (pickerActive) return "items";
   if (scope === "global") return "all";
   if (currentRoute === "calendar") return "calendar";
   if (currentRoute === "tasks" || currentRoute === "documents") return "items";
@@ -146,6 +158,14 @@ async function runSearch() {
     return;
   }
   groups = await search(query, currentScopeKey());
+  if (pickerActive) {
+    // Папка — не цель для ссылки; совпадение по имени фото не годится в
+    // matchIndex (findOccurrenceRange в richTextEditor.js ищет обычный текст,
+    // а не имя фото).
+    groups = groups
+      .filter((group) => group.kind === "item")
+      .map((group) => ({ ...group, matches: group.matches.filter((match) => !match.photoName) }));
+  }
   activeRow = 0;
   // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
   visibleByGroup.clear();
@@ -235,6 +255,11 @@ function openRow(rowIndex) {
   const group = groups[row.groupIndex];
   if (!group) return;
 
+  if (pickerActive) {
+    finishPicker({ itemId: group.id, query: group.query, matchIndex: row.matchIndex });
+    return;
+  }
+
   setPendingTarget({
     kind: group.kind,
     id: group.id,
@@ -276,6 +301,50 @@ function closeResults() {
 function onOutsideMouseDown(event) {
   if (barEl.contains(event.target)) return;
   closeResults();
+}
+
+/**
+ * Режим выбора цели для внутренней ссылки: та же полоска поиска, но клик по
+ * результату не переходит к нему, а резолвит промис вызывающему коду
+ * (richTextEditor.js — привязка ссылки к исходному выделенному слову).
+ * @returns {Promise<{itemId: string, query: string, matchIndex: number} | null>}
+ */
+export function openLinkPicker() {
+  if (pickerActive) finishPicker(null); // не даём повторному вызову подвесить прошлый промис навсегда
+  return new Promise((resolve) => {
+    pickerResolve = resolve;
+    pickerActive = true;
+    inputEl.value = "";
+    closeResults();
+    renderLabels();
+    inputEl.focus();
+    // Регистрируем сразу, а не лениво при первых результатах — иначе Esc и
+    // клик мимо не сработают, пока пользователь ещё не начал печатать.
+    pickerUnregisterLayer = pushLayer(() => finishPicker(null));
+    document.addEventListener("mousedown", onPickerOutsideMouseDown);
+  });
+}
+
+function onPickerOutsideMouseDown(event) {
+  if (barEl.contains(event.target)) return;
+  finishPicker(null);
+}
+
+// Идемпотентна: и Esc-слой, и клик мимо, и повторный openLinkPicker могут
+// теоретически столкнуться друг с другом — второй вызов должен быть no-op.
+function finishPicker(result) {
+  if (!pickerActive) return;
+  pickerActive = false;
+  const resolve = pickerResolve;
+  pickerResolve = null;
+  if (pickerUnregisterLayer) {
+    pickerUnregisterLayer();
+    pickerUnregisterLayer = null;
+  }
+  document.removeEventListener("mousedown", onPickerOutsideMouseDown);
+  closeResults();
+  renderLabels();
+  if (resolve) resolve(result);
 }
 
 function kindLabel(kind) {
