@@ -1869,8 +1869,12 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       query: link.dataset.anchorQuery,
       matchIndex: Number(link.dataset.anchorIndex),
     });
+    // Всегда в Документы, а не в раздел, где сама заметка когда-то создана
+    // (item.section) — ссылки на заметки доступны только в Документах
+    // (allowInternalLinks), поэтому переход туда же и ожидается; Задачи и
+    // Документы делят общий пул, так что заметка найдётся в любом случае.
     const navigate = getNavigateHandler();
-    if (navigate) navigate(item.section === "tasks" ? "tasks" : "documents");
+    if (navigate) navigate("documents");
   }
 
   // Превью ссылок при наведении — mouseover/mouseout вместо mouseenter/mouseleave:
