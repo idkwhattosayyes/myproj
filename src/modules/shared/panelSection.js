@@ -974,6 +974,10 @@ function renderDetail(container, config, state) {
     pageMode: item.pageMode,
     // Ссылка на другую заметку — инструмент только раздела "Документы" (ТЗ).
     allowInternalLinks: config.section === "documents",
+    // Переход по уже готовой ссылке (см. openInternalLink в richTextEditor.js)
+    // должен оставлять в текущем разделе, а не только в Документах — раздел,
+    // где отрисован сам редактор.
+    currentSection: config.section,
     onChange: (html) => scheduleSave({ content: html }),
     onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
     // История undo/redo привязана к id заметки и переживает выход/повторный вход.

@@ -588,10 +588,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean}} options
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, currentSection?: string}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, currentSection = "documents" }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -1869,12 +1869,12 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       query: link.dataset.anchorQuery,
       matchIndex: Number(link.dataset.anchorIndex),
     });
-    // Всегда в Документы, а не в раздел, где сама заметка когда-то создана
-    // (item.section) — ссылки на заметки доступны только в Документах
-    // (allowInternalLinks), поэтому переход туда же и ожидается; Задачи и
-    // Документы делят общий пул, так что заметка найдётся в любом случае.
+    // Остаёмся в том разделе, где сейчас открыта заметка со ссылкой (Задачи
+    // или Документы), а не в разделе, где сама целевая заметка когда-то
+    // создана (item.section) — они делят общий пул, поэтому заметка
+    // найдётся в любом случае, независимо от выбранного раздела.
     const navigate = getNavigateHandler();
-    if (navigate) navigate("documents");
+    if (navigate) navigate(currentSection === "tasks" ? "tasks" : "documents");
   }
 
   // Превью ссылок при наведении — mouseover/mouseout вместо mouseenter/mouseleave:
