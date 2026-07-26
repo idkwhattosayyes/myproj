@@ -1830,18 +1830,15 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(serializeEditor(contentEl));
   });
 
-  // Переход по внешней ссылке — обычный клик, всегда (как у ссылки в браузере),
-  // Ctrl/Cmd-клик или средняя кнопка — в новой вкладке. Несколько ссылок сразу —
-  // клик показывает тот же поповер, что и наведение, но кликабельный: неясно,
-  // какую из них открывать.
+  // Переход по внешней ссылке — всегда в новой вкладке, не задевая текущую
+  // (заметка не должна закрываться/перелистываться при уходе по ссылке).
+  // Несколько ссылок сразу — открываем все, каждую в своей вкладке.
   contentEl.addEventListener("click", (event) => {
     const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="external"]') : null;
     if (!link) return;
     event.preventDefault();
     const links = JSON.parse(link.dataset.links || "[]");
-    if (!links.length) return;
-    if (links.length === 1) openExternalLink(links[0], event);
-    else showLinkPreview(link, links, { clickable: true });
+    links.forEach((url) => openExternalLink(url));
   });
 
   // Переход по внутренней ссылке на другую заметку — обычный клик, всегда
@@ -2154,19 +2151,16 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
   setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
 }
 
-// Открывает внешнюю ссылку с учётом модификатора — как обычная ссылка в
-// браузере: ЛКМ переходит в текущей вкладке, Ctrl/Cmd-клик или средняя кнопка —
-// в новой.
-function openExternalLink(url, event) {
-  const newTab = event.ctrlKey || event.metaKey || event.button === 1;
-  if (newTab) window.open(url, "_blank", "noopener");
-  else window.location.href = url;
+// Открывает внешнюю ссылку в новой вкладке — заметка не должна закрываться/
+// перелистываться при переходе по ссылке.
+function openExternalLink(url) {
+  window.open(url, "_blank", "noopener");
 }
 
-// Компактный поповер со списком ссылок — по наведению на внешнюю ссылку и (если
-// их несколько) по клику вместо прямого перехода: неясно, какую открывать.
-// Стиль — тот же скруглённый "язык", что у результатов поиска (.search-results
-// в styles/search.css).
+// Компактный поповер со списком ссылок — по наведению на внешнюю ссылку;
+// если их несколько, каждая строка кликабельна отдельно. Стиль — тот же
+// скруглённый "язык", что у результатов поиска (.search-results в
+// styles/search.css).
 let linkPreviewEl = null;
 let unregisterLinkPreviewLayer = null;
 
@@ -2191,8 +2185,8 @@ function showLinkPreview(anchorEl, links, { clickable = false } = {}) {
     row.className = "rte-link-preview-row";
     row.textContent = url;
     if (clickable) {
-      row.addEventListener("click", (event) => {
-        openExternalLink(url, event);
+      row.addEventListener("click", () => {
+        openExternalLink(url);
         hideLinkPreview();
       });
     }
