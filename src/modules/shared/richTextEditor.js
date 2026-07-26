@@ -1830,15 +1830,21 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(serializeEditor(contentEl));
   });
 
-  // Переход по внешней ссылке — всегда в новой вкладке, не задевая текущую
-  // (заметка не должна закрываться/перелистываться при уходе по ссылке).
-  // Несколько ссылок сразу — открываем все, каждую в своей вкладке.
+  // Переход по внешней ссылке — в новой вкладке, не задевая текущую (заметка
+  // не должна закрываться/перелистываться при уходе по ссылке). Открыть сразу
+  // МОЖНО только одну: браузер разрешает не более одной новой вкладки на
+  // клик (лимит на "user activation", общий для window.open и настоящих
+  // ссылок — не обходится никаким приёмом). Поэтому при нескольких ссылках
+  // клик показывает тот же поповер, что и наведение, — конкретную ссылку
+  // открывает уже отдельный клик по её строке.
   contentEl.addEventListener("click", (event) => {
     const link = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="external"]') : null;
     if (!link) return;
     event.preventDefault();
     const links = JSON.parse(link.dataset.links || "[]");
-    links.forEach((url) => openExternalLink(url));
+    if (!links.length) return;
+    if (links.length === 1) openExternalLink(links[0]);
+    else showLinkPreview(link, links, { clickable: true });
   });
 
   // Переход по внутренней ссылке на другую заметку — обычный клик, всегда
@@ -1882,7 +1888,10 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     // списку нельзя было бы кликнуть) или остался внутри той же ссылки.
     const to = event.relatedTarget;
     if (link.contains(to) || (linkPreviewEl && linkPreviewEl.contains(to))) return;
-    hideLinkPreview();
+    // Не сразу: между словом и поповером есть зазор — мгновенное скрытие тут
+    // же убирало поповер, пока курсор ещё едет к нему (schedule отменяется,
+    // если он всё же доехал, см. showLinkPreview).
+    scheduleHideLinkPreview();
   });
 
   // Отмена/повтор с клавиатуры. Перехватываем сами: нативный undo не знает про
@@ -2151,10 +2160,21 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
   setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
 }
 
-// Открывает внешнюю ссылку в новой вкладке — заметка не должна закрываться/
-// перелистываться при переходе по ссылке.
+// Открывает внешнюю ссылку в фоновой вкладке — как настоящий Ctrl+клик по
+// ссылке в браузере: не переключает фокус на неё и не отбирает экран у
+// текущей вкладки. Через реальный <a href target="_blank"> + click(), а не
+// window.open() — второй и последующие window.open() в одном клик-обработчике
+// браузеры блокируют как попап (Firefox/Chrome), а клик по обычной ссылке под
+// это ограничение не попадает. Собственного флага «открыть в фоне» у
+// window.open() нет — это единственный кросс-браузерный способ.
 function openExternalLink(url) {
-  window.open(url, "_blank", "noopener");
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 // Компактный поповер со списком ссылок — по наведению на внешнюю ссылку;
@@ -2163,8 +2183,26 @@ function openExternalLink(url) {
 // styles/search.css).
 let linkPreviewEl = null;
 let unregisterLinkPreviewLayer = null;
+let linkPreviewHideTimer = null;
+
+// Между словом и поповером есть зазор (позиционируем чуть ниже ссылки, см.
+// ниже) — мгновенное скрытие по mouseout из contentEl срабатывало прямо в
+// этом зазоре, до того как курсор успевал доехать до поповера. Отсрочка даёт
+// этот запас; cancelHideLinkPreview снимает её, если курсор всё же попал на
+// ссылку или сам поповер.
+const LINK_PREVIEW_HIDE_DELAY = 200;
+
+function scheduleHideLinkPreview() {
+  clearTimeout(linkPreviewHideTimer);
+  linkPreviewHideTimer = setTimeout(hideLinkPreview, LINK_PREVIEW_HIDE_DELAY);
+}
+
+function cancelHideLinkPreview() {
+  clearTimeout(linkPreviewHideTimer);
+}
 
 function hideLinkPreview() {
+  clearTimeout(linkPreviewHideTimer);
   if (!linkPreviewEl) return;
   linkPreviewEl.remove();
   linkPreviewEl = null;
@@ -2199,12 +2237,16 @@ function showLinkPreview(anchorEl, links, { clickable = false } = {}) {
   popover.style.left = `${clamp(anchorRect.left, 8, window.innerWidth - box.width - 8)}px`;
   popover.style.top = `${clamp(anchorRect.bottom + 4, 8, window.innerHeight - box.height - 8)}px`;
 
+  // Курсор доехал до поповера (в т.ч. через зазор) — отменяем отложенное
+  // скрытие, запланированное mouseout на contentEl.
+  popover.addEventListener("mouseenter", cancelHideLinkPreview);
+
   // Курсор мог уйти со ссылки прямо на поповер (это два разных элемента) —
   // закрываем, только когда он покинул и поповер, и саму ссылку.
   popover.addEventListener("mouseleave", (event) => {
     const to = event.relatedTarget;
     if (to && to.closest && to.closest('a.rte-link[data-link-type="external"]') === anchorEl) return;
-    hideLinkPreview();
+    scheduleHideLinkPreview();
   });
 
   linkPreviewEl = popover;
