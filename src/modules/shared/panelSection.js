@@ -463,9 +463,20 @@ function renderFolders(container, config, state) {
         // Перетаскивание без данных браузер считает неполноценным и рисует
         // курсор "запрещено", даже когда цель готова принять сброс.
         event.dataTransfer.setData("text/plain", folderId);
+        // Сразу показываем зону вложения у ВСЕХ папок — не только у той, что
+        // окажется под курсором, — чтобы было видно, куда вообще можно "закинуть".
+        bodyEl.querySelectorAll("[data-folder-id]").forEach((rowEl) => {
+          const id = rowEl.dataset.folderId;
+          if (isRealFolderId(id) && id !== folderId) rowEl.classList.add("is-drop-into-zone");
+        });
       });
       el.addEventListener("dragend", () => {
         dragged = null;
+        // dragleave/drop обычно уже сняли is-drop-into с последней наведённой
+        // строки, но подчищаем и его на случай отмены drag мимо всех целей.
+        bodyEl
+          .querySelectorAll(".is-drop-into-zone, .is-drop-into")
+          .forEach((rowEl) => rowEl.classList.remove("is-drop-into-zone", "is-drop-into"));
       });
     }
 

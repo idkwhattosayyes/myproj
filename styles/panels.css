@@ -292,7 +292,26 @@
   box-shadow: inset 0 -2px 0 #33507e;
 }
 
-/* Правая зона "вложить папку в папку" — 20% ширины строки, не вся строка. */
+/* Базовая зона "сюда можно вложить папку" — видна у всех папок, пока идёт
+   перетаскивание другой папки, не только у той, что под курсором. */
+.folder-item.is-drop-into-zone {
+  position: relative;
+}
+
+.folder-item.is-drop-into-zone::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20%;
+  background: rgba(51, 80, 126, 0.12);
+  pointer-events: none;
+}
+
+/* Курсор наведён именно на эту зону — темнее базового оттенка, без
+   пунктирной обводки. Идёт ПОСЛЕ is-drop-into-zone, чтобы победить её фон,
+   когда у строки одновременно есть оба класса. */
 .folder-item.is-drop-into {
   position: relative;
 }
@@ -304,9 +323,7 @@
   right: 0;
   bottom: 0;
   width: 20%;
-  background: rgba(51, 80, 126, 0.18);
-  outline: 2px dashed #33507e;
-  outline-offset: -2px;
+  background: rgba(51, 80, 126, 0.32);
   pointer-events: none;
 }
 
