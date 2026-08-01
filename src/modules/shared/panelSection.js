@@ -397,8 +397,13 @@ function indentForDepth(depth) {
 function renderFolderRow(folder, state, depth, parentContext, chain) {
   const count = countFolderContents(state, folder.id);
   const isExpanded = state.expandedFolderIds.has(folder.id);
+  // Одна и та же папка может отрендериться несколько раз (в общем списке и в
+  // поддеревьях разных родителей) — в поддереве подсветка выбора должна быть
+  // заметно мягче, иначе непонятно, где основной раздел, а где подраздел.
+  const isSelected = state.selectedFolderId === folder.id;
+  const activeClass = isSelected ? (parentContext ? "is-active-nested" : "is-active") : "";
   const row = `
-    <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}"
+    <li class="folder-item ${activeClass} ${folder.pinned ? "is-pinned" : ""}"
         data-folder-id="${folder.id}"
         ${parentContext ? `data-parent-context="${parentContext}"` : ""}
         draggable="true"
