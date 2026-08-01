@@ -39,8 +39,11 @@ function isItemEmpty(item) {
   return div.textContent.trim() === "" && !div.querySelector("img");
 }
 
-function countItemsInFolder(state, folderId) {
-  return state.items.filter((i) => i.folderIds.includes(folderId)).length;
+// Сколько всего внутри папки — заметки и вложенные папки вместе. Тот же
+// счётчик используется и как условие показа кнопки мгновенного удаления
+// (пустой считается только папка без заметок и без вложенных папок).
+function countFolderContents(state, folderId) {
+  return state.items.filter((i) => i.folderIds.includes(folderId)).length + childFoldersOf(state, folderId).length;
 }
 
 // Сколько всего в «Избранном»: считаем только напрямую отмеченные заметки И
@@ -378,7 +381,7 @@ function indentForDepth(depth) {
 // ветки рендера, защита от бесконечной рекурсии при данных, испорченных в
 // обход itemsService (например, вручную через localStorage).
 function renderFolderRow(folder, state, depth, parentContext, chain) {
-  const count = countItemsInFolder(state, folder.id);
+  const count = countFolderContents(state, folder.id);
   const isExpanded = state.expandedFolderIds.has(folder.id);
   const row = `
     <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}"
