@@ -15,6 +15,20 @@ let dragged = null; // { kind: "item" | "folder", id } | null
 // config, state } или null. См. refreshActivePanelItems.
 let activePanel = null;
 
+// Подчищает курсор "запрещено" везде, куда бы курсор ни попал во время
+// внутреннего drag (над редактором, шапкой, фоном страницы) — локальные
+// dragover в панелях папок/списка (см. wireHeaderActions) покрывают только
+// сами панели, это подстраховка на случай, когда курсор оказывается вне них.
+document.addEventListener("dragover", (event) => {
+  if (!dragged) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+});
+document.addEventListener("drop", (event) => {
+  if (!dragged) return;
+  event.preventDefault();
+});
+
 // История undo/redo хранится вне редактора — иначе она терялась бы при каждом
 // пересоздании редактора (переключение заметок). Ключ — id заметки, значение —
 // { history, historyIndex }. Держим в памяти сессии и только для последних
