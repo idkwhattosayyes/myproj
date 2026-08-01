@@ -1,6 +1,6 @@
 import { getLang, setLang, t } from "../i18n/i18n.js";
 import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
-import { openConfirm } from "../utils/modal.js";
+import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
 import { buildExportFrom, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
@@ -144,9 +144,12 @@ async function runExport() {
     mode: "export",
     folders: allFolders,
     items: allItems,
-    onConfirm: ({ folders: pickedFolders, items: pickedItems }) => {
+    onConfirm: async ({ folders: pickedFolders, items: pickedItems }) => {
       if (!pickedFolders.length && !pickedItems.length) return;
-      downloadJson(buildExportFrom(pickedFolders, pickedItems), "myproj-export.json");
+      const name = await openPrompt({ message: t("settings.exportFilenamePrompt"), defaultValue: "myproj-export" });
+      if (!name || !name.trim()) return; // отмена — экспорт не происходит
+      const filename = name.trim().endsWith(".json") ? name.trim() : `${name.trim()}.json`;
+      downloadJson(buildExportFrom(pickedFolders, pickedItems), filename);
     },
   });
 }
