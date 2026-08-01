@@ -309,7 +309,14 @@ function markDropSide(el, after) {
 }
 
 function clearDropMarks(el) {
-  el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after");
+  el.classList.remove("is-drop-target", "is-drop-before", "is-drop-after", "is-drop-into");
+}
+
+// Правые 20% ширины строки — зона «вложить папку в папку». Левее — обычная
+// логика «до/после» для переупорядочивания.
+function isDropInto(el, event) {
+  const rect = el.getBoundingClientRect();
+  return event.clientX >= rect.right - rect.width * 0.2;
 }
 
 // Значки у строки: сердечко избранного и булавка закрепления. showPin — показывать
@@ -531,15 +538,27 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
     if (!dragged) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    // Папку на папку — переупорядочивание, поэтому показываем линию сверху или
-    // снизу. Заметку на папку — "положить внутрь", подсвечиваем строку целиком.
-    if (dragged.kind === "folder" && isRealFolderId(folderId)) markDropSide(el, isDropAfter(el, event));
-    else el.classList.add("is-drop-target");
+    // Папку на правые 20% строки другой папки — вложить внутрь (узкая
+    // подсветка справа). Левее — переупорядочивание, линия сверху/снизу, как
+    // раньше. Заметку на папку — "положить внутрь", подсвечиваем строку целиком.
+    if (dragged.kind === "folder" && isRealFolderId(folderId) && dragged.id !== folderId) {
+      if (isDropInto(el, event)) {
+        clearDropMarks(el);
+        el.classList.add("is-drop-into");
+      } else {
+        el.classList.remove("is-drop-into");
+        markDropSide(el, isDropAfter(el, event));
+      }
+    } else {
+      el.classList.remove("is-drop-into");
+      el.classList.add("is-drop-target");
+    }
   });
   el.addEventListener("dragleave", () => clearDropMarks(el));
   el.addEventListener("drop", async (event) => {
     event.preventDefault();
     const after = isDropAfter(el, event);
+    const into = isDropInto(el, event);
     clearDropMarks(el);
     if (!dragged) return;
     const drop = dragged;
@@ -560,8 +579,13 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
         await itemsService.updateItem(drop.id, { folderIds: [...item.folderIds, folderId] });
       }
     } else if (drop.kind === "folder" && drop.id !== folderId) {
-      // Папку на папку — переупорядочить.
-      await reorderFolder(drop.id, folderId, state, after);
+      if (into) {
+        // Правые 20% строки — вложить папку внутрь папки-цели.
+        await itemsService.moveFolderInto(config.section, drop.id, folderId);
+      } else {
+        // Иначе — переупорядочить.
+        await reorderFolder(drop.id, folderId, state, after);
+      }
     }
 
     state.folders = await itemsService.listFolders(config.section);

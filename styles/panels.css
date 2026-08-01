@@ -292,6 +292,24 @@
   box-shadow: inset 0 -2px 0 #33507e;
 }
 
+/* Правая зона "вложить папку в папку" — 20% ширины строки, не вся строка. */
+.folder-item.is-drop-into {
+  position: relative;
+}
+
+.folder-item.is-drop-into::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20%;
+  background: rgba(51, 80, 126, 0.18);
+  outline: 2px dashed #33507e;
+  outline-offset: -2px;
+  pointer-events: none;
+}
+
 /* Контекстное меню (ПКМ по панели папок) */
 .context-menu {
   position: fixed;

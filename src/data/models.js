@@ -11,6 +11,7 @@ export function createFolderModel({ name = "", section }) {
     pinned: false, // закреплена наверху списка папок (глобально)
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     deletedAt: null, // время попадания в Корзину; null = папка на своём месте
+    parentFolderIds: [], // id родительских папок, в которые вложена эта папка
   };
 }
 
