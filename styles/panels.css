@@ -346,9 +346,11 @@ body.is-dragging-folder .folder-item.is-draggable { cursor: grabbing; }
   width: 20%;
   background: rgba(51, 80, 126, 0.12);
   pointer-events: none;
-  /* Совпадает со скруглением самой папки (.folder-item — border-radius: 6px) —
-     зона прижата к правому краю строки, поэтому скругляем только правые углы. */
-  border-radius: 0 6px 6px 0;
+  /* Скруглены все четыре угла — та же форма, что у самой папки (.folder-item —
+     border-radius: 6px), только меньше по размеру: зона выглядит как отдельный
+     скруглённый прямоугольник внутри строки, а не отрезанный кусок с ровным
+     левым краем. */
+  border-radius: 6px;
 }
 
 /* Курсор наведён именно на эту зону — темнее базового оттенка, без
@@ -367,7 +369,7 @@ body.is-dragging-folder .folder-item.is-draggable { cursor: grabbing; }
   width: 20%;
   background: rgba(51, 80, 126, 0.32);
   pointer-events: none;
-  border-radius: 0 6px 6px 0;
+  border-radius: 6px;
 }
 
 /* Оригинальная строка на время переноса — приглушена, чтобы не задваивалось
