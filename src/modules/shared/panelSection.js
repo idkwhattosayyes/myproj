@@ -5,10 +5,14 @@ import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
+import { pushLayer } from "../../utils/escapeLayers.js";
 
-// Что сейчас перетаскивается (id + вид). Модульная переменная, т.к. dragstart и
-// drop навешиваются на разные элементы, пересоздаваемые при каждом render.
-let dragged = null; // { kind: "item" | "folder", id } | null
+// Что сейчас перетаскивается (id + вид) — используется только заметками.
+// Перетаскивание папок полностью кастомное (mousedown/mousemove/mouseup в
+// renderFolders) и ведёт собственное состояние внутри замыкания, эту
+// переменную не трогает. Модульная переменная, т.к. dragstart и drop заметок
+// навешиваются на разные элементы, пересоздаваемые при каждом render.
+let dragged = null; // { kind: "item", id } | null
 
 // Ссылка на смонтированный сейчас раздел — чтобы внешние источники (быстрая
 // заметка) могли попросить обновить список без перемонтирования. { container,
@@ -403,10 +407,9 @@ function renderFolderRow(folder, state, depth, parentContext, chain) {
   const isSelected = state.selectedFolderId === folder.id;
   const activeClass = isSelected ? (parentContext ? "is-active-nested" : "is-active") : "";
   const row = `
-    <li class="folder-item ${activeClass} ${folder.pinned ? "is-pinned" : ""}"
+    <li class="folder-item is-draggable ${activeClass} ${folder.pinned ? "is-pinned" : ""}"
         data-folder-id="${folder.id}"
         ${parentContext ? `data-parent-context="${parentContext}"` : ""}
-        draggable="true"
         style="padding-left: ${indentForDepth(depth)}px">
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
@@ -477,33 +480,191 @@ function renderFolders(container, config, state) {
       if (folderChanged) renderList(container, config, state);
     });
 
-    // Настоящие папки можно тащить; псевдо-папки — нет.
+    // Настоящие папки можно тащить; псевдо-папки — нет. Кастомный drag на
+    // mousedown/mousemove/mouseup: нативный HTML5 DnD для папок убран — браузер
+    // рисовал перетаскиваемую картинку с острыми углами и курсор "запрещено", и
+    // убрать эти артефакты, оставаясь на нативном API, не получалось. Заметки
+    // по-прежнему перетаскиваются нативно — там это не мешало и трогать не просили.
     if (isRealFolderId(folderId)) {
-      el.addEventListener("dragstart", (event) => {
-        dragged = { kind: "folder", id: folderId };
-        event.dataTransfer.effectAllowed = "move";
-        // Перетаскивание без данных браузер считает неполноценным и рисует
-        // курсор "запрещено", даже когда цель готова принять сброс.
-        event.dataTransfer.setData("text/plain", folderId);
-        // Явно задаём превью тем же элементом, каким он выглядит сейчас — без
-        // этого браузер иногда рисует превью обрезанным прямоугольником без
-        // скруглений; вызываем ДО того, как ниже массово меняются классы у
-        // соседних строк, чтобы снимок захватил обычный, не переходный вид.
-        event.dataTransfer.setDragImage(el, event.offsetX, event.offsetY);
-        // Сразу показываем зону вложения у ВСЕХ папок — не только у той, что
-        // окажется под курсором, — чтобы было видно, куда вообще можно "закинуть".
-        bodyEl.querySelectorAll("[data-folder-id]").forEach((rowEl) => {
-          const id = rowEl.dataset.folderId;
-          if (isRealFolderId(id) && id !== folderId) rowEl.classList.add("is-drop-into-zone");
-        });
-      });
-      el.addEventListener("dragend", () => {
-        dragged = null;
-        // dragleave/drop обычно уже сняли is-drop-into с последней наведённой
-        // строки, но подчищаем и его на случай отмены drag мимо всех целей.
-        bodyEl
-          .querySelectorAll(".is-drop-into-zone, .is-drop-into")
-          .forEach((rowEl) => rowEl.classList.remove("is-drop-into-zone", "is-drop-into"));
+      el.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        // Идёт переименование прямо в строке (см. startInlineRename) — не мешаем
+        // выделять текст в поле мышью.
+        if (event.target.closest(".inline-rename")) return;
+        event.preventDefault();
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const DRAG_THRESHOLD = 4; // px — как порог нативного DnD
+
+        let dragging = false;
+        let ghost = null;
+        let offsetX = 0;
+        let offsetY = 0;
+        let unregisterLayer = null;
+        let lastHighlighted = null; // строка, у которой сейчас висят is-drop-* классы
+
+        function suppressNextClick(clickEvent) {
+          // Вешается на document (НЕ на el) с capture: true. Для двух слушателей
+          // на ОДНОМ узле порядок — это порядок подписки, а не capture-флаг;
+          // обычный click-обработчик строки подписан раньше (при renderFolders),
+          // и на самом el suppressor выполнился бы ПОСЛЕ него. На предке
+          // (document) capture-фаза гарантированно отрабатывает раньше, чем
+          // событие вообще дойдёт до el.
+          clickEvent.stopPropagation();
+          clickEvent.preventDefault();
+        }
+
+        function suppressContextMenu(menuEvent) {
+          // ПКМ второй кнопкой, пока зажата левая и идёт drag, — не открываем
+          // меню поверх летающего "призрака".
+          menuEvent.preventDefault();
+          menuEvent.stopPropagation();
+        }
+
+        function beginDrag() {
+          dragging = true;
+          el.classList.add("is-drag-source");
+
+          const rect = el.getBoundingClientRect();
+          ghost = el.cloneNode(true);
+          ghost.removeAttribute("data-folder-id");
+          ghost.removeAttribute("data-parent-context");
+          ghost.classList.add("folder-drag-ghost");
+          ghost.classList.remove(
+            "is-drop-into-zone", "is-drop-into", "is-drop-before", "is-drop-after",
+            "is-active", "is-active-nested", "is-drag-source", "is-search-flash"
+          );
+          // Крестик мгновенного удаления на "призраке" не нужен: он ничего не
+          // делает (pointer-events: none), но выглядел бы рабочей кнопкой.
+          const ghostDelete = ghost.querySelector(".folder-delete");
+          if (ghostDelete) ghostDelete.remove();
+          ghost.style.position = "fixed";
+          ghost.style.width = `${rect.width}px`;
+          ghost.style.left = `${rect.left}px`;
+          ghost.style.top = `${rect.top}px`;
+          ghost.style.margin = "0";
+          document.body.appendChild(ghost);
+          offsetX = startX - rect.left;
+          offsetY = startY - rect.top;
+
+          // Сразу показываем зону вложения у ВСЕХ папок — не только у той, что
+          // окажется под курсором, — чтобы было видно, куда вообще можно "закинуть".
+          bodyEl.querySelectorAll("[data-folder-id]").forEach((rowEl) => {
+            const id = rowEl.dataset.folderId;
+            if (isRealFolderId(id) && id !== folderId) rowEl.classList.add("is-drop-into-zone");
+          });
+
+          document.body.classList.add("is-dragging-folder");
+          document.addEventListener("click", suppressNextClick, { capture: true, once: true });
+          document.addEventListener("contextmenu", suppressContextMenu, true);
+
+          // Esc отменяет drag — та же дисциплина, что у остальных оверлеев
+          // проекта (см. utils/escapeLayers.js): регистрируемся, а не вешаем
+          // свой keydown.
+          unregisterLayer = pushLayer(cancelDrag);
+        }
+
+        function updateHighlight(clientX, clientY) {
+          if (lastHighlighted) {
+            clearDropMarks(lastHighlighted);
+            lastHighlighted = null;
+          }
+          ghost.style.left = `${clientX - offsetX}px`;
+          ghost.style.top = `${clientY - offsetY}px`;
+
+          const hit = document.elementFromPoint(clientX, clientY);
+          const hitEl = hit ? hit.closest("[data-folder-id]") : null;
+          if (!hitEl) return null;
+          const hitId = hitEl.dataset.folderId;
+          if (hitId === folderId) return null; // сам на себя
+
+          if (isRealFolderId(hitId)) {
+            const into = isDropInto(hitEl, { clientX });
+            const after = isDropAfter(hitEl, { clientY });
+            if (into) hitEl.classList.add("is-drop-into");
+            else markDropSide(hitEl, after);
+            lastHighlighted = hitEl;
+            return { folderId: hitId, into, after };
+          }
+          if (hitId === "favorites" || hitId === "unfiled") {
+            hitEl.classList.add("is-drop-target");
+            lastHighlighted = hitEl;
+            return { folderId: hitId, into: false, after: false };
+          }
+          return null;
+        }
+
+        function cleanup() {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          window.removeEventListener("blur", onBlur);
+          // once:true снимает себя сам ПОСЛЕ первого клика, но если drag
+          // отменили через Esc/blur (клика не было вовсе), слушатель всё ещё
+          // висит и без явного снятия съел бы следующий, уже никак не
+          // связанный клик где угодно в приложении.
+          document.removeEventListener("click", suppressNextClick, { capture: true });
+          document.removeEventListener("contextmenu", suppressContextMenu, true);
+          if (unregisterLayer) {
+            unregisterLayer();
+            unregisterLayer = null;
+          }
+          if (lastHighlighted) clearDropMarks(lastHighlighted);
+          bodyEl
+            .querySelectorAll(".is-drop-into-zone, .is-drop-into, .is-drop-target")
+            .forEach((rowEl) => rowEl.classList.remove("is-drop-into-zone", "is-drop-into", "is-drop-target"));
+          el.classList.remove("is-drag-source");
+          if (ghost) {
+            ghost.remove();
+            ghost = null;
+          }
+          document.body.classList.remove("is-dragging-folder");
+        }
+
+        async function finishDrop(target) {
+          if (!target) return;
+          if (target.folderId === "favorites") {
+            await itemsService.updateFolder(folderId, { isFavorite: true });
+          } else if (target.folderId === "unfiled") {
+            await itemsService.updateFolder(folderId, { parentFolderIds: [] });
+          } else if (target.into) {
+            await itemsService.moveFolderInto(config.section, folderId, target.folderId);
+          } else {
+            await reorderFolder(folderId, target.folderId, state, target.after);
+          }
+          state.folders = await itemsService.listFolders(config.section);
+          state.items = await itemsService.listItems(config.section);
+          render(container, config, state);
+        }
+
+        function cancelDrag() {
+          cleanup();
+        }
+
+        function onMouseMove(e) {
+          if (!dragging) {
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+            beginDrag();
+          }
+          updateHighlight(e.clientX, e.clientY);
+        }
+
+        function onMouseUp(e) {
+          const wasDragging = dragging;
+          const target = wasDragging ? updateHighlight(e.clientX, e.clientY) : null;
+          cleanup();
+          if (wasDragging) finishDrop(target);
+        }
+
+        function onBlur() {
+          if (dragging) cancelDrag();
+        }
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+        window.addEventListener("blur", onBlur);
       });
     }
 
@@ -636,65 +797,34 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
   render(container, config, state);
 }
 
-// Навешивает dragover/drop на папку-приёмник. Поведение зависит от того, что
-// тащат (заметку или папку) и на какую цель (реальную папку / "Без папки" / "Избранное").
+// Навешивает dragover/drop на папку-приёмник ДЛЯ ЗАМЕТОК (нативный HTML5 DnD).
+// Папки сюда больше не попадают — их перетаскивание полностью кастомное, см.
+// mousedown-обработчик в renderFolders. Регистрируется по-прежнему и на
+// реальных папках, и на "Без папки"/"Избранном" — эти псевдо-папки остаются
+// приёмниками для заметок.
 function wireFolderDropTarget(el, folderId, container, config, state) {
   el.addEventListener("dragover", (event) => {
-    if (!dragged) return;
+    if (!dragged || dragged.kind !== "item") return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    // Папку на правые 20% строки другой папки — вложить внутрь (узкая
-    // подсветка справа). Левее — переупорядочивание, линия сверху/снизу, как
-    // раньше. Заметку на папку — "положить внутрь", подсвечиваем строку целиком.
-    if (dragged.kind === "folder" && isRealFolderId(folderId) && dragged.id !== folderId) {
-      if (isDropInto(el, event)) {
-        clearDropMarks(el);
-        el.classList.add("is-drop-into");
-      } else {
-        el.classList.remove("is-drop-into");
-        markDropSide(el, isDropAfter(el, event));
-      }
-    } else {
-      el.classList.remove("is-drop-into");
-      el.classList.add("is-drop-target");
-    }
+    el.classList.add("is-drop-target");
   });
   el.addEventListener("dragleave", () => clearDropMarks(el));
   el.addEventListener("drop", async (event) => {
     event.preventDefault();
-    const after = isDropAfter(el, event);
-    const into = isDropInto(el, event);
     clearDropMarks(el);
-    if (!dragged) return;
-    const drop = dragged;
+    if (!dragged || dragged.kind !== "item") return;
+    const itemId = dragged.id;
     dragged = null;
 
     if (folderId === "favorites") {
-      // Заметку или папку — в избранное.
-      if (drop.kind === "item") await itemsService.updateItem(drop.id, { isFavorite: true });
-      else await itemsService.updateFolder(drop.id, { isFavorite: true });
+      await itemsService.updateItem(itemId, { isFavorite: true });
     } else if (folderId === "unfiled") {
-      // Заметку — вынуть из ВСЕХ папок (сделать «Без папки»).
-      if (drop.kind === "item") await itemsService.updateItem(drop.id, { folderIds: [] });
-      // Папку — вынуть из ВСЕХ родителей, она становится обычной папкой
-      // верхнего уровня. Её собственные дети не трогаем — их parentFolderIds
-      // по-прежнему указывают на эту же папку, вложенная структура внутри неё
-      // остаётся как была.
-      else if (drop.kind === "folder") await itemsService.updateFolder(drop.id, { parentFolderIds: [] });
-    } else if (drop.kind === "item") {
-      // Заметку — ДОБАВить в эту папку (не перемещаем: заметка может быть сразу
-      // в нескольких папках). Если уже там — ничего не меняем.
-      const item = state.items.find((i) => i.id === drop.id);
+      await itemsService.updateItem(itemId, { folderIds: [] });
+    } else {
+      const item = state.items.find((i) => i.id === itemId);
       if (item && !item.folderIds.includes(folderId)) {
-        await itemsService.updateItem(drop.id, { folderIds: [...item.folderIds, folderId] });
-      }
-    } else if (drop.kind === "folder" && drop.id !== folderId) {
-      if (into) {
-        // Правые 20% строки — вложить папку внутрь папки-цели.
-        await itemsService.moveFolderInto(config.section, drop.id, folderId);
-      } else {
-        // Иначе — переупорядочить.
-        await reorderFolder(drop.id, folderId, state, after);
+        await itemsService.updateItem(itemId, { folderIds: [...item.folderIds, folderId] });
       }
     }
 
