@@ -669,8 +669,13 @@ function wireFolderDropTarget(el, folderId, container, config, state) {
       if (drop.kind === "item") await itemsService.updateItem(drop.id, { isFavorite: true });
       else await itemsService.updateFolder(drop.id, { isFavorite: true });
     } else if (folderId === "unfiled") {
-      // Только заметку — вынуть из ВСЕХ папок (сделать «Без папки»).
+      // Заметку — вынуть из ВСЕХ папок (сделать «Без папки»).
       if (drop.kind === "item") await itemsService.updateItem(drop.id, { folderIds: [] });
+      // Папку — вынуть из ВСЕХ родителей, она становится обычной папкой
+      // верхнего уровня. Её собственные дети не трогаем — их parentFolderIds
+      // по-прежнему указывают на эту же папку, вложенная структура внутри неё
+      // остаётся как была.
+      else if (drop.kind === "folder") await itemsService.updateFolder(drop.id, { parentFolderIds: [] });
     } else if (drop.kind === "item") {
       // Заметку — ДОБАВить в эту папку (не перемещаем: заметка может быть сразу
       // в нескольких папках). Если уже там — ничего не меняем.
