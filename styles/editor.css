@@ -65,6 +65,18 @@
   flex-wrap: wrap;
 }
 
+/* Счётчик слов/символов (только Документы) — прижат к правому краю тулбара,
+   полупрозрачный, чтобы не спорил вниманием с кнопками. */
+.rte-word-count {
+  margin-left: auto;
+  align-self: center;
+  font-size: 0.78rem;
+  color: #6b7280;
+  opacity: 0.65;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Кнопка сворачивания в левом углу тулбара — как ☰ у панели папок. */
 .rte-toolbar-toggle {
   min-width: 1.4rem;
@@ -84,6 +96,7 @@
 .rte-toolbar.is-collapsed { gap: 0; }
 
 .rte-toolbar.is-collapsed .rte-btn { display: none; }
+.rte-toolbar.is-collapsed .rte-word-count { display: none; }
 
 .rte-toolbar.is-collapsed .rte-toolbar-toggle {
   flex: 1;

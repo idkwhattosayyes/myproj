@@ -1079,6 +1079,8 @@ function renderDetail(container, config, state) {
     pageMode: item.pageMode,
     // Ссылка на другую заметку — инструмент только раздела "Документы" (ТЗ).
     allowInternalLinks: config.section === "documents",
+    // Счётчик слов/символов — тоже только в Документах (ТЗ).
+    showWordCount: config.section === "documents",
     // Переход по уже готовой ссылке (см. openInternalLink в richTextEditor.js)
     // должен оставлять в текущем разделе, а не только в Документах — раздел,
     // где отрисован сам редактор.

@@ -588,10 +588,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, currentSection?: string}} options
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, currentSection?: string, showWordCount?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, currentSection = "documents" }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, currentSection = "documents", showWordCount = false }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -894,6 +894,9 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     onChange(entry.html);
     refreshPages();
     refreshToolbarState();
+    // Undo/redo — тоже нажатие клавиши (Ctrl+Z/Ctrl+Y или кнопки тулбара), но
+    // идёт мимо input-события contentEl, поэтому счётчик обновляем явно здесь.
+    scheduleWordCountUpdate();
     window.scrollTo(scrollX, scrollY);
     isRestoring = false;
   }
@@ -1729,9 +1732,44 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     if (btn) toolbarEl.appendChild(btn);
   });
 
+  // Счётчик слов/символов — только для Документов (showWordCount передаётся
+  // вызывающим кодом на основе config.section, как и allowInternalLinks).
+  let wordCountEl = null;
+  let wordCountFrame = null;
+  if (showWordCount) {
+    wordCountEl = document.createElement("span");
+    wordCountEl.className = "rte-word-count";
+    toolbarEl.appendChild(wordCountEl);
+    updateWordCount();
+  }
+
+  // Считаем только по страницам (getPages()), а не contentEl.textContent
+  // целиком — иначе в счёт попала бы ещё и подпись служебной кнопки
+  // "＋ Add page", которая лежит в contentEl рядом со страницами.
+  function updateWordCount() {
+    const text = getPages()
+      .map((page) => page.textContent)
+      .join(" ")
+      .trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    wordCountEl.textContent = `${t("editor.words")}: ${words} · ${t("editor.characters")}: ${text.length}`;
+  }
+
+  // requestAnimationFrame схлопывает несколько input-событий одного кадра
+  // (быстрый ввод, автозамена, вставка текста) в один пересчёт — обновление
+  // всё равно происходит в пределах кадра, визуально мгновенно.
+  function scheduleWordCountUpdate() {
+    if (!wordCountEl || wordCountFrame) return;
+    wordCountFrame = requestAnimationFrame(() => {
+      wordCountFrame = null;
+      updateWordCount();
+    });
+  }
+
   contentEl.addEventListener("input", () => {
     onChange(serializeEditor(contentEl));
     refreshPages();
+    scheduleWordCountUpdate();
   });
 
   // Колонка меняет ширину и без ввода: свернули панель, потянули окно, сменили
