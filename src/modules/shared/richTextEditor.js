@@ -2033,12 +2033,13 @@ let searchHighlightTimer = null;
  * API, который рисует поверх, ничего не вставляя в DOM. Иначе подсветка попала
  * бы в contenteditable, а оттуда — в сохранённый HTML.
  */
-function highlightMatch(contentEl, query, occurrence = 0, photoName) {
+function highlightMatch(contentEl, query, occurrence = 0, photoIndex) {
   clearSearchHighlight();
-  // Название фото лежит в атрибуте, а не в текстовом узле — findOccurrenceRange
-  // его не найдёт, нужен отдельный путь (см. highlightPhoto).
-  if (photoName) {
-    highlightPhoto(contentEl, photoName);
+  // Фото — не текстовый узел, findOccurrenceRange его не найдёт, нужен
+  // отдельный путь (см. highlightPhoto). photoIndex может быть 0, поэтому
+  // проверка именно на undefined/null, а не на falsy.
+  if (photoIndex !== undefined && photoIndex !== null) {
+    highlightPhoto(contentEl, photoIndex);
     return;
   }
   const range = findOccurrenceRange(contentEl, query, occurrence);
@@ -2068,8 +2069,11 @@ function clearSearchHighlight() {
 
 // CSS Custom Highlight API красит только текстовые Range — для <img> нужен
 // отдельный путь: находим сам узел по data-name и мигаем классом с обводкой.
-function highlightPhoto(contentEl, name) {
-  const img = [...contentEl.querySelectorAll("img.rte-photo[data-name]")].find((el) => el.dataset.name === name);
+function highlightPhoto(contentEl, photoIndex) {
+  // Тот же порядок img.rte-photo в документе, что и при индексации поиска
+  // (см. extractPhotos в utils/dom.js) — не завязан на data-name, поэтому
+  // находит и фото без названия.
+  const img = contentEl.querySelectorAll("img.rte-photo")[photoIndex];
   if (!img) return;
   img.scrollIntoView({ block: "center", behavior: "smooth" });
   img.classList.add("is-search-hit");

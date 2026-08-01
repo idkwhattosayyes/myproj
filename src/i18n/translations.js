@@ -42,6 +42,7 @@ export const translations = {
     "search.kindNote": "Note",
     "search.kindEvent": "Event",
     "search.kindPhoto": "Photo",
+    "search.photoUnnamed": "Untitled photo",
 
     "home.tasks": "Tasks",
     "home.documents": "Documents",
@@ -209,6 +210,7 @@ export const translations = {
     "search.kindNote": "Заметка",
     "search.kindEvent": "Событие",
     "search.kindPhoto": "Фото",
+    "search.photoUnnamed": "Фото без названия",
 
     "home.tasks": "Задачи",
     "home.documents": "Документы",

@@ -1,7 +1,7 @@
 import * as itemsService from "../services/itemsService.js";
 import * as calendarEntriesService from "../services/calendarEntriesService.js";
 import * as calendarTagsService from "../services/calendarTagsService.js";
-import { htmlToText, extractPhotoNames } from "../utils/dom.js";
+import { htmlToText, extractPhotos } from "../utils/dom.js";
 
 // Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
@@ -21,7 +21,7 @@ const MAX_GROUPS = 40;
  *   title: string,
  *   subtitle: string,
  *   query: string,
- *   matches: {index: number, before: string, hit: string, after: string, photoName?: string}[],
+ *   matches: {index: number, before: string, hit: string, after: string, photoIndex?: number, photoName?: string | null}[],
  *   moreCount: number,
  * }} SearchGroup
  */
@@ -73,13 +73,24 @@ async function searchItems(query) {
     const text = htmlToText(item.content);
     const inTitle = findMatches(title, query, 1);
     const inText = findMatches(text, query, MATCH_FETCH_CAP);
-    // Название фото нигде не показывается как текст (см. utils/dom.js), поэтому
-    // htmlToText его не видит — ищем отдельно и помечаем такие совпадения
-    // photoName, чтобы результат перешёл к самому фото, а не к месту в тексте.
-    const photoMatches = extractPhotoNames(item.content)
-      .map((name) => {
-        const found = findMatches(name, query, 1);
-        return found.matches.length ? { ...found.matches[0], photoName: name } : null;
+    // Фото нигде не показывается как текст (см. utils/dom.js), поэтому
+    // htmlToText его не видит — ищем отдельно. Совпадение либо по собственному
+    // названию (подстрока, как раньше), либо любое фото вообще, если запрос —
+    // общее слово "photo"/"фото" (кириллица и латиница проверяются независимо
+    // от текущего языка интерфейса) — так находятся и фото без названия.
+    const isGenericPhotoQuery = ["photo", "фото"].includes(query.trim().toLowerCase());
+    const photoMatches = extractPhotos(item.content)
+      .map((photo, photoIndex) => {
+        if (photo.name) {
+          const found = findMatches(photo.name, query, 1);
+          if (found.matches.length) return { ...found.matches[0], photoIndex, photoName: photo.name };
+        }
+        if (isGenericPhotoQuery) {
+          // before/after пустые — searchBar.js подставит плейсхолдер вместо
+          // пустого hit, если у фото нет названия.
+          return { index: 0, before: "", hit: photo.name || "", after: "", photoIndex, photoName: photo.name };
+        }
+        return null;
       })
       .filter(Boolean);
     if (!inTitle.matches.length && !inText.matches.length && !photoMatches.length) return;

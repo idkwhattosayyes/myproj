@@ -28,16 +28,18 @@ export function htmlToText(html) {
 }
 
 /**
- * Названия фото (data-name) внутри заметки — для поиска. htmlToText режет ВСЕ
- * теги вместе с атрибутами, поэтому название, которое нигде не отображается
- * как текст (см. richTextEditor.js/photoEditor.js), нужно доставать отдельно.
+ * Все вставленные фото заметки, в DOM-порядке, включая те, у которых не
+ * заполнено название (data-name отсутствует — name будет null). Порядковый
+ * номер элемента в возвращённом массиве — стабильный индекс фото внутри ЭТОЙ
+ * заметки, используется для перехода к конкретному фото по результату поиска
+ * (см. searchService.js/richTextEditor.js) — там же и htmlToText не годится:
+ * он режет ВСЕ теги вместе с атрибутами, а название нигде не отображается как
+ * текст (см. richTextEditor.js/photoEditor.js).
  */
-export function extractPhotoNames(html) {
+export function extractPhotos(html) {
   const holder = document.createElement("div");
   holder.innerHTML = String(html || "");
-  return [...holder.querySelectorAll("img.rte-photo[data-name]")]
-    .map((img) => img.dataset.name)
-    .filter(Boolean);
+  return [...holder.querySelectorAll("img.rte-photo")].map((img) => ({ name: img.dataset.name || null }));
 }
 
 /**

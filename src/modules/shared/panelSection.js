@@ -188,7 +188,7 @@ function applySearchTarget(state) {
   }
   state.selectedFolderId = "all";
   state.selectedItemId = target.id;
-  state.pendingMatch = { query: target.query, index: target.matchIndex, photoName: target.photoName };
+  state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex };
 }
 
 function render(container, config, state) {
@@ -1271,7 +1271,7 @@ function renderDetail(container, config, state) {
   // Пришли из поиска — прокручиваем к найденному и мигаем им. Цель одноразовая:
   // следующая перерисовка (правка, переключение папки) прыгать уже не должна.
   if (state.pendingMatch) {
-    editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoName);
+    editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoIndex);
     state.pendingMatch = null;
   }
 

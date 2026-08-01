@@ -159,12 +159,12 @@ async function runSearch() {
   }
   groups = await search(query, currentScopeKey());
   if (pickerActive) {
-    // Папка — не цель для ссылки; совпадение по имени фото не годится в
-    // matchIndex (findOccurrenceRange в richTextEditor.js ищет обычный текст,
-    // а не имя фото).
+    // Папка — не цель для ссылки; фото-совпадения не годятся в matchIndex
+    // (findOccurrenceRange в richTextEditor.js ищет обычный текст, а не фото).
+    // photoIndex может быть 0, поэтому проверяем именно на undefined.
     groups = groups
       .filter((group) => group.kind === "item")
-      .map((group) => ({ ...group, matches: group.matches.filter((match) => !match.photoName) }));
+      .map((group) => ({ ...group, matches: group.matches.filter((match) => match.photoIndex === undefined) }));
   }
   activeRow = 0;
   // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
@@ -195,13 +195,18 @@ function renderResults() {
       const matches = group.matches
         .slice(0, visible)
         .map((match) => {
-          // Название фото нигде не отображается в тексте заметки — совпадение
-          // по нему помечаем бейджем, чтобы было видно, что это не текст.
-          const badge = match.photoName ? `<span class="search-kind">${t("search.kindPhoto")}</span>` : "";
-          const row = rows.push({ groupIndex, matchIndex: match.index, photoName: match.photoName }) - 1;
+          // Фото нигде не отображается в тексте заметки — совпадение по нему
+          // помечаем бейджем, чтобы было видно, что это не текст. Признак —
+          // photoIndex (может быть 0, поэтому проверка именно на undefined),
+          // а не photoName — у безымянного фото имени нет, но это всё равно фото.
+          const isPhoto = match.photoIndex !== undefined;
+          const badge = isPhoto ? `<span class="search-kind">${t("search.kindPhoto")}</span>` : "";
+          // У безымянного фото hit пуст — подставляем плейсхолдер вместо него.
+          const hit = match.hit || (isPhoto ? t("search.photoUnnamed") : "");
+          const row = rows.push({ groupIndex, matchIndex: match.index, photoIndex: match.photoIndex }) - 1;
           return `
         <button type="button" class="search-row search-row--match" data-row="${row}">
-          ${badge}${escapeHtml(match.before)}<mark>${escapeHtml(match.hit)}</mark>${escapeHtml(match.after)}
+          ${badge}${escapeHtml(match.before)}<mark>${escapeHtml(hit)}</mark>${escapeHtml(match.after)}
         </button>`;
         })
         .join("");
@@ -265,7 +270,7 @@ function openRow(rowIndex) {
     id: group.id,
     query: group.query,
     matchIndex: row.matchIndex,
-    photoName: row.photoName,
+    photoIndex: row.photoIndex,
   });
   closeResults();
   // Раздел, где лежит найденное. Задачи и Документы делят данные, поэтому
