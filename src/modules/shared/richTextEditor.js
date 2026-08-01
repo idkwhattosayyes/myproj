@@ -1336,6 +1336,7 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
         label: isFlow ? t("editor.photoMakeFloat") : t("editor.photoIntegrateText"),
         onClick: () => togglePhotoLayout(img),
       },
+      { label: t("editor.photoDelete"), onClick: () => deletePhoto(img) },
     ]);
   }
 
@@ -1374,6 +1375,19 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     syncHandles();
     recordHistory();
     onChange(serializeEditor(contentEl));
+  }
+
+  // Снимаем маркеры выделения перед удалением — иначе они останутся висеть
+  // рядом с уже вырезанным из DOM фото. childList-мутация .remove() сама
+  // попадёт в историю через MutationObserver (см. комментарий у removePage),
+  // но recordHistory() здесь вызываем сразу же, не дожидаясь дебаунса — так
+  // удаление можно немедленно отменить по Ctrl+Z.
+  function deletePhoto(img) {
+    deselectPhoto();
+    img.remove();
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+    refreshPages();
   }
   // ------------------------------------------------------------------------
 
