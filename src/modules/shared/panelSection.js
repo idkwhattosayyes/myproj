@@ -132,6 +132,7 @@ export async function renderPanelSection(container, config) {
     listCollapsed: false,
     pendingMatch: null, // {query, index} — куда прокрутить открытую заметку
     flashFolderId: null, // папка, найденная поиском, — мигнуть ею один раз
+    expandedFolderIds: new Set(), // какие папки сейчас раскрыты деревом дочерних
   };
 
   applySearchTarget(state);
@@ -351,6 +352,54 @@ function sortItemsByPin(list, locationKey) {
   return [...list.filter((e) => isPinnedIn(e, locationKey)), ...list.filter((e) => !isPinnedIn(e, locationKey))];
 }
 
+// Прямые дети parentId, отсортированные по общему order (отдельного
+// per-parent порядка не заводим — DnD-реордер внутри дерева не нужен, только
+// вложение и сворачивание/разворачивание).
+function childFoldersOf(state, parentId) {
+  return state.folders
+    .filter((f) => (f.parentFolderIds || []).includes(parentId))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+// Каждый следующий уровень вложенности добавляет МЕНЬШЕ пикселей, чем
+// предыдущий — иначе глубокая вложенность съедала бы всю ширину узкой панели.
+const INDENT_STEPS = [18, 13, 9, 6, 4]; // px; после исчерпания — фиксированный шаг 4px
+function indentForDepth(depth) {
+  let total = 0;
+  for (let i = 0; i < depth; i++) total += INDENT_STEPS[Math.min(i, INDENT_STEPS.length - 1)];
+  return total;
+}
+
+// Строка папки + (если раскрыта) рекурсивно отрисованные дети сразу под ней, в
+// том же плоском <ul> — существующий querySelectorAll("[data-folder-id]")
+// после рендера продолжает находить все строки одним проходом. parentContext —
+// id родителя, ПОД которым сейчас показана эта строка (для строк дерева), null
+// для строки из обычного плоского списка. chain — цепочка предков текущей
+// ветки рендера, защита от бесконечной рекурсии при данных, испорченных в
+// обход itemsService (например, вручную через localStorage).
+function renderFolderRow(folder, state, depth, parentContext, chain) {
+  const count = countItemsInFolder(state, folder.id);
+  const isExpanded = state.expandedFolderIds.has(folder.id);
+  const row = `
+    <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}"
+        data-folder-id="${folder.id}"
+        ${parentContext ? `data-parent-context="${parentContext}"` : ""}
+        draggable="true"
+        style="padding-left: ${indentForDepth(depth)}px">
+      <span class="folder-name">${escapeHtml(folder.name)}</span>
+      ${rowBadges(folder, folder.pinned)}
+      <span class="folder-count">(${count})</span>
+      ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
+    </li>`;
+  const childrenHtml = isExpanded
+    ? childFoldersOf(state, folder.id)
+        .filter((child) => !chain.includes(child.id))
+        .map((child) => renderFolderRow(child, state, depth + 1, folder.id, [...chain, folder.id]))
+        .join("")
+    : "";
+  return row + childrenHtml;
+}
+
 function renderFolders(container, config, state) {
   const bodyEl = container.querySelector('[data-role="folder-body"]');
 
@@ -371,16 +420,7 @@ function renderFolders(container, config, state) {
       <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
       <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
       ${sortPinnedFirst(state.folders)
-        .map((folder) => {
-          const count = countItemsInFolder(state, folder.id);
-          return `
-        <li class="folder-item ${state.selectedFolderId === folder.id ? "is-active" : ""} ${folder.pinned ? "is-pinned" : ""}" data-folder-id="${folder.id}" draggable="true">
-          <span class="folder-name">${escapeHtml(folder.name)}</span>
-          ${rowBadges(folder, folder.pinned)}
-          <span class="folder-count">(${count})</span>
-          ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
-        </li>`;
-        })
+        .map((folder) => renderFolderRow(folder, state, 0, null, [folder.id]))
         .join("")}
     </ul>
   `;
@@ -399,9 +439,20 @@ function renderFolders(container, config, state) {
       // Клик по папке меняет только список заметок; открытую справа заметку не
       // закрываем. Перерисовываем лишь панели папок и списка — полный render()
       // пересоздал бы редактор и сбросил каретку/прокрутку.
+      const folderChanged = state.selectedFolderId !== folderId;
       state.selectedFolderId = folderId;
+      // Если у папки есть дети — тот же клик тоглит раскрытие её поддерева
+      // (отдельной кнопки-шеврона нет, выбор и раскрытие совмещены).
+      const hasChildren = isRealFolderId(folderId) && childFoldersOf(state, folderId).length > 0;
+      if (hasChildren) {
+        if (state.expandedFolderIds.has(folderId)) state.expandedFolderIds.delete(folderId);
+        else state.expandedFolderIds.add(folderId);
+      }
       renderFolders(container, config, state);
-      renderList(container, config, state);
+      // Раскрытие/сворачивание не должно трогать notes/documents и открытый
+      // редактор — список справа перерисовываем только если реально сменилась
+      // выбранная папка, а не просто её раскрытое состояние (повторный клик).
+      if (folderChanged) renderList(container, config, state);
     });
 
     // Настоящие папки можно тащить; псевдо-папки — нет.
