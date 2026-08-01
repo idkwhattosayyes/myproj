@@ -77,6 +77,7 @@ function renderPanel() {
       <div class="settings-lang">
         <button type="button" class="settings-lang-btn ${lang === "ru" ? "is-active" : ""}" data-lang="ru">RU</button>
         <button type="button" class="settings-lang-btn ${lang === "en" ? "is-active" : ""}" data-lang="en">EN</button>
+        <button type="button" class="settings-lang-btn ${lang === "he" ? "is-active" : ""}" data-lang="he">HE</button>
       </div>
     </div>
     <label class="settings-row">
