@@ -53,6 +53,10 @@
   box-shadow: 0 6px 18px rgba(34, 48, 59, 0.1);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
   cursor: pointer;
+  /* draggable="false" в разметке браузер иногда игнорирует для <a> — эти
+     свойства гасят нативный drag ссылки, чтобы не появлялся курсор "запрещено". */
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .home-circle:hover,

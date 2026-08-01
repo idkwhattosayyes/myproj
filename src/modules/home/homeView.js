@@ -5,13 +5,13 @@ export async function renderHomeView(container) {
     <div class="home">
       <svg class="home-lines"></svg>
       <div class="home-circles">
-        <a href="#/tasks" class="home-circle home-circle--tasks">
+        <a href="#/tasks" class="home-circle home-circle--tasks" draggable="false">
           <span class="home-circle-label">${t("home.tasks")}</span>
         </a>
-        <a href="#/documents" class="home-circle home-circle--documents">
+        <a href="#/documents" class="home-circle home-circle--documents" draggable="false">
           <span class="home-circle-label">${t("home.documents")}</span>
         </a>
-        <a href="#/calendar" class="home-circle home-circle--calendar">
+        <a href="#/calendar" class="home-circle home-circle--calendar" draggable="false">
           <span class="home-circle-label">${t("home.calendar")}</span>
         </a>
         <div class="home-circle home-circle--ai" tabindex="0">
