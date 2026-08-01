@@ -40,7 +40,7 @@ function openQuickNote() {
 
   editor = createRichTextEditor({
     content: "",
-    buttons: ["bold", "underline", "strikethrough", "bulletList", "voice"],
+    buttons: ["bold", "underline", "strikethrough", "bulletList", "checklist", "voice"],
     onChange: (html) => {
       latestHtml = html;
     },
