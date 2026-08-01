@@ -480,6 +480,7 @@ function renderFolders(container, config, state) {
         event.preventDefault();
         event.stopPropagation();
         const folder = state.folders.find((f) => f.id === folderId);
+        const parentContext = el.dataset.parentContext || null;
         showContextMenu(event.clientX, event.clientY, [
           {
             label: t("panel.rename"),
@@ -507,6 +508,21 @@ function renderFolders(container, config, state) {
               render(container, config, state);
             },
           },
+          // Показана как дочерняя строка дерева под конкретным родителем — можно
+          // отвязать только от НЕГО, не удаляя папку целиком (она останется в
+          // общем списке и в остальных родителях, если есть).
+          ...(parentContext
+            ? [
+                {
+                  label: t("panel.removeFromFolder"),
+                  onClick: async () => {
+                    await itemsService.removeFolderFromParent(config.section, folder.id, parentContext);
+                    state.folders = await itemsService.listFolders(config.section);
+                    render(container, config, state);
+                  },
+                },
+              ]
+            : []),
           {
             label: t("panel.delete"),
             onClick: () => deleteFolderFlow(folder.id, container, config, state, true),
