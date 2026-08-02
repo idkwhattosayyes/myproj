@@ -1,5 +1,4 @@
 import { renderHomeView } from "./modules/home/homeView.js";
-import { renderTasksView } from "./modules/tasks/tasksView.js";
 import { renderDocumentsView } from "./modules/documents/documentsView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang } from "./i18n/i18n.js";
@@ -15,7 +14,6 @@ const DEFAULT_ROUTE = "home";
 
 const routes = {
   home: renderHomeView,
-  tasks: renderTasksView,
   documents: renderDocumentsView,
   calendar: renderCalendarView,
 };

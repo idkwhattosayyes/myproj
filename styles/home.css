@@ -71,28 +71,23 @@
   outline-offset: 4px;
 }
 
-/* Смещения --tx/--ty задаются случайно в JS (applyJitter) при каждом заходе. */
-.home-circle--tasks {
-  top: 30%;
-  left: 26%;
-  background: #cfe1f0;
-}
-
+/* Смещения --tx/--ty задаются случайно в JS (applyJitter) при каждом заходе.
+   Три кружка вместо прежних четырёх — треугольником вокруг центра. */
 .home-circle--documents {
   top: 20%;
-  left: 70%;
+  left: 50%;
   background: #cfe8de;
 }
 
 .home-circle--calendar {
-  top: 70%;
+  top: 65%;
   left: 76%;
   background: #dcd8ee;
 }
 
 .home-circle--ai {
-  top: 76%;
-  left: 28%;
+  top: 65%;
+  left: 24%;
   background: #d8dbe1;
   color: #55606b;
 }

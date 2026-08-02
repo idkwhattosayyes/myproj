@@ -45,7 +45,6 @@ export const translations = {
     "search.kindPhoto": "Photo",
     "search.photoUnnamed": "Untitled photo",
 
-    "home.tasks": "Tasks",
     "home.documents": "Documents",
     "home.calendar": "Calendar",
     "home.ai": "AI",
@@ -214,7 +213,6 @@ export const translations = {
     "search.kindPhoto": "Фото",
     "search.photoUnnamed": "Фото без названия",
 
-    "home.tasks": "Задачи",
     "home.documents": "Документы",
     "home.calendar": "Календарь",
     "home.ai": "AI",
@@ -383,7 +381,6 @@ export const translations = {
     "search.kindPhoto": "תמונה",
     "search.photoUnnamed": "תמונה ללא שם",
 
-    "home.tasks": "משימות",
     "home.documents": "מסמכים",
     "home.calendar": "לוח שנה",
     "home.ai": "AI",
