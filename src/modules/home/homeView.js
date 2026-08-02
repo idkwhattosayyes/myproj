@@ -199,7 +199,6 @@ function positionExtraCircles(container, customCirclesData) {
     diameterPx: el.getBoundingClientRect().width,
     jitterPx: SYSTEM_JITTER,
   }));
-  const systemRadiusPct = Math.max(...obstacles.map((o) => o.radius));
   obstacles.push({ angle: 0, radius: 0, diameterPx: CENTER_DOT_DIAMETER_PX, jitterPx: 0 });
 
   function place(el, storedPos) {
@@ -210,14 +209,7 @@ function positionExtraCircles(container, customCirclesData) {
       fitsAt(storedPos, circleDiameterPx, EXTRA_JITTER, obstacles, containerWidth);
     const pos = validStored
       ? storedPos
-      : findPosition({
-          containerWidth,
-          circleDiameterPx,
-          circleJitterPx: EXTRA_JITTER,
-          systemRadiusPct,
-          systemJitterPx: SYSTEM_JITTER,
-          obstacles,
-        });
+      : findPosition({ containerWidth, circleDiameterPx, circleJitterPx: EXTRA_JITTER, obstacles });
     el.style.top = `${50 + pos.radius * Math.sin((pos.angle * Math.PI) / 180)}%`;
     el.style.left = `${50 + pos.radius * Math.cos((pos.angle * Math.PI) / 180)}%`;
     obstacles.push({ ...pos, diameterPx: circleDiameterPx, jitterPx: EXTRA_JITTER });
