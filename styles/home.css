@@ -102,12 +102,14 @@
   background: #f0d9d9;
 }
 
-/* Маленький вечный кружок-плюс в самой точке схождения линий — z-index выше
-   .home-circle, чтобы не терялся под ближайшими соседями при их наплыве. */
+/* Маленький вечный кружок в самой точке схождения линий — position: fixed
+   (а не absolute внутри .home-circles), а точные top/left в пикселях
+   выставляет JS в drawConnectorLines той же парой чисел, что и центр линий
+   (см. homeView.js) — так гарантированно та же точка, а не просто "50%",
+   которое на fixed-элементе на пару пикселей расходится с window.inner* из-за
+   скроллбара. z-index выше .home-circle, чтобы не терялся под соседями при их наплыве. */
 .home-add-circle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  position: fixed;
   z-index: 2;
   --scale: 1;
   width: 26px;
@@ -117,9 +119,6 @@
   border: none;
   border-radius: 50%;
   background: #e7e9ec;
-  color: #55606b;
-  font-size: 1rem;
-  line-height: 1;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(34, 48, 59, 0.15);
 }

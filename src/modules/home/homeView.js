@@ -43,7 +43,7 @@ export async function renderHomeView(container) {
         </div>
         ${pencilHtml}
         ${customCirclesHtml}
-        <button type="button" class="home-add-circle" title="${escapeHtml(t("home.addCircle"))}">+</button>
+        <button type="button" class="home-add-circle" title="${escapeHtml(t("home.addCircle"))}"></button>
       </div>
     </div>
   `;
@@ -205,6 +205,13 @@ function drawConnectorLines(container) {
 
   const centerX = vw / 2;
   const centerY = vh / 2;
+
+  // CSS-проценты у position:fixed на паре пикселей расходятся с window.inner*
+  // (скроллбар по-разному учитывается) — координаты той же точки, что и у
+  // схождения линий, поэтому ставим явно, а не через top/left:50% в CSS.
+  const addCircle = container.querySelector(".home-add-circle");
+  addCircle.style.left = `${centerX}px`;
+  addCircle.style.top = `${centerY}px`;
 
   svg.innerHTML = [...circles]
     .map((circle) => {
