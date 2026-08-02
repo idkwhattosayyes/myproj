@@ -73,8 +73,8 @@ async function loadCustomCirclesData() {
 // Открывает меню выбора и, если пользователь дошёл до "Done", сохраняет новый
 // кастомный кружок (Cancel/Esc — picked пустой, ничего не меняется). Общий
 // путь для левого клика по карандашу, пункта "Customizable note" в его
-// ПКМ-меню и (следующим шагом) центрального кружка-плюса — тот не должен
-// трогать карандаш, поэтому dismissPencil включают только первые два места.
+// ПКМ-меню и центрального кружка-плюса — тот не должен трогать карандаш,
+// поэтому dismissPencil включают только первые два места.
 async function pickAndBindCircle(container, { dismissPencil = false } = {}) {
   const picked = await openNotePicker();
   if (!picked) return;
