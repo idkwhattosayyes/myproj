@@ -3,12 +3,15 @@ import { escapeHtml } from "../../utils/dom.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import * as itemsService from "../../services/itemsService.js";
 
+const FAVORITES_ID = "favorites";
+const ALL_ID = "all";
 const UNFILED_ID = "unfiled";
 
 /**
  * Модалка "папка → заметка" для кастомных кружков главной страницы. Слева —
- * дерево папок раздела Notes (плюс псевдо-папка Unfiled), справа — заметки
- * прямо внутри выбранной папки. "Done" активна только когда заметка выбрана.
+ * дерево папок раздела Notes плюс псевдо-разделы Favorites/All/Unfiled (как в
+ * боковой панели раздела Notes), справа — заметки внутри выбранного пункта.
+ * "Done" активна только когда заметка выбрана.
  *
  * @returns {Promise<{noteId: string, folderId: string} | null>}
  */
@@ -77,16 +80,27 @@ export function openNotePicker() {
       return row + childrenHtml;
     }
 
-    function renderFolders() {
-      const unfiledRow = `
-        <div class="note-picker-row ${selectedFolderId === UNFILED_ID ? "is-selected" : ""}" data-pick-folder="${UNFILED_ID}">
+    // Строка псевдо-раздела — тот же макет, что у обычной папки, но без
+    // стрелки разворачивания (детей не бывает) и с фиксированным id/подписью.
+    function pseudoFolderRow(id, label) {
+      return `
+        <div class="note-picker-row ${selectedFolderId === id ? "is-selected" : ""}" data-pick-folder="${id}">
           <span class="transfer-toggle"></span>
-          <span>${escapeHtml(t("panel.unfiled"))}</span>
+          <span>${escapeHtml(label)}</span>
         </div>`;
-      foldersEl.innerHTML = rootFolders().map((folder) => renderFolderRow(folder, 0)).join("") + unfiledRow;
+    }
+
+    function renderFolders() {
+      const pseudoRows =
+        pseudoFolderRow(FAVORITES_ID, t("panel.favorites")) +
+        pseudoFolderRow(ALL_ID, t("panel.all")) +
+        pseudoFolderRow(UNFILED_ID, t("panel.unfiled"));
+      foldersEl.innerHTML = pseudoRows + rootFolders().map((folder) => renderFolderRow(folder, 0)).join("");
     }
 
     function notesInSelectedFolder() {
+      if (selectedFolderId === ALL_ID) return items;
+      if (selectedFolderId === FAVORITES_ID) return items.filter((item) => item.isFavorite);
       if (selectedFolderId === UNFILED_ID) return items.filter((item) => !item.folderIds.length);
       return items.filter((item) => item.folderIds.includes(selectedFolderId));
     }

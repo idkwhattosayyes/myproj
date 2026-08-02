@@ -177,8 +177,9 @@ export async function refreshActivePanelItems() {
 // Пришли по результату поиска (или по кастомному кружку главной страницы):
 // открываем нужную папку или заметку. Заметку без явного target.folderId
 // показываем из "Все" — она может лежать в папке, которая сейчас не выбрана.
-// target.folderId (кружок главной знает, через какую папку заметку открыли)
-// используем, только если папка ещё существует — иначе тоже откатываемся к "Все".
+// target.folderId (кружок главной знает, через какой раздел — обычную папку
+// или Favorites/All/Unfiled — заметку открыли) используем, только если это
+// один из псевдо-разделов или папка ещё существует — иначе тоже "Все".
 function applySearchTarget(state) {
   const target = consumePendingTarget("item", "folder");
   if (!target) return;
@@ -188,7 +189,8 @@ function applySearchTarget(state) {
     state.flashFolderId = target.id;
     return;
   }
-  const folderIsValid = target.folderId === "unfiled" || state.folders.some((f) => f.id === target.folderId);
+  const PSEUDO_FOLDER_IDS = ["all", "favorites", "unfiled"];
+  const folderIsValid = PSEUDO_FOLDER_IDS.includes(target.folderId) || state.folders.some((f) => f.id === target.folderId);
   state.selectedFolderId = folderIsValid ? target.folderId : "all";
   state.selectedItemId = target.id;
   state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex };
