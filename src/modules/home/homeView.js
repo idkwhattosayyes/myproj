@@ -5,7 +5,7 @@ import * as customCircles from "./customCircles.js";
 import * as itemsService from "../../services/itemsService.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import { showContextMenu } from "../shared/contextMenu.js";
-import { findPosition, SYSTEM_ANGLES, SYSTEM_RADIUS_PCT } from "./circleLayout.js";
+import { findPosition, fitsAt, SYSTEM_ANGLES, SYSTEM_RADIUS_PCT } from "./circleLayout.js";
 
 export async function renderHomeView(container) {
   const { pencilDismissed } = customCircles.getState();
@@ -49,7 +49,7 @@ export async function renderHomeView(container) {
     </div>
   `;
 
-  positionExtraCircles(container);
+  positionExtraCircles(container, customCirclesData);
   applyJitter(container);
   drawConnectorLines(container);
   wirePencil(container);
@@ -144,20 +144,29 @@ function wireAddCircle(container) {
   addEl.addEventListener("click", () => pickAndBindCircle(container));
 }
 
-// Кружки без своего места в CSS (карандаш, кастомные ярлыки на заметки)
-// получают позицию через circleLayout.findPosition — каждый следующий ищет
-// свободное место среди уже размещённых (системные кружки, центральная точка,
-// и все extras, поставленные раньше в этом же проходе), а не по формуле,
-// зависящей от общего количества. Диаметр кружка меряем по факту через
-// getBoundingClientRect — так расчёт верен при любом сочетании clamp()-размеров.
+// Кастомные кружки хранят однажды подобранную позицию (angle/radius, см.
+// customCircles.js) — при рендере она переиспользуется как есть, если всё
+// ещё ни с чем не пересекается (fitsAt), и только тогда пересчитывается через
+// circleLayout.findPosition, когда её нет (новый кружок / старая запись без
+// позиции) или она вдруг стала невалидной (например, после смены размера
+// окна). Так раскладка не "прыгает" целиком при каждом добавлении/удалении
+// соседа (ТЗ, п.2) — только у самого нового/пересекшегося кружка появляется
+// новая позиция, у остальных всё остаётся как было. Карандаш отдельной
+// записи не имеет и всегда ищется заново — он либо первый (ничего ещё не
+// занято), либо единственный временный участник раскладки.
 const CENTER_DOT_DIAMETER_PX = 26; // см. .home-add-circle в home.css
 
-function positionExtraCircles(container) {
-  const extras = [...container.querySelectorAll(".home-circle--pencil, .home-circle--custom")];
-  if (!extras.length) return;
+function positionExtraCircles(container, customCirclesData) {
+  const pencilEl = container.querySelector('[data-role="pencil"]');
+  const customEntries = customCirclesData.map((data) => ({
+    data,
+    el: container.querySelector(`[data-circle-id="${data.id}"]`),
+  }));
+  const anyEl = pencilEl || customEntries[0]?.el;
+  if (!anyEl) return;
 
   const containerWidth = container.getBoundingClientRect().width;
-  const circleDiameterPx = extras[0].getBoundingClientRect().width;
+  const circleDiameterPx = anyEl.getBoundingClientRect().width;
 
   const obstacles = SYSTEM_ANGLES.map((angle) => ({
     angle,
@@ -166,12 +175,29 @@ function positionExtraCircles(container) {
   }));
   obstacles.push({ angle: 0, radius: 0, diameterPx: CENTER_DOT_DIAMETER_PX });
 
-  extras.forEach((circle) => {
-    const pos = findPosition({ containerWidth, circleDiameterPx, obstacles });
-    circle.style.top = `${50 + pos.radius * Math.sin((pos.angle * Math.PI) / 180)}%`;
-    circle.style.left = `${50 + pos.radius * Math.cos((pos.angle * Math.PI) / 180)}%`;
+  function place(el, storedPos) {
+    const validStored =
+      storedPos &&
+      typeof storedPos.angle === "number" &&
+      typeof storedPos.radius === "number" &&
+      fitsAt(storedPos, circleDiameterPx, obstacles, containerWidth);
+    const pos = validStored ? storedPos : findPosition({ containerWidth, circleDiameterPx, obstacles });
+    el.style.top = `${50 + pos.radius * Math.sin((pos.angle * Math.PI) / 180)}%`;
+    el.style.left = `${50 + pos.radius * Math.cos((pos.angle * Math.PI) / 180)}%`;
     obstacles.push({ ...pos, diameterPx: circleDiameterPx });
+    return { pos, needsPersist: !validStored };
+  }
+
+  if (pencilEl) place(pencilEl, null);
+
+  const positionUpdates = [];
+  customEntries.forEach(({ data, el }) => {
+    if (!el) return;
+    const stored = data.angle != null && data.radius != null ? { angle: data.angle, radius: data.radius } : null;
+    const { pos, needsPersist } = place(el, stored);
+    if (needsPersist) positionUpdates.push({ id: data.id, angle: pos.angle, radius: pos.radius });
   });
+  if (positionUpdates.length) customCircles.updatePositions(positionUpdates);
 }
 
 // Базовые позиции кружков заданы в CSS/circleLayout (круг вокруг центра).

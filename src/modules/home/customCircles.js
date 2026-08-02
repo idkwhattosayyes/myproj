@@ -36,16 +36,35 @@ export function setPencilDismissed(dismissed) {
 }
 
 // Подпись кружка нигде не хранится — при рендере всегда берётся живой
-// item.title (см. homeView.js), поэтому здесь только id заметки/папки.
-export function addCircle({ noteId, folderId }) {
+// item.title (см. homeView.js), поэтому здесь только id заметки/папки и
+// однажды подобранная позиция (angle/radius — полярные координаты от центра
+// .home-circles, см. circleLayout.js). Позиция вычисляется снаружи (этот
+// модуль остаётся чистым хранилищем, без геометрии) и дальше не меняется —
+// так раскладка переживает перезагрузку страницы (ТЗ, п.2).
+export function addCircle({ noteId, folderId, angle, radius }) {
   const state = readState();
-  state.circles.push({ id: crypto.randomUUID(), noteId, folderId });
+  state.circles.push({ id: crypto.randomUUID(), noteId, folderId, angle, radius });
   writeState(state);
 }
 
 export function removeCircle(id) {
   const state = readState();
   state.circles = state.circles.filter((circle) => circle.id !== id);
+  writeState(state);
+}
+
+// Точечно проставляет angle/radius у кружков без сохранённой позиции —
+// нужно для уже существующих записей (созданных до этого поля) и для
+// самолечения, если сохранённая позиция вдруг стала пересекаться с чем-то
+// (например, после смены размера окна). updates: [{id, angle, radius}].
+export function updatePositions(updates) {
+  if (!updates.length) return;
+  const state = readState();
+  const byId = new Map(updates.map((u) => [u.id, u]));
+  state.circles = state.circles.map((circle) => {
+    const update = byId.get(circle.id);
+    return update ? { ...circle, angle: update.angle, radius: update.radius } : circle;
+  });
   writeState(state);
 }
 
