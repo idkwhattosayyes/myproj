@@ -5,7 +5,7 @@ import * as customCircles from "./customCircles.js";
 import * as itemsService from "../../services/itemsService.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import { showContextMenu } from "../shared/contextMenu.js";
-import { findPosition, fitsAt, SYSTEM_ANGLES, SYSTEM_RADIUS_PCT } from "./circleLayout.js";
+import { findPosition, fitsAt } from "./circleLayout.js";
 
 export async function renderHomeView(container) {
   const { pencilDismissed } = customCircles.getState();
@@ -156,6 +156,18 @@ function wireAddCircle(container) {
 // занято), либо единственный временный участник раскладки.
 const CENTER_DOT_DIAMETER_PX = 26; // см. .home-add-circle в home.css
 
+// Полярные координаты центра элемента относительно центра boxRect — та же
+// система (angle°, radius% от ширины), в которой считает circleLayout.
+function toPolar(el, boxRect) {
+  const rect = el.getBoundingClientRect();
+  const dx = rect.left + rect.width / 2 - (boxRect.left + boxRect.width / 2);
+  const dy = rect.top + rect.height / 2 - (boxRect.top + boxRect.height / 2);
+  return {
+    angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+    radius: (Math.hypot(dx, dy) / boxRect.width) * 100,
+  };
+}
+
 function positionExtraCircles(container, customCirclesData) {
   const pencilEl = container.querySelector('[data-role="pencil"]');
   const customEntries = customCirclesData.map((data) => ({
@@ -165,26 +177,50 @@ function positionExtraCircles(container, customCirclesData) {
   const anyEl = pencilEl || customEntries[0]?.el;
   if (!anyEl) return;
 
-  const containerWidth = container.getBoundingClientRect().width;
+  // Мерить нужно именно .home-circles, а не container (сюда роутер передаёт
+  // весь #app-view): проценты, которые мы ниже пишем в style.top/left,
+  // браузер резолвит относительно .home-circles — ближайшего предка с
+  // position: relative. С шириной #app-view (она в разы больше) вся
+  // геометрия считалась в чужом масштабе, fitsAt рапортовал "пересечений
+  // нет", а кружки на экране налезали друг на друга.
+  const box = container.querySelector(".home-circles");
+  const boxRect = box.getBoundingClientRect();
+  const containerWidth = boxRect.width;
   const circleDiameterPx = anyEl.getBoundingClientRect().width;
 
-  const obstacles = SYSTEM_ANGLES.map((angle) => ({
-    angle,
-    radius: SYSTEM_RADIUS_PCT,
-    diameterPx: circleDiameterPx,
+  // Позиции системных кружков заданы процентами в styles/home.css — снимаем
+  // их с DOM, чтобы не держать здесь вторую копию тех же чисел, которая
+  // молча разъедется при любой правке стилей. applyJitter вызывается уже
+  // после нас, так что ректы дают чистые базовые позиции без смещения.
+  const obstacles = [
+    ...box.querySelectorAll(".home-circle--notes, .home-circle--calendar, .home-circle--ai"),
+  ].map((el) => ({
+    ...toPolar(el, boxRect),
+    diameterPx: el.getBoundingClientRect().width,
+    jitterPx: SYSTEM_JITTER,
   }));
-  obstacles.push({ angle: 0, radius: 0, diameterPx: CENTER_DOT_DIAMETER_PX });
+  const systemRadiusPct = Math.max(...obstacles.map((o) => o.radius));
+  obstacles.push({ angle: 0, radius: 0, diameterPx: CENTER_DOT_DIAMETER_PX, jitterPx: 0 });
 
   function place(el, storedPos) {
     const validStored =
       storedPos &&
       typeof storedPos.angle === "number" &&
       typeof storedPos.radius === "number" &&
-      fitsAt(storedPos, circleDiameterPx, obstacles, containerWidth);
-    const pos = validStored ? storedPos : findPosition({ containerWidth, circleDiameterPx, obstacles });
+      fitsAt(storedPos, circleDiameterPx, EXTRA_JITTER, obstacles, containerWidth);
+    const pos = validStored
+      ? storedPos
+      : findPosition({
+          containerWidth,
+          circleDiameterPx,
+          circleJitterPx: EXTRA_JITTER,
+          systemRadiusPct,
+          systemJitterPx: SYSTEM_JITTER,
+          obstacles,
+        });
     el.style.top = `${50 + pos.radius * Math.sin((pos.angle * Math.PI) / 180)}%`;
     el.style.left = `${50 + pos.radius * Math.cos((pos.angle * Math.PI) / 180)}%`;
-    obstacles.push({ ...pos, diameterPx: circleDiameterPx });
+    obstacles.push({ ...pos, diameterPx: circleDiameterPx, jitterPx: EXTRA_JITTER });
     return { pos, needsPersist: !validStored };
   }
 
@@ -203,10 +239,19 @@ function positionExtraCircles(container, customCirclesData) {
 // Базовые позиции кружков заданы в CSS/circleLayout (круг вокруг центра).
 // Здесь при каждом заходе добавляем небольшое случайное смещение через
 // --tx/--ty, чтобы схема оставалась узнаваемой, но не была статичной.
-// У доп. кружков джиттер заметно меньше запаса из circleLayout (MARGIN_PX,
-// 28px) — так он физически не может схлопнуть гарантированный зазор, даже
-// если оба соседа дёрнутся навстречу друг другу одновременно.
-const SYSTEM_JITTER = 32;
+// Эти же величины уходят в circleLayout как jitterPx: раскладка закладывает
+// их максимум в зазор заранее, поэтому никакой бросок не может схлопнуть
+// расстояние между доп. кружками и соседями.
+//
+// А вот друг относительно друга три системных кружка раскладку не проходят —
+// их top/left жёстко заданы в home.css, и единственное, что их сближает, это
+// как раз джиттер. Считаем допустимый потолок: центры стоят на 30% ширины
+// .home-circles и разнесены на 120°, то есть на 2*0.3*460*sin60° ≈ 239px;
+// минус диаметр 172px остаётся ≈67px зазора. Бросок независим по x и y, так
+// что каждый кружок уходит максимум на J*√2, и навстречу они съедают 2*J*√2.
+// При J=32 это ≈90px — больше зазора, и Notes с Calendar иногда налезали друг
+// на друга. J=16 съедает ≈45px и оставляет ≈22px гарантированно.
+const SYSTEM_JITTER = 16;
 const EXTRA_JITTER = 10;
 
 function applyJitter(container) {
