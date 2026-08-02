@@ -134,7 +134,7 @@ function startInlineRename(rowEl, currentValue, onCommit) {
  * используется разделом Notes (config.section всегда "notes").
  *
  * @param {HTMLElement} container
- * @param {{section: string, toolbarButtons: string[]}} config
+ * @param {{section: string, toolbarButtons: string[], basicToolbarButtons?: string[], pageModeInContextMenu?: boolean}} config
  */
 export async function renderPanelSection(container, config) {
   const state = {
@@ -1234,6 +1234,7 @@ function renderDetail(container, config, state) {
   const editor = createRichTextEditor({
     content: item.content,
     buttons: config.toolbarButtons,
+    basicButtons: config.basicToolbarButtons,
     pageMode: item.pageMode,
     // Ссылка на другую заметку — инструмент раздела Notes (ТЗ).
     allowInternalLinks: config.section === "notes",

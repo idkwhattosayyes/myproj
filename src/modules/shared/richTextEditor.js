@@ -59,6 +59,28 @@ function createToolbarToggle(toolbarEl) {
   return btn;
 }
 
+// Кнопка "+/−" справа от тулбара: показывает/прячет расширенный набор кнопок
+// (помечены data-toolbar-extra, см. .rte-toolbar в editor.css), в отличие от
+// createToolbarToggle выше — та прячет тулбар целиком, а не часть кнопок.
+function createToolbarExpandToggle(toolbarEl) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "rte-toolbar-expand";
+  btn.title = t("editor.toggleExtraTools");
+
+  function apply(expanded) {
+    toolbarEl.classList.toggle("is-expanded", expanded);
+    btn.textContent = expanded ? "−" : "+";
+  }
+
+  apply(false);
+  btn.addEventListener("mousedown", (event) => event.preventDefault());
+  btn.addEventListener("click", () => {
+    apply(!toolbarEl.classList.contains("is-expanded"));
+  });
+  return btn;
+}
+
 function getButtonDefs() {
   return {
     bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
@@ -588,10 +610,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, showWordCount?: boolean}} options
+ * @param {{content: string, buttons: string[], basicButtons?: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, showWordCount?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false }) {
+export function createRichTextEditor({ content, buttons, basicButtons = null, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -1729,10 +1751,14 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
 
   buttons.forEach((key) => {
     const btn = buildToolbarButton(key);
-    if (btn) toolbarEl.appendChild(btn);
+    if (!btn) return;
+    // Кнопки вне basicButtons — расширенный набор, скрытый до разворота
+    // тулбара (см. createToolbarExpandToggle и .rte-toolbar в editor.css).
+    if (basicButtons && !basicButtons.includes(key)) btn.dataset.toolbarExtra = "true";
+    toolbarEl.appendChild(btn);
   });
 
-  // Счётчик слов/символов — только для Документов (showWordCount передаётся
+  // Счётчик слов/символов — только для Notes (showWordCount передаётся
   // вызывающим кодом на основе config.section, как и allowInternalLinks).
   let wordCountEl = null;
   let wordCountFrame = null;
@@ -1742,6 +1768,10 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
     toolbarEl.appendChild(wordCountEl);
     updateWordCount();
   }
+
+  // Кнопка-переключатель полного набора инструментов — только если вызывающий
+  // код различает базовый и расширенный список (см. notesView.js).
+  if (basicButtons) toolbarEl.appendChild(createToolbarExpandToggle(toolbarEl));
 
   // Считаем только по страницам (getPages()), а не contentEl.textContent
   // целиком — иначе в счёт попала бы ещё и подпись служебной кнопки

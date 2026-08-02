@@ -11,5 +11,10 @@ export async function renderNotesView(container) {
       "h1", "h2", "alignLeft", "alignCenter", "alignRight",
       "bulletList", "orderedList", "checklist", "table", "insertPhoto", "voice", "draw", "pageMode",
     ],
+    // Свёрнутый тулбар (кнопка "+" справа) показывает только этот набор — бывший
+    // тулбар Задач. Развёрнутый показывает toolbarButtons целиком.
+    basicToolbarButtons: ["undo", "redo", "bold", "underline", "strikethrough", "textColor", "highlight", "bulletList", "checklist", "insertPhoto", "voice", "draw"],
+    // Кнопки режима отображения в свёрнутом наборе нет — переключаем по ПКМ.
+    pageModeInContextMenu: true,
   });
 }

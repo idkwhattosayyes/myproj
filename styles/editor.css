@@ -109,6 +109,26 @@
 
 .rte-toolbar.is-collapsed .rte-toolbar-toggle:hover { background: #d1d5db; }
 
+/* Кнопки расширенного набора (data-toolbar-extra) скрыты, пока тулбар не
+   развёрнут кнопкой "+/−" справа — см. createToolbarExpandToggle. */
+.rte-toolbar:not(.is-expanded) .rte-btn[data-toolbar-extra="true"] {
+  display: none;
+}
+
+.rte-toolbar-expand {
+  margin-left: auto;
+  min-width: 1.4rem;
+  padding: 0.3rem 0.5rem;
+  border: none;
+  background: none;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #6b7280;
+  border-radius: 4px;
+}
+
+.rte-toolbar-expand:hover { background: #f3f4f6; }
+
 .rte-btn {
   position: relative;
   min-width: 2.1rem;
