@@ -153,35 +153,41 @@ function wireAddCircle(container) {
 // не помогает: даже в самом широком месте зазора нужный радиус получается
 // настолько большим, что проще сразу вынести кольцо целиком наружу — тогда
 // угол вообще не важен, и раскладка снова становится простой равномерной.
-const SYSTEM_RADIUS = 30; // % — радиус, на котором стоят Notes/Calendar/AI (см. home.css)
-// Диаметр кружка (clamp(120px,16vw,172px)) — примерно постоянная доля ширины
-// .home-circles (clamp(320px,58vw,460px)) на всём диапазоне вьюпортов: оба
-// clamp() подобраны в одной пропорции. Запас — чтобы кружки не касались впритык.
-const CIRCLE_TO_CONTAINER_RATIO = 0.375;
-const OVERLAP_MARGIN = 1.15;
-// Радиус, на котором кольцо доп. кружков гарантированно не задевает системные
-// — при любом угле, потому что вообще не пересекается с их полосой радиусов.
-const EXTRA_MIN_RADIUS = SYSTEM_RADIUS + CIRCLE_TO_CONTAINER_RATIO * 100 * OVERLAP_MARGIN; // ≈73%
+const SYSTEM_RADIUS_PCT = 30; // % — радиус, на котором стоят Notes/Calendar/AI (см. home.css)
 const EXTRA_ANGLE_OFFSET = 90; // ° — начальный поворот, чисто эстетический
-
-// Радиус кольца, при котором хорда между соседними из `count` доп. кружков не
-// меньше их диаметра — иначе они накладываются друг на друга. Порядок/схема
-// расположения (угол = смещение + index·шаг) не меняется вообще — растёт
-// только это общее для всех число, кружки просто отодвигаются от центра.
-function extraRadiusFor(count) {
-  if (count <= 1) return EXTRA_MIN_RADIUS;
-  const needed = ((CIRCLE_TO_CONTAINER_RATIO * OVERLAP_MARGIN) / (2 * Math.sin(Math.PI / count))) * 100;
-  return Math.max(EXTRA_MIN_RADIUS, needed);
-}
+// Столько же, сколько JITTER в applyJitter ниже — после расстановки по кругу
+// каждый кружок ещё независимо дёргается на ±JITTER px, поэтому запас на
+// несовпадение считаем в пикселях, а не в процентах (проценты от разных по
+// факту размеров контейнера/кружка на разных вьюпортах давали слишком узкий
+// запас — при большом количестве кружков джиттер двух соседних, толкающий их
+// друг к другу, "съедал" его целиком).
+const JITTER = 32;
 
 function positionExtraCircles(container) {
   const extras = [...container.querySelectorAll(".home-circle--pencil, .home-circle--custom")];
+  if (!extras.length) return;
+
+  // Меряем реальные пиксели уже отрисованных элементов, а не приблизительное
+  // соотношение — так расчёт верен при любом сочетании clamp()-размеров.
+  const containerWidth = container.getBoundingClientRect().width;
+  const circleDiameter = extras[0].getBoundingClientRect().width;
+  const systemRadiusPx = (SYSTEM_RADIUS_PCT / 100) * containerWidth;
+
+  // Клиренс от системных кружков — при любом угле, с запасом на джиттер обеих
+  // сторон (свой и соседнего системного).
+  const clearOfSystemPx = systemRadiusPx + circleDiameter + JITTER * 2;
+  // Хорда между соседними доп. кружками — тоже с запасом на джиттер обеих
+  // сторон, иначе они могут дёрнуться навстречу друг другу и коснуться.
   const step = 360 / extras.length;
-  const radius = extraRadiusFor(extras.length);
+  const minChordPx = circleDiameter + JITTER * 2;
+  const chordRadiusPx = extras.length > 1 ? minChordPx / (2 * Math.sin((step / 2) * (Math.PI / 180))) : 0;
+
+  const radiusPct = (Math.max(clearOfSystemPx, chordRadiusPx) / containerWidth) * 100;
+
   extras.forEach((circle, index) => {
     const angle = ((EXTRA_ANGLE_OFFSET + index * step) * Math.PI) / 180;
-    circle.style.top = `${50 + radius * Math.sin(angle)}%`;
-    circle.style.left = `${50 + radius * Math.cos(angle)}%`;
+    circle.style.top = `${50 + radiusPct * Math.sin(angle)}%`;
+    circle.style.left = `${50 + radiusPct * Math.cos(angle)}%`;
   });
 }
 
@@ -189,7 +195,6 @@ function positionExtraCircles(container) {
 // заходе добавляем небольшое случайное смещение через --tx/--ty, чтобы схема
 // оставалась узнаваемой, но не была статичной.
 function applyJitter(container) {
-  const JITTER = 32; // px, максимальное отклонение в каждую сторону
   container.querySelectorAll(".home-circle").forEach((circle) => {
     const tx = Math.round((Math.random() * 2 - 1) * JITTER);
     const ty = Math.round((Math.random() * 2 - 1) * JITTER);
