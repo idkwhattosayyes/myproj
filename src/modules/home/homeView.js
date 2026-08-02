@@ -110,6 +110,8 @@ function wirePencil(container) {
   });
 }
 
+// Notes/Calendar/AI и кружок-плюс не получают этот слушатель вообще — у них
+// просто нет пункта "Удалить" (см. ТЗ, п.7: дефолтные кружки нельзя удалить).
 function wireCustomCircles(container, circles) {
   circles.forEach((circle) => {
     const el = container.querySelector(`[data-circle-id="${circle.id}"]`);
@@ -117,6 +119,19 @@ function wireCustomCircles(container, circles) {
     el.addEventListener("click", () => {
       setPendingTarget({ kind: "item", id: circle.noteId, folderId: circle.folderId, query: "", matchIndex: 0 });
       getNavigateHandler()("notes");
+    });
+    el.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: t("home.deleteCircle"),
+          onClick: () => {
+            // Удаляется только ярлык — сама заметка не трогается (ТЗ, п.6).
+            customCircles.removeCircle(circle.id);
+            renderHomeView(container);
+          },
+        },
+      ]);
     });
   });
 }
