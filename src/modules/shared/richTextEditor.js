@@ -59,6 +59,10 @@ function createToolbarToggle(toolbarEl) {
   return btn;
 }
 
+// Как и TOOLBAR_COLLAPSED_KEY — настройка вида, живёт в localStorage, а не
+// в данных заметки, иначе разворачивалась бы обратно при каждом переключении.
+const TOOLBAR_EXPANDED_KEY = "app:toolbarExpanded";
+
 // Кнопка "+/−" справа от тулбара: показывает/прячет расширенный набор кнопок
 // (помечены data-toolbar-extra, см. .rte-toolbar в editor.css), в отличие от
 // createToolbarToggle выше — та прячет тулбар целиком, а не часть кнопок.
@@ -73,10 +77,12 @@ function createToolbarExpandToggle(toolbarEl) {
     btn.textContent = expanded ? "−" : "+";
   }
 
-  apply(false);
+  apply(localStorage.getItem(TOOLBAR_EXPANDED_KEY) === "1");
   btn.addEventListener("mousedown", (event) => event.preventDefault());
   btn.addEventListener("click", () => {
-    apply(!toolbarEl.classList.contains("is-expanded"));
+    const expanded = !toolbarEl.classList.contains("is-expanded");
+    localStorage.setItem(TOOLBAR_EXPANDED_KEY, expanded ? "1" : "0");
+    apply(expanded);
   });
   return btn;
 }
