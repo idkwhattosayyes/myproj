@@ -43,6 +43,7 @@ export async function renderHomeView(container) {
         </div>
         ${pencilHtml}
         ${customCirclesHtml}
+        <button type="button" class="home-add-circle" title="${escapeHtml(t("home.addCircle"))}">+</button>
       </div>
     </div>
   `;
@@ -52,6 +53,7 @@ export async function renderHomeView(container) {
   drawConnectorLines(container);
   wirePencil(container);
   wireCustomCircles(container, customCirclesData);
+  wireAddCircle(container);
 }
 
 // Заметка могла исчезнуть между сохранением кружка и этим рендером — такой
@@ -117,6 +119,13 @@ function wireCustomCircles(container, circles) {
       getNavigateHandler()("notes");
     });
   });
+}
+
+// Кружок-плюс не трогает карандаш (см. ТЗ, п.5: "виден всегда, независимо от
+// того, нажимал ли пользователь Ignore") — dismissPencil здесь не передаём.
+function wireAddCircle(container) {
+  const addEl = container.querySelector(".home-add-circle");
+  addEl.addEventListener("click", () => pickAndBindCircle(container));
 }
 
 // Кружки без своего места в CSS (карандаш, кастомные ярлыки на заметки)
