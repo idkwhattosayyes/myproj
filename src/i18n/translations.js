@@ -51,6 +51,8 @@ export const translations = {
     "home.pencilTooltip": "Customizable note",
     "home.pickerTitle": "Choose a note",
     "home.pickerDone": "Done",
+    "home.ignore": "Ignore",
+    "home.customizableNote": "Customizable note",
 
     "calendar.today": "Today",
     "calendar.months": [
@@ -221,6 +223,8 @@ export const translations = {
     "home.pencilTooltip": "Настраиваемая заметка",
     "home.pickerTitle": "Выбрать заметку",
     "home.pickerDone": "Готово",
+    "home.ignore": "Игнорировать",
+    "home.customizableNote": "Настраиваемая заметка",
     "home.aiUnavailable": "Недоступно пока",
 
     "calendar.today": "Сегодня",
@@ -393,6 +397,8 @@ export const translations = {
     "home.pencilTooltip": "פתק להתאמה אישית",
     "home.pickerTitle": "בחירת פתק",
     "home.pickerDone": "סיום",
+    "home.ignore": "התעלמות",
+    "home.customizableNote": "פתק להתאמה אישית",
 
     "calendar.today": "היום",
     "calendar.months": [

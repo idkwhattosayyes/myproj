@@ -4,6 +4,7 @@ import { openNotePicker } from "./notePicker.js";
 import * as customCircles from "./customCircles.js";
 import * as itemsService from "../../services/itemsService.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
+import { showContextMenu } from "../shared/contextMenu.js";
 
 export async function renderHomeView(container) {
   const { pencilDismissed } = customCircles.getState();
@@ -67,16 +68,43 @@ async function loadCustomCirclesData() {
   return resolved.filter(Boolean);
 }
 
+// Открывает меню выбора и, если пользователь дошёл до "Done", сохраняет новый
+// кастомный кружок (Cancel/Esc — picked пустой, ничего не меняется). Общий
+// путь для левого клика по карандашу, пункта "Customizable note" в его
+// ПКМ-меню и (следующим шагом) центрального кружка-плюса — тот не должен
+// трогать карандаш, поэтому dismissPencil включают только первые два места.
+async function pickAndBindCircle(container, { dismissPencil = false } = {}) {
+  const picked = await openNotePicker();
+  if (!picked) return;
+  customCircles.addCircle(picked);
+  if (dismissPencil) customCircles.setPencilDismissed(true);
+  renderHomeView(container);
+}
+
 function wirePencil(container) {
   const pencilEl = container.querySelector('[data-role="pencil"]');
   if (!pencilEl) return;
-  pencilEl.addEventListener("click", async () => {
-    const picked = await openNotePicker();
-    if (!picked) return;
-    customCircles.addCircle(picked);
-    // Карандаш «использован» — больше не появляется (см. ТЗ, п.1).
-    customCircles.setPencilDismissed(true);
-    renderHomeView(container);
+
+  // Карандаш «использован» и больше не появляется, только если пользователь
+  // либо реально выбрал заметку, либо явно нажал "Ignore" в ПКМ-меню (см. ТЗ,
+  // п.1 и п.4) — отмена/Esc в меню выбора оставляет карандаш как есть.
+  pencilEl.addEventListener("click", () => pickAndBindCircle(container, { dismissPencil: true }));
+
+  pencilEl.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    showContextMenu(event.clientX, event.clientY, [
+      {
+        label: t("home.ignore"),
+        onClick: () => {
+          customCircles.setPencilDismissed(true);
+          renderHomeView(container);
+        },
+      },
+      {
+        label: t("home.customizableNote"),
+        onClick: () => pickAndBindCircle(container, { dismissPencil: true }),
+      },
+    ]);
   });
 }
 
@@ -92,11 +120,14 @@ function wireCustomCircles(container, circles) {
 }
 
 // Кружки без своего места в CSS (карандаш, кастомные ярлыки на заметки)
-// раскладываются равным шагом по той же окружности, что и три системных
-// кружка (радиус ~30% от центра), со сдвигом на середину зазора между ними,
-// чтобы не садиться поверх Notes/Calendar/AI.
-const EXTRA_RADIUS = 30; // % от центра .home-circles
-const EXTRA_ANGLE_OFFSET = 90; // °, ровно посередине между системными кружками
+// раскладываются равным шагом по кругу вокруг центра — отдельным, более узким
+// кольцом, чем у трёх системных кружков (у тех радиус ~30%). Их количество
+// заранее не известно и меняется во время сессии, поэтому шаг между ними
+// подстраивается под текущее число; при определённом количестве этот шаг мог
+// бы случайно совпасть с углом одного из системных кружков — другой радиус
+// гарантирует, что кружки в этом случае не сядут друг на друга буквально.
+const EXTRA_RADIUS = 20; // % от центра .home-circles — уже, чем у системных
+const EXTRA_ANGLE_OFFSET = 90; // ° — начальный поворот, чисто эстетический
 
 function positionExtraCircles(container) {
   const extras = [...container.querySelectorAll(".home-circle--pencil, .home-circle--custom")];
