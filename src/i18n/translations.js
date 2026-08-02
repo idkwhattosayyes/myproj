@@ -48,6 +48,9 @@ export const translations = {
     "home.calendar": "Calendar",
     "home.ai": "AI",
     "home.aiUnavailable": "Not available yet",
+    "home.pencilTooltip": "Customizable note",
+    "home.pickerTitle": "Choose a note",
+    "home.pickerDone": "Done",
 
     "calendar.today": "Today",
     "calendar.months": [
@@ -215,6 +218,9 @@ export const translations = {
     "home.notes": "Заметки",
     "home.calendar": "Календарь",
     "home.ai": "AI",
+    "home.pencilTooltip": "Настраиваемая заметка",
+    "home.pickerTitle": "Выбрать заметку",
+    "home.pickerDone": "Готово",
     "home.aiUnavailable": "Недоступно пока",
 
     "calendar.today": "Сегодня",
@@ -384,6 +390,9 @@ export const translations = {
     "home.calendar": "לוח שנה",
     "home.ai": "AI",
     "home.aiUnavailable": "עדיין לא זמין",
+    "home.pencilTooltip": "פתק להתאמה אישית",
+    "home.pickerTitle": "בחירת פתק",
+    "home.pickerDone": "סיום",
 
     "calendar.today": "היום",
     "calendar.months": [

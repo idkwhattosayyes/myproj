@@ -485,3 +485,27 @@ button {
   font-size: 0.9rem;
   word-break: break-word;
 }
+
+/* Окно выбора папки/заметки для кастомных кружков главной страницы — тот же
+   каркас, что у .transfer-box (два столбца дерева), но без галочек: строки
+   кликабельны и одна из них подсвечивается как выбранная. */
+.note-picker-box {
+  max-width: 640px;
+}
+
+.note-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.35rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.note-picker-row:hover {
+  background: #f3f4f6;
+}
+
+.note-picker-row.is-selected {
+  background: var(--selection-bg);
+}
