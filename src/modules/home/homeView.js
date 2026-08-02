@@ -56,18 +56,18 @@ export async function renderHomeView(container) {
   wireAddCircle(container);
 }
 
-// Заметка могла исчезнуть между сохранением кружка и этим рендером — такой
-// кружок здесь просто не попадает в разметку. Постоянная чистка хранилища
-// (чтобы восстановление заметки из Корзины не вернуло кружок) — отдельный шаг.
+// Заметка, к которой привязан кружок, могла исчезнуть или уйти в Корзину —
+// pruneDeadCircles убирает такой кружок ИЗ ХРАНИЛИЩА навсегда (а не просто
+// прячет на этот рендер), поэтому восстановление заметки из Корзины кружок
+// не возвращает (ТЗ, п.8).
 async function loadCustomCirclesData() {
-  const { circles } = customCircles.getState();
-  const resolved = await Promise.all(
+  const circles = await customCircles.pruneDeadCircles();
+  return Promise.all(
     circles.map(async (circle) => {
       const item = await itemsService.getItem(circle.noteId);
-      return item && !item.deletedAt ? { ...circle, title: item.title } : null;
+      return { ...circle, title: item.title };
     })
   );
-  return resolved.filter(Boolean);
 }
 
 // Открывает меню выбора и, если пользователь дошёл до "Done", сохраняет новый
