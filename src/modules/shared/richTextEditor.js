@@ -588,10 +588,10 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, currentSection?: string, showWordCount?: boolean}} options
+ * @param {{content: string, buttons: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, showWordCount?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, currentSection = "documents", showWordCount = false }) {
+export function createRichTextEditor({ content, buttons, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -1921,12 +1921,8 @@ export function createRichTextEditor({ content, buttons, pageMode = "flow", onCh
       query: link.dataset.anchorQuery,
       matchIndex: Number(link.dataset.anchorIndex),
     });
-    // Остаёмся в том разделе, где сейчас открыта заметка со ссылкой (Задачи
-    // или Документы), а не в разделе, где сама целевая заметка когда-то
-    // создана (item.section) — они делят общий пул, поэтому заметка
-    // найдётся в любом случае, независимо от выбранного раздела.
     const navigate = getNavigateHandler();
-    if (navigate) navigate(currentSection === "tasks" ? "tasks" : "documents");
+    if (navigate) navigate("notes");
   }
 
   // Превью ссылок при наведении — mouseover/mouseout вместо mouseenter/mouseleave:

@@ -142,7 +142,7 @@ function currentScopeKey() {
   if (pickerActive) return "items";
   if (scope === "global") return "all";
   if (currentRoute === "calendar") return "calendar";
-  if (currentRoute === "tasks" || currentRoute === "documents") return "items";
+  if (currentRoute === "notes") return "items";
   return "all";
 }
 
@@ -273,9 +273,7 @@ function openRow(rowIndex) {
     photoIndex: row.photoIndex,
   });
   closeResults();
-  // Раздел, где лежит найденное. Задачи и Документы делят данные, поэтому
-  // открываем тот раздел, в котором заметка была создана.
-  const route = group.kind === "calendar" ? "calendar" : group.section === "tasks" ? "tasks" : "documents";
+  const route = group.kind === "calendar" ? "calendar" : "notes";
   onNavigateCallback(route);
 }
 

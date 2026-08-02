@@ -26,9 +26,9 @@ modules/ (UI)  →  services/ (логика)  →  data/storageAdapter.js (ко�
 
 UI никогда не трогает `localStorage` напрямую (исключение — мелкие UI-настройки вроде последнего выбранного цвета). При переходе на Supabase меняется ровно одна строка — `ACTIVE_ADAPTER` в `storageAdapter.js`; JSDoc-typedef там же описывает контракт, который обязан реализовать новый адаптер.
 
-**Роутер** (`app.js`) — hash-based (`#/tasks`, `#/documents`, `#/calendar`, пусто = главная). Каждый переход полностью очищает `#app-view` и перерисовывает раздел заново. Состояние живёт в модульных переменных вьюх, не в DOM.
+**Роутер** (`app.js`) — hash-based (`#/notes`, `#/calendar`, пусто = главная). Каждый переход полностью очищает `#app-view` и перерисовывает раздел заново. Состояние живёт в модульных переменных вьюх, не в DOM.
 
-**Задачи и Документы — один и тот же раздел с разным тулбаром.** Оба вызывают `renderPanelSection(container, config)` из `modules/shared/panelSection.js`, различаясь только `config.toolbarButtons` и `config.pageModeInContextMenu`. В хранилище они делят общий пул: `matchesSection()` в `localStorageAdapter.js` считает `"tasks"` и `"documents"` алиасами, поэтому папка, созданная в одном разделе, сразу видна в другом. Не разноси их по разным ключам — это осознанное требование.
+**Notes** (`modules/notes/notesView.js`) — единственный раздел заметок, раньше разделённый на Задачи и Документы, теперь слитый в один. Он вызывает `renderPanelSection(container, config)` из `modules/shared/panelSection.js` с `section: "notes"`. Тулбар сворачиваемый: `config.toolbarButtons` — полный набор, `config.basicToolbarButtons` — сокращённый (бывший набор Задач), кнопка "+/−" в тулбаре переключает между ними, состояние живёт в `localStorage` (`app:toolbarExpanded`). В хранилище `matchesSection()` в `localStorageAdapter.js` считает `"tasks"`, `"documents"` и `"notes"` алиасами — старые записи с легаси-метками `tasks`/`documents` остаются доступны под текущим `"notes"` без миграции.
 
 **Ключи localStorage:** `app:folders`, `app:items`, `app:diaryEntries`, `app:calendarEntries`, `app:calendarTags`. Настройки (`app:lang`, обводка, последние цвета) живут под своими ключами и намеренно переживают «очистить данные».
 
@@ -42,7 +42,7 @@ UI никогда не трогает `localStorage` напрямую (искл�
 
 **Экранирование.** Вьюхи строятся через шаблонные строки и `innerHTML`, поэтому любые пользовательские данные прогоняй через `escapeHtml()` / `escapeAttr()` из `utils/dom.js`.
 
-**Редактор** (`modules/shared/richTextEditor.js`) — на `contenteditable`. Кнопка `"italic"` определена, но намеренно убрана из тулбаров: чтобы вернуть, достаточно снова вписать её в список в `tasksView.js` / `documentsView.js`. У цветовых кнопок особая логика: ЛКМ красит последним выбранным цветом, ПКМ открывает палитру. `pageMode` (`"flow"` | `"paged"`) хранится в самой заметке.
+**Редактор** (`modules/shared/richTextEditor.js`) — на `contenteditable`. Кнопка `"italic"` определена, но намеренно убрана из тулбаров: чтобы вернуть, достаточно снова вписать её в список в `notesView.js`. У цветовых кнопок особая логика: ЛКМ красит последним выбранным цветом, ПКМ открывает палитру. `pageMode` (`"flow"` | `"paged"`) хранится в самой заметке.
 
 ## Рабочий процесс
 

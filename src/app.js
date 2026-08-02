@@ -1,5 +1,5 @@
 import { renderHomeView } from "./modules/home/homeView.js";
-import { renderDocumentsView } from "./modules/documents/documentsView.js";
+import { renderNotesView } from "./modules/notes/notesView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
@@ -14,7 +14,7 @@ const DEFAULT_ROUTE = "home";
 
 const routes = {
   home: renderHomeView,
-  documents: renderDocumentsView,
+  notes: renderNotesView,
   calendar: renderCalendarView,
 };
 

@@ -7,8 +7,8 @@ import { setPendingTarget } from "./searchTarget.js";
 /**
  * Быстрая заметка: кнопка «+» рядом с полем поиска открывает компактную панель
  * с минимальным редактором. Enter или Esc сохраняют, «Отмена» — отбрасывает.
- * Кнопки «В Заметки»/«В Документы» переносят уже написанный текст в полноценный
- * редактор соответствующего раздела, ничего не теряя.
+ * Кнопка «В Заметки» переносит уже написанный текст в полноценный редактор
+ * раздела Notes, ничего не теряя.
  */
 let onNavigate = null;
 let onSaved = null;
@@ -53,8 +53,7 @@ function openQuickNote() {
     <div class="quicknote-body-slot"></div>
     <div class="quicknote-actions">
       <div class="quicknote-actions-left">
-        <button type="button" class="btn btn-small" data-action="to-tasks">${t("quicknote.toNotes")}</button>
-        <button type="button" class="btn btn-small" data-action="to-docs">${t("quicknote.toDocuments")}</button>
+        <button type="button" class="btn btn-small" data-action="to-notes">${t("quicknote.toNotes")}</button>
       </div>
       <div class="quicknote-actions-right">
         <button type="button" class="btn btn-small" data-action="cancel">${t("quicknote.cancel")}</button>
@@ -68,8 +67,7 @@ function openQuickNote() {
 
   panelEl.querySelector('[data-action="accept"]').addEventListener("click", saveAndClose);
   panelEl.querySelector('[data-action="cancel"]').addEventListener("click", discardAndClose);
-  panelEl.querySelector('[data-action="to-tasks"]').addEventListener("click", () => carryToSection("tasks"));
-  panelEl.querySelector('[data-action="to-docs"]').addEventListener("click", () => carryToSection("documents"));
+  panelEl.querySelector('[data-action="to-notes"]').addEventListener("click", carryToNotes);
 
   // Enter без Shift сохраняет; Shift+Enter оставляем на перенос строки в тексте.
   panelEl.addEventListener("keydown", (event) => {
@@ -114,17 +112,17 @@ async function saveAndClose() {
   if (isBlank(html)) return; // пустую заметку не создаём
   // Сохраняем в фоне. onSaved обновляет список раздела, если он сейчас открыт
   // (не трогая открытую справа заметку); если открыт другой раздел — тихий no-op.
-  await itemsService.createItem("tasks", { title: deriveTitle(html), content: html, folderIds: [] });
+  await itemsService.createItem("notes", { title: deriveTitle(html), content: html, folderIds: [] });
   if (onSaved) onSaved();
 }
 
-async function carryToSection(section) {
+async function carryToNotes() {
   const html = latestHtml;
   teardown();
-  const item = await itemsService.createItem(section, { title: deriveTitle(html), content: html, folderIds: [] });
+  const item = await itemsService.createItem("notes", { title: deriveTitle(html), content: html, folderIds: [] });
   // Раздел откроет именно эту заметку в полном редакторе — текст продолжит жить.
   setPendingTarget({ kind: "item", id: item.id, query: "", matchIndex: 0 });
-  if (onNavigate) onNavigate(section);
+  if (onNavigate) onNavigate("notes");
 }
 
 // Текст без разметки: и для проверки на пустоту, и для заголовка в списке.

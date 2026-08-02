@@ -1,8 +1,8 @@
 import { renderPanelSection } from "../shared/panelSection.js";
 
-export async function renderDocumentsView(container) {
+export async function renderNotesView(container) {
   await renderPanelSection(container, {
-    section: "documents",
+    section: "notes",
     // Курсив временно убран из тулбара; определение кнопки в richTextEditor.js
     // осталось — чтобы вернуть, достаточно снова добавить "italic" в список.
     toolbarButtons: [

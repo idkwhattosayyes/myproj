@@ -131,8 +131,7 @@ function startInlineRename(rowEl, currentValue, onCommit) {
 
 /**
  * Переиспользуемый каркас "папки слева + список заметок + редактор справа",
- * используется и Задачами, и Документами — отличаются только набором кнопок
- * тулбара (config.toolbarButtons) и section-ключом хранения (config.section).
+ * используется разделом Notes (config.section всегда "notes").
  *
  * @param {HTMLElement} container
  * @param {{section: string, toolbarButtons: string[]}} config
@@ -162,7 +161,7 @@ export async function renderPanelSection(container, config) {
 }
 
 // Просьба извне (быстрая заметка) обновить список открытого раздела, не трогая
-// открытую справа заметку. Если раздел Заметок/Документов сейчас не смонтирован
+// открытую справа заметку. Если раздел Notes сейчас не смонтирован
 // (открыта главная/календарь) — тихо ничего не делаем (guard по наличию списка в
 // DOM), заметка просто останется сохранённой в фоне.
 export async function refreshActivePanelItems() {
@@ -1236,14 +1235,10 @@ function renderDetail(container, config, state) {
     content: item.content,
     buttons: config.toolbarButtons,
     pageMode: item.pageMode,
-    // Ссылка на другую заметку — инструмент только раздела "Документы" (ТЗ).
-    allowInternalLinks: config.section === "documents",
-    // Счётчик слов/символов — тоже только в Документах (ТЗ).
-    showWordCount: config.section === "documents",
-    // Переход по уже готовой ссылке (см. openInternalLink в richTextEditor.js)
-    // должен оставлять в текущем разделе, а не только в Документах — раздел,
-    // где отрисован сам редактор.
-    currentSection: config.section,
+    // Ссылка на другую заметку — инструмент раздела Notes (ТЗ).
+    allowInternalLinks: config.section === "notes",
+    // Счётчик слов/символов — тоже раздела Notes (ТЗ).
+    showWordCount: config.section === "notes",
     onChange: (html) => scheduleSave({ content: html }),
     onPageModeChange: (mode) => scheduleSave({ pageMode: mode }),
     // История undo/redo привязана к id заметки и переживает выход/повторный вход.

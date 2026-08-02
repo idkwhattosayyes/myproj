@@ -42,12 +42,10 @@ export async function search(rawQuery, scope) {
   return groups.slice(0, MAX_GROUPS);
 }
 
-// Задачи и Документы делят общий пул (см. matchesSection в localStorageAdapter.js),
-// поэтому одного запроса хватает на оба раздела.
 async function searchItems(query) {
   const [folders, items] = await Promise.all([
-    itemsService.listFolders("documents"),
-    itemsService.listItems("documents"),
+    itemsService.listFolders("notes"),
+    itemsService.listItems("notes"),
   ]);
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const groups = [];

@@ -19,15 +19,14 @@ function touch(item) {
   return { ...item, updatedAt: new Date().toISOString() };
 }
 
-// Задачи и Документы теперь используют общий пул данных — различаются только
-// доступными кнопками тулбара (config.toolbarButtons), а не хранением. Обе
-// section-метки считаются алиасами друг друга при чтении, поэтому папка/заметка,
-// созданная в одном разделе, сразу видна и в другом — без миграции уже
-// сохранённых записей.
-const TASK_DOC_SECTIONS = ["tasks", "documents"];
+// Разделы Задачи и Документы объединены в один раздел Notes (section: "notes").
+// "tasks"/"documents" — легаси-метки: записи, сохранённые ещё в старых разделах,
+// хранят их как есть, но при чтении все три метки считаются алиасами друг друга,
+// поэтому старые данные остаются доступны под новым section: "notes" без миграции.
+const NOTE_SECTIONS = ["tasks", "documents", "notes"];
 
 function matchesSection(entitySection, querySection) {
-  if (TASK_DOC_SECTIONS.includes(querySection)) return TASK_DOC_SECTIONS.includes(entitySection);
+  if (NOTE_SECTIONS.includes(querySection)) return NOTE_SECTIONS.includes(entitySection);
   return entitySection === querySection;
 }
 
@@ -54,7 +53,7 @@ function byDeletedAtDesc(a, b) {
 }
 
 export const localStorageAdapter = {
-  // Folders (общая коллекция, отфильтрованная по section: "tasks" | "documents")
+  // Folders (общая коллекция, отфильтрованная по section: "notes", см. NOTE_SECTIONS)
   async getFolders(section) {
     return readCollection(STORAGE_KEYS.folders)
       .filter((folder) => matchesSection(folder.section, section) && !folder.deletedAt)
@@ -84,7 +83,7 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.folders, folders);
   },
 
-  // Items (общая коллекция, отфильтрованная по section: "tasks" | "documents")
+  // Items (общая коллекция, отфильтрованная по section: "notes", см. NOTE_SECTIONS)
   async getItems(section) {
     return readCollection(STORAGE_KEYS.items)
       .filter((item) => matchesSection(item.section, section) && !item.deletedAt)

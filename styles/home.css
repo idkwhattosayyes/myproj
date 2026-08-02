@@ -73,7 +73,7 @@
 
 /* Смещения --tx/--ty задаются случайно в JS (applyJitter) при каждом заходе.
    Три кружка вместо прежних четырёх — треугольником вокруг центра. */
-.home-circle--documents {
+.home-circle--notes {
   top: 20%;
   left: 50%;
   background: #cfe8de;

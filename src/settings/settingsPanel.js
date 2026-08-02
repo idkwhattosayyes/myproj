@@ -123,15 +123,15 @@ function renderPanel() {
 }
 
 // Экспорт: открываем дерево «папки → заметки» с галочками и превью. Выбранное
-// уходит в файл. Пул — Задачи (Документы — его алиас, общий набор). Корзина
-// подтягивается отдельно: обычные getFolders/getItems её уже не возвращают.
+// уходит в файл. Корзина подтягивается отдельно: обычные getFolders/getItems
+// её уже не возвращают.
 async function runExport() {
   const storage = getStorage();
   const [folders, items, trashedFolders, trashedItems] = await Promise.all([
-    storage.getFolders("tasks"),
-    storage.getItems("tasks"),
-    storage.getTrashedFolders("tasks"),
-    storage.getTrashedItems("tasks"),
+    storage.getFolders("notes"),
+    storage.getItems("notes"),
+    storage.getTrashedFolders("notes"),
+    storage.getTrashedItems("notes"),
   ]);
   const allFolders = [...folders, ...trashedFolders];
   const allItems = [...items, ...trashedItems];
