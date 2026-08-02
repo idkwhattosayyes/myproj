@@ -8,6 +8,9 @@ export const MARGIN_PX = 28; // запас между краями кружко�
 // --calendar/--ai в styles/home.css) — под этими же углами.
 export const SYSTEM_RADIUS_PCT = 30;
 export const SYSTEM_ANGLES = [270, 30, 150]; // Notes, Calendar, AI
+// Середины зазоров между соседними системными кружками — ровно между их
+// углами (270↔30 → 330, 30↔150 → 90, 150↔270 → 210).
+export const GAP_ANGLES = [330, 90, 210];
 
 const ANGLE_STEP_DEG = 10; // шаг перебора кандидатов по кругу
 
@@ -30,22 +33,50 @@ export function fitsAt(candidate, candidateDiameterPx, obstacles, containerWidth
   });
 }
 
-// Одно кольцо за пределами трёх системных кружков; если по кругу не нашлось
-// свободного угла — кольцо отодвигается ещё на диаметр+запас и перебор
-// повторяется. Открытый цикл — работает при любом количестве кружков (шаг 3
-// заменит это явными слоями, но сам перебор и fitsAt остаются тем же).
+// Перебирает углы 0..350 на фиксированном радиусе, возвращает первый, что
+// проходит fitsAt, или null, если на этом кольце свободного места нет.
+function sweepRing(ringRadiusPx, circleDiameterPx, obstacles, containerWidth) {
+  for (let angle = 0; angle < 360; angle += ANGLE_STEP_DEG) {
+    const candidate = { angle, radius: (ringRadiusPx / containerWidth) * 100 };
+    if (fitsAt(candidate, circleDiameterPx, obstacles, containerWidth)) return candidate;
+  }
+  return null;
+}
+
+// Место для кружка ищется по слоям, в порядке — первое, что подошло, и используется:
+//
+// 1. Внешнее кольцо — сразу за тремя системными кружками, при любом угле.
+// 2. Зазоры между системными — три фиксированных угла (GAP_ANGLES), радиус
+//    меньше слоя 1 (то есть буквально "внутри" уже сформированного внешнего
+//    круга); подбирается перебором снизу вверх, а не по формуле — так проще
+//    и надёжнее, чем решать треугольник с системным кружком аналитически.
+// 3. Кольца ещё дальше — та же логика, что и слой 1, только радиус растёт на
+//    диаметр+запас, пока не найдётся свободный угол; открытый цикл, так что
+//    работает при любом количестве кружков.
 export function findPosition({ containerWidth, circleDiameterPx, obstacles }) {
   const systemRadiusPx = (SYSTEM_RADIUS_PCT / 100) * containerWidth;
-  let ringRadiusPx = systemRadiusPx + circleDiameterPx + MARGIN_PX;
+  const ring1RadiusPx = systemRadiusPx + circleDiameterPx + MARGIN_PX;
 
+  const ring1 = sweepRing(ring1RadiusPx, circleDiameterPx, obstacles, containerWidth);
+  if (ring1) return ring1;
+
+  for (const gapAngle of GAP_ANGLES) {
+    // Перебираем радиус снизу вверх мелким шагом, пока кандидат в этом
+    // зазоре не перестанет задевать ближайший системный кружок — потолок
+    // ring1RadiusPx, дальше это уже не "внутри", а слой 1.
+    for (let radiusPx = circleDiameterPx / 2; radiusPx < ring1RadiusPx; radiusPx += 4) {
+      const candidate = { angle: gapAngle, radius: (radiusPx / containerWidth) * 100 };
+      if (fitsAt(candidate, circleDiameterPx, obstacles, containerWidth)) return candidate;
+    }
+  }
+
+  let ringRadiusPx = ring1RadiusPx;
   // Предохранитель от зависания на испорченных входных данных (например,
   // containerWidth ещё не посчитан) — в норме место находится за 1-2 кольца.
   for (let ring = 0; ring < 200; ring++) {
-    for (let angle = 0; angle < 360; angle += ANGLE_STEP_DEG) {
-      const candidate = { angle, radius: (ringRadiusPx / containerWidth) * 100 };
-      if (fitsAt(candidate, circleDiameterPx, obstacles, containerWidth)) return candidate;
-    }
     ringRadiusPx += circleDiameterPx + MARGIN_PX;
+    const found = sweepRing(ringRadiusPx, circleDiameterPx, obstacles, containerWidth);
+    if (found) return found;
   }
   return { angle: 0, radius: (ringRadiusPx / containerWidth) * 100 };
 }
