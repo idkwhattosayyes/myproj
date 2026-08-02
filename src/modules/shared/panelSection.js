@@ -174,8 +174,11 @@ export async function refreshActivePanelItems() {
   renderList(container, config, state);
 }
 
-// Пришли по результату поиска: открываем нужную папку или заметку. Заметку
+// Пришли по результату поиска (или по кастомному кружку главной страницы):
+// открываем нужную папку или заметку. Заметку без явного target.folderId
 // показываем из "Все" — она может лежать в папке, которая сейчас не выбрана.
+// target.folderId (кружок главной знает, через какую папку заметку открыли)
+// используем, только если папка ещё существует — иначе тоже откатываемся к "Все".
 function applySearchTarget(state) {
   const target = consumePendingTarget("item", "folder");
   if (!target) return;
@@ -185,7 +188,8 @@ function applySearchTarget(state) {
     state.flashFolderId = target.id;
     return;
   }
-  state.selectedFolderId = "all";
+  const folderIsValid = target.folderId === "unfiled" || state.folders.some((f) => f.id === target.folderId);
+  state.selectedFolderId = folderIsValid ? target.folderId : "all";
   state.selectedItemId = target.id;
   state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex };
 }

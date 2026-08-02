@@ -92,10 +92,14 @@
   color: #55606b;
 }
 
-/* Карандаш и позже кастомные ярлыки — top/left им не нужны, координаты
+/* Карандаш и кастомные ярлыки на заметки — top/left им не нужны, координаты
    считает JS (positionExtraCircles в homeView.js), здесь только фон. */
 .home-circle--pencil {
   background: #f3e3c3;
+}
+
+.home-circle--custom {
+  background: #f0d9d9;
 }
 
 .home-circle-overlay {

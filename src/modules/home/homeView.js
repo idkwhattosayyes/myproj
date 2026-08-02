@@ -1,9 +1,13 @@
 import { t } from "../../i18n/i18n.js";
+import { escapeHtml } from "../../utils/dom.js";
 import { openNotePicker } from "./notePicker.js";
 import * as customCircles from "./customCircles.js";
+import * as itemsService from "../../services/itemsService.js";
+import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 
 export async function renderHomeView(container) {
   const { pencilDismissed } = customCircles.getState();
+  const customCirclesData = await loadCustomCirclesData();
 
   const pencilHtml = pencilDismissed
     ? ""
@@ -12,6 +16,15 @@ export async function renderHomeView(container) {
           <span class="home-circle-label">✏️</span>
           <span class="home-circle-overlay">${t("home.pencilTooltip")}</span>
         </div>`;
+
+  const customCirclesHtml = customCirclesData
+    .map(
+      (circle) => `
+        <div class="home-circle home-circle--custom" tabindex="0" data-role="custom-circle" data-circle-id="${circle.id}">
+          <span class="home-circle-label">${escapeHtml(circle.title || t("panel.untitled"))}</span>
+        </div>`
+    )
+    .join("");
 
   container.innerHTML = `
     <div class="home">
@@ -28,6 +41,7 @@ export async function renderHomeView(container) {
           <span class="home-circle-overlay">${t("home.aiUnavailable")}</span>
         </div>
         ${pencilHtml}
+        ${customCirclesHtml}
       </div>
     </div>
   `;
@@ -36,21 +50,51 @@ export async function renderHomeView(container) {
   applyJitter(container);
   drawConnectorLines(container);
   wirePencil(container);
+  wireCustomCircles(container, customCirclesData);
+}
+
+// Заметка могла исчезнуть между сохранением кружка и этим рендером — такой
+// кружок здесь просто не попадает в разметку. Постоянная чистка хранилища
+// (чтобы восстановление заметки из Корзины не вернуло кружок) — отдельный шаг.
+async function loadCustomCirclesData() {
+  const { circles } = customCircles.getState();
+  const resolved = await Promise.all(
+    circles.map(async (circle) => {
+      const item = await itemsService.getItem(circle.noteId);
+      return item && !item.deletedAt ? { ...circle, title: item.title } : null;
+    })
+  );
+  return resolved.filter(Boolean);
 }
 
 function wirePencil(container) {
   const pencilEl = container.querySelector('[data-role="pencil"]');
   if (!pencilEl) return;
   pencilEl.addEventListener("click", async () => {
-    await openNotePicker();
-    // Привязка выбранной заметки к кружку — следующий пункт ПОРЯДКА РАБОТЫ.
+    const picked = await openNotePicker();
+    if (!picked) return;
+    customCircles.addCircle(picked);
+    // Карандаш «использован» — больше не появляется (см. ТЗ, п.1).
+    customCircles.setPencilDismissed(true);
+    renderHomeView(container);
   });
 }
 
-// Кружки без своего места в CSS (карандаш, позже — кастомные ярлыки на
-// заметки) раскладываются равным шагом по той же окружности, что и три
-// системных кружка (радиус ~30% от центра), со сдвигом на середину зазора
-// между ними, чтобы не садиться поверх Notes/Calendar/AI.
+function wireCustomCircles(container, circles) {
+  circles.forEach((circle) => {
+    const el = container.querySelector(`[data-circle-id="${circle.id}"]`);
+    if (!el) return;
+    el.addEventListener("click", () => {
+      setPendingTarget({ kind: "item", id: circle.noteId, folderId: circle.folderId, query: "", matchIndex: 0 });
+      getNavigateHandler()("notes");
+    });
+  });
+}
+
+// Кружки без своего места в CSS (карандаш, кастомные ярлыки на заметки)
+// раскладываются равным шагом по той же окружности, что и три системных
+// кружка (радиус ~30% от центра), со сдвигом на середину зазора между ними,
+// чтобы не садиться поверх Notes/Calendar/AI.
 const EXTRA_RADIUS = 30; // % от центра .home-circles
 const EXTRA_ANGLE_OFFSET = 90; // °, ровно посередине между системными кружками
 
