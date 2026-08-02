@@ -150,16 +150,32 @@ function wireAddCircle(container) {
 // подстраивается под текущее число; при определённом количестве этот шаг мог
 // бы случайно совпасть с углом одного из системных кружков — другой радиус
 // гарантирует, что кружки в этом случае не сядут друг на друга буквально.
-const EXTRA_RADIUS = 20; // % от центра .home-circles — уже, чем у системных
+const EXTRA_MIN_RADIUS = 20; // % — радиус при 0-1 доп. кружках
 const EXTRA_ANGLE_OFFSET = 90; // ° — начальный поворот, чисто эстетический
+// Диаметр кружка (clamp(120px,16vw,172px)) — примерно постоянная доля ширины
+// .home-circles (clamp(320px,58vw,460px)) на всём диапазоне вьюпортов: оба
+// clamp() подобраны в одной пропорции. Запас — чтобы кружки не касались впритык.
+const CIRCLE_TO_CONTAINER_RATIO = 0.375;
+const OVERLAP_MARGIN = 1.15;
+
+// Радиус кольца, при котором хорда между соседними из `count` кружков не
+// меньше их диаметра — иначе они накладываются друг на друга. Порядок/схема
+// расположения (угол = смещение + index·шаг) не меняется вообще — растёт
+// только это общее для всех число, кружки просто отодвигаются от центра.
+function extraRadiusFor(count) {
+  if (count <= 1) return EXTRA_MIN_RADIUS;
+  const needed = ((CIRCLE_TO_CONTAINER_RATIO * OVERLAP_MARGIN) / (2 * Math.sin(Math.PI / count))) * 100;
+  return Math.max(EXTRA_MIN_RADIUS, needed);
+}
 
 function positionExtraCircles(container) {
   const extras = [...container.querySelectorAll(".home-circle--pencil, .home-circle--custom")];
   const step = 360 / extras.length;
+  const radius = extraRadiusFor(extras.length);
   extras.forEach((circle, index) => {
     const angle = ((EXTRA_ANGLE_OFFSET + index * step) * Math.PI) / 180;
-    circle.style.top = `${50 + EXTRA_RADIUS * Math.sin(angle)}%`;
-    circle.style.left = `${50 + EXTRA_RADIUS * Math.cos(angle)}%`;
+    circle.style.top = `${50 + radius * Math.sin(angle)}%`;
+    circle.style.left = `${50 + radius * Math.cos(angle)}%`;
   });
 }
 
