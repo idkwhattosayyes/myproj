@@ -833,6 +833,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (removable && !existing) frame.appendChild(createPageDeleteButton(page));
       else if (!removable && existing) existing.remove();
     });
+
+    // В самом конце: рисунки и фото сдвигаются вслед за своими строками, а
+    // строки к этому моменту уже на своих окончательных местах.
+    syncAnchors();
   }
 
   function createPageDeleteButton(page) {
@@ -1054,6 +1058,125 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   }
   // ---------------------------------------------------------------------
 
+  // --- Привязка рисунков и фото к строкам --------------------------------
+  // Рисунок и фото лежат поверх листа с абсолютными координатами, но
+  // отсчитываются не от листа, а от строки, рядом с которой их поставили:
+  // добавил абзац выше — текст уехал вниз, и объект обязан уехать вместе с ним.
+  // Раньше он оставался на прежнем месте и уползал от своей строки.
+  //
+  // Строка-якорь помечена data-anchor="a3", объект хранит этот id и
+  // data-anchor-top — offsetTop строки в момент привязки. Насколько строка с
+  // тех пор сдвинулась, настолько же смещён объект. Смещение живёт в
+  // inline-transform: так положение верно ещё до того, как отработает JS после
+  // загрузки, и его можно прочитать обратно, когда строку-якорь удалили.
+  // Всё это обычные атрибуты внутри содержимого заметки — отдельного поля в
+  // модели, как и самому рисунку, не нужно.
+  const ANCHOR_LINE_SELECTOR = "h1,h2,p,div,ul,ol,table";
+  let nextAnchorId = 1;
+
+  // Якорем может быть любая строка листа. Маркеры выделения фото — тоже div
+  // среди его прямых потомков, но это служебный слой, а не текст.
+  function anchorLines(page) {
+    return [...page.children].filter(
+      (el) => el.matches(ANCHOR_LINE_SELECTOR) && !el.classList.contains("rte-photo-handles")
+    );
+  }
+
+  function anchoredObjects(page) {
+    return [
+      ...page.querySelectorAll(":scope > svg.rte-drawing-layer > path"),
+      ...page.querySelectorAll(':scope > img.rte-photo[data-layout="float"]'),
+    ];
+  }
+
+  function ensureAnchorId(line) {
+    if (line.dataset.anchor) return line.dataset.anchor;
+    // id уникален в пределах заметки, а часть их пришла из сохранённой
+    // разметки — проматываем счётчик мимо уже занятых.
+    while (contentEl.querySelector(`[data-anchor="a${nextAnchorId}"]`)) nextAnchorId++;
+    line.dataset.anchor = `a${nextAnchorId++}`;
+    return line.dataset.anchor;
+  }
+
+  function anchorLineOf(page, el) {
+    return el.dataset.anchor ? page.querySelector(`:scope > [data-anchor="${el.dataset.anchor}"]`) : null;
+  }
+
+  // Строка, на уровне которой оказался объект: та, в чью вертикальную полосу
+  // попадает y, иначе ближайшая сверху — рисовать можно и ниже последней строки.
+  function lineAt(lines, y) {
+    let found = lines[0] || null;
+    lines.forEach((line) => {
+      if (line.offsetTop <= y) found = line;
+    });
+    return found;
+  }
+
+  function readOffset(el) {
+    const match = el.style.transform.match(/-?[\d.]+/);
+    return match ? Number(match[0]) : 0;
+  }
+
+  function applyOffset(el, offset) {
+    el.style.transform = offset ? `translateY(${offset}px)` : "";
+  }
+
+  function bindAnchor(page, el, y) {
+    const line = lineAt(anchorLines(page), y);
+    if (!line) return;
+    el.dataset.anchor = ensureAnchorId(line);
+    el.dataset.anchorTop = String(line.offsetTop);
+    applyOffset(el, 0);
+  }
+
+  // Верх объекта в координатах листа. У штриха собственных координат нет —
+  // берём верх его габаритного прямоугольника.
+  function objectTop(el) {
+    const base = el.tagName === "path" ? el.getBBox().y : parseFloat(el.style.top) || 0;
+    return base + readOffset(el);
+  }
+
+  // Пересчёт смещений. Вызывается из refreshPages: через неё проходит и ввод
+  // текста, и смена режима страниц, и undo/redo, и первая отрисовка заметки.
+  function syncAnchors() {
+    // Узел ещё не в документе (createRichTextEditor вызывает refreshPages до
+    // того, как panelSection вставит редактор) — offsetTop у всех строк нули, и
+    // привязка вышла бы к последней строке с нулевым запомненным верхом. Считаем
+    // после вставки: refreshLayout() вызывается там же, где updatePageFit.
+    if (!contentEl.clientWidth) return;
+
+    getPages().forEach((page) => {
+      const lines = anchorLines(page);
+      if (!lines.length) return;
+
+      const byId = new Map();
+      lines.forEach((line) => {
+        const id = line.dataset.anchor;
+        if (!id) return;
+        // Enter копирует атрибуты строки вместе с ней. Две строки с одним id
+        // означали бы, что обе претендуют на один якорь: дубликату id снимаем.
+        if (byId.has(id)) delete line.dataset.anchor;
+        else byId.set(id, line);
+      });
+
+      anchoredObjects(page).forEach((el) => {
+        let line = byId.get(el.dataset.anchor);
+        if (!line) {
+          // Якоря нет: объект либо старый (нарисован до этой правки), либо его
+          // строку удалили. В обоих случаях цепляемся за строку, рядом с которой
+          // объект сейчас находится, и оставляем его ровно на месте: удаление
+          // строки не должно его дёргать, дальше он поедет уже с новой строкой.
+          line = lineAt(lines, objectTop(el));
+          el.dataset.anchor = ensureAnchorId(line);
+          el.dataset.anchorTop = String(line.offsetTop - readOffset(el));
+          byId.set(el.dataset.anchor, line);
+        }
+        applyOffset(el, line.offsetTop - (Number(el.dataset.anchorTop) || 0));
+      });
+    });
+  }
+  // ---------------------------------------------------------------------
+
   // --- Рисование поверх документа ---------------------------------------
   // Рисунок — <svg class="rte-drawing-layer"> с <path> на каждый штрих, лежащий
   // прямо внутри .rte-page: serializeEditor() берёт innerHTML страницы как есть,
@@ -1094,9 +1217,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const svg = getDrawingLayer(page, false);
     if (!svg) return;
     const { x, y } = drawPoint(page, event);
-    const point = new DOMPoint(x, y);
     svg.querySelectorAll("path").forEach((path) => {
-      if (path.isPointInStroke(point)) path.remove();
+      // Штрих сдвинут вслед за своей строкой, а его собственные координаты в d
+      // этого сдвига не знают — переводим точку в них, иначе ластик мажет мимо.
+      if (path.isPointInStroke(new DOMPoint(x, y - readOffset(path)))) path.remove();
     });
   }
 
@@ -1218,6 +1342,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const start = drawPoint(page, event);
     path.setAttribute("d", `M${start.x} ${start.y}`);
     svg.appendChild(path);
+    // Штрих принадлежит той строке, на уровне которой начат: дальше он поедет
+    // вместе с ней. Координаты в d остаются координатами листа, сдвиг живёт
+    // отдельно — переписывать ломаную на каждую правку текста незачем.
+    bindAnchor(page, path, start.y);
     drawState = { pointerId: event.pointerId, page, path };
   });
 
@@ -1332,6 +1460,24 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     img.dataset.layout = "float";
     img.style.left = `${Math.round((imgRect.left - pageRect.left) / zoom)}px`;
     img.style.top = `${Math.round((imgRect.top - pageRect.top) / zoom)}px`;
+    // Плавающее фото переезжает прямым потомком листа. Вставлено оно в каретку,
+    // то есть внутрь строки, и вместе с этой строкой удалилось бы навсегда — а
+    // привязка к строке должна уметь пережить её удаление. На вид ничего не
+    // меняется: position:absolute и так вынул фото из потока, а
+    // позиционирующим предком у него в обоих случаях лист.
+    page.appendChild(img);
+    rebindPhoto(img);
+  }
+
+  // После вставки, перетаскивания или ресайза фото стоит на новом месте:
+  // привязываем его к строке, рядом с которой оно теперь, и вписываем
+  // накопленный сдвиг в top — сдвиг снова ноль, а фото не шелохнулось.
+  function rebindPhoto(img) {
+    const page = img.closest(".rte-page");
+    if (!page) return;
+    const top = (parseFloat(img.style.top) || 0) + readOffset(img);
+    img.style.top = `${Math.round(top)}px`;
+    bindAnchor(page, img, top);
   }
 
   function syncHandles() {
@@ -1446,8 +1592,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (!dragPhotoState) return;
     contentEl.releasePointerCapture(event.pointerId);
     const moved = dragPhotoState.moved;
+    const img = dragPhotoState.img;
     dragPhotoState = null;
     if (!moved) return; // просто клик выделения — снимок истории не нужен
+    rebindPhoto(img); // фото у другой строки — и ехать дальше должно с ней
     // MutationObserver истории не слушает атрибуты (только childList/characterData),
     // поэтому смену style.left/top снимком не ловит — пишем явно.
     recordHistory();
@@ -1479,7 +1627,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("pointerup", (event) => {
     if (!resizePhotoState) return;
     contentEl.releasePointerCapture(event.pointerId);
+    const img = resizePhotoState.img;
     resizePhotoState = null;
+    if (img.dataset.layout === "float") rebindPhoto(img);
     recordHistory();
     onChange(serializeEditor(contentEl));
   });
@@ -1527,9 +1677,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       ensureFloatPosition(img, true);
       img.dataset.layout = "float";
     } else {
+      // Обтекание текстом — фото возвращается в поток, и именно в свою
+      // строку-якорь: прямым потомком листа (куда его положил float) оно
+      // оказалось бы в самом конце текста, а не там, где стояло.
+      const line = anchorLineOf(img.closest(".rte-page"), img);
+      if (line) line.appendChild(img);
       img.dataset.layout = "flow";
       img.style.left = "";
       img.style.top = "";
+      applyOffset(img, 0);
+      delete img.dataset.anchor;
+      delete img.dataset.anchorTop;
     }
     syncHandles();
     recordHistory();
@@ -1931,8 +2089,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   }
 
   contentEl.addEventListener("input", () => {
-    onChange(serializeEditor(contentEl));
+    // Сначала пересчёт, потом сохранение: syncAnchors внутри refreshPages
+    // двигает рисунки и фото вслед за строками, и в заметку должно попасть уже
+    // новое положение, а не то, что было до правки.
     refreshPages();
+    onChange(serializeEditor(contentEl));
     scheduleWordCountUpdate();
   });
 
