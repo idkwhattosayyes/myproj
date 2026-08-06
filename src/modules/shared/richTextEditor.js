@@ -1100,11 +1100,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     });
   }
 
-  function toggleDrawing() {
-    drawingActive = !drawingActive;
+  function setDrawing(on) {
+    drawingActive = on;
     if (!drawingActive) erasingActive = false; // выключили кисть — выключаем и ластик
     contentEl.classList.toggle("is-drawing", drawingActive);
     refreshToolbarState();
+  }
+
+  function toggleDrawing() {
+    setDrawing(!drawingActive);
   }
 
   function currentDrawWidth() {
@@ -1114,6 +1118,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // ПКМ на кнопке рисования — толщина, цвет (та же палитра, что у текста) и
   // тумблер ластика. Каждый выбор мгновенно закрывает поповер — как и у цвета
   // текста/заливки, второй вложенный уровень здесь не нужен.
+  //
+  // Любой выбор здесь заодно включает сам инструмент: пришёл в поповер — значит
+  // собрался рисовать, отдельно жать кнопку карандаша после этого незачем.
   function toggleDrawPopover(btn, def) {
     const existing = btn.querySelector(".rte-color-popover");
     closeColorPopovers();
@@ -1132,6 +1139,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       swatch.addEventListener("click", (event) => {
         event.stopPropagation();
         setLastWidth(DRAW_WIDTH_KEY, width);
+        setDrawing(true);
         closeColorPopovers();
         focusActivePage();
       });
@@ -1148,6 +1156,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         event.stopPropagation();
         setLastColor(def.storageKey, color);
         updateSwatch(btn, def);
+        setDrawing(true);
         closeColorPopovers();
         focusActivePage();
       });
@@ -1164,6 +1173,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     eraserBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       erasingActive = !erasingActive;
+      setDrawing(true);
       closeColorPopovers();
       focusActivePage();
     });
