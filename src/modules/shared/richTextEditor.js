@@ -190,6 +190,14 @@ const A4_HEIGHT = 1123;
 const PAGE_WIDTH = 794;
 const PAGE_FRAME_WIDTH = PAGE_WIDTH + 6;
 
+// Ширина одного шага отступа (Tab). Ровно столько же ставил браузерный
+// execCommand("indent"), которым отступ делался раньше, — поэтому старые
+// заметки после upgradeLegacyIndents выглядят точно так же, как выглядели.
+const INDENT_STEP_PX = 40;
+// Предел вложенности: при 40px на шаг дальше строка всё равно упирается в
+// правый край листа.
+const MAX_INDENT = 10;
+
 // Невидимый якорь: держит каретку внутри только что созданного (или только что
 // покинутого) форматирующего тега, пока в него ничего не набрано. В сохраняемый
 // HTML не попадает — см. serializeEditor.
@@ -566,6 +574,105 @@ function isHeading(editorEl, tagName) {
   return isInlineFormatActive(editorEl, FORMATS[tagName.toLowerCase()]);
 }
 
+// --- Отступ строки (Tab) ------------------------------------------------
+// Уровень отступа живёт на самой строке: data-indent — источник истины,
+// margin-left его рисует. Раньше отступ делал браузерный execCommand("indent"),
+// который заворачивает строки в общий <blockquote>: соседние строки попадали в
+// одну обёртку, и снять отступ у одной, не задев остальные, было нельзя. Здесь
+// задеть соседа физически невозможно — отступ принадлежит строке.
+//
+// li сюда не входит намеренно: внутри списков Tab по-прежнему делает
+// вложенность средствами браузера, это другая семантика.
+const LINE_SELECTOR = "h1,h2,p,div";
+
+function getIndentLevel(line) {
+  return Number(line.dataset.indent) || 0;
+}
+
+function setIndentLevel(line, level) {
+  const next = clamp(level, 0, MAX_INDENT);
+  if (next === 0) {
+    delete line.dataset.indent;
+    line.style.marginLeft = "";
+  } else {
+    line.dataset.indent = String(next);
+    line.style.marginLeft = `${next * INDENT_STEP_PX}px`;
+  }
+}
+
+// Строка — прямой потомок листа: именно на этом уровне браузер держит <div>,
+// между которыми делит текст. Сам .rte-page — тоже div, но это лист, а не
+// строка: отступ на нём сдвинул бы всю страницу.
+function getCaretLine(editorEl) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return null;
+  let node = selection.getRangeAt(0).startContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return null;
+  const page = node.closest(".rte-page");
+  if (!page) return null;
+  // Внутри списка строки нет: там отступ — вложенность пункта, её делает
+  // браузер. Сам <ul> Chrome кладёт внутрь строки-обёртки, поэтому подъём до
+  // прямого потомка листа нашёл бы эту обёртку и сдвинул весь список целиком.
+  if (node.closest("ul,ol")) return null;
+  let line = node;
+  while (line && line.parentElement !== page) line = line.parentElement;
+  return line && line.matches(LINE_SELECTOR) ? line : null;
+}
+
+// Все строки, которых касается выделение: при схлопнутой каретке — ровно одна,
+// при растянутом на несколько строк — все они, как это делал execCommand.
+function getSelectedLines(editorEl) {
+  const line = getCaretLine(editorEl);
+  if (!line) return [];
+  const range = getCurrentRange(editorEl);
+  if (!range || range.collapsed) return [line];
+  const page = line.parentElement;
+  return [...page.children].filter((child) => child.matches(LINE_SELECTOR) && range.intersectsNode(child));
+}
+
+// Пустая строка: ни текста, ни вставленного объекта — только <br>, который
+// браузер держит в каждой пустой строке, и невидимые якоря каретки.
+function isLineEmpty(line) {
+  if (line.querySelector("img,svg,table")) return false;
+  return line.textContent.split(CARET_ANCHOR).join("").trim() === "";
+}
+
+// Заметки, сохранённые до перехода на data-indent, держат отступ браузерным
+// <blockquote>. Разворачиваем при открытии: каждая строка внутри получает свой
+// уровень (вложенные blockquote суммируются), после чего blockquote в заметке
+// не остаётся вовсе.
+function upgradeLegacyIndents(editorEl) {
+  // Голый текст внутри blockquote — тоже строка, но без элемента, на который
+  // можно повесить отступ: заворачиваем в div, иначе уровень будет некуда деть.
+  editorEl.querySelectorAll("blockquote").forEach((quote) => {
+    [...quote.childNodes]
+      .filter((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== "")
+      .forEach(wrapInDiv);
+  });
+  // Уровни раздаём до разворота, пока обёртки ещё на месте: глубина вложенности
+  // blockquote над строкой — это и есть её отступ.
+  editorEl.querySelectorAll("blockquote > *").forEach((line) => {
+    if (!line.matches(LINE_SELECTOR)) return;
+    let depth = 0;
+    for (let el = line.parentElement; el && el.tagName === "BLOCKQUOTE"; el = el.parentElement) depth++;
+    setIndentLevel(line, getIndentLevel(line) + depth);
+  });
+  // Теперь разворачиваем. Порядок документа гарантирует, что внешняя обёртка
+  // обработана раньше вложенной, и к своей очереди вложенная уже поднята выше.
+  editorEl.querySelectorAll("blockquote").forEach((quote) => {
+    while (quote.firstChild) quote.parentElement.insertBefore(quote.firstChild, quote);
+    quote.remove();
+  });
+}
+
+function wrapInDiv(node) {
+  const div = document.createElement("div");
+  node.parentElement.insertBefore(div, node);
+  div.appendChild(node);
+  return div;
+}
+
 /**
  * Есть выделение — заголовок применяется ТОЛЬКО к нему: хоть одна буква, хоть
  * несколько строк. Строка при этом не разрывается, оформляется сам фрагмент.
@@ -641,6 +748,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.className = "rte-content";
   parsePages(content).forEach((html) => contentEl.appendChild(createPageFrame(html)));
   upgradeLegacyChecklists(contentEl);
+  upgradeLegacyIndents(contentEl);
 
   // Новая страница появляется только по явному действию — текст сам по себе на
   // следующую страницу не перетекает.
@@ -916,6 +1024,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     getPages().forEach((page) => page.parentElement.remove());
     parsePages(entry.html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
     upgradeLegacyChecklists(contentEl);
+    upgradeLegacyIndents(contentEl);
     activePageEl = getPages()[0] || null;
     // Курсор возвращаем туда, где он был при записи снимка, а не в начало.
     setCaretOffset(entry.caret);
@@ -2001,7 +2110,37 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Tab в списках — вложенность (как в маркированном списке), а не переход
     // фокуса на следующий элемент страницы.
     event.preventDefault();
-    document.execCommand(event.shiftKey ? "outdent" : "indent");
+    const lines = getSelectedLines(contentEl);
+    if (!lines.length) {
+      // Каретка внутри списка: там отступ — это вложенность пункта, её делает
+      // браузер. Своим data-indent её не подменить, семантика другая.
+      document.execCommand(event.shiftKey ? "outdent" : "indent");
+    } else {
+      const step = event.shiftKey ? -1 : 1;
+      lines.forEach((line) => setIndentLevel(line, getIndentLevel(line) + step));
+      // Отступ — это атрибут строки, а MutationObserver истории слушает только
+      // childList/characterData: без явного снимка Ctrl+Z не отменил бы Tab.
+      recordHistory();
+    }
+    onChange(serializeEditor(contentEl));
+  });
+
+  // Backspace на пустой строке с отступом снимает сначала отступ и только
+  // следующим нажатием удаляет саму строку. Иначе поставленный Tab снять было
+  // нечем: строка с отступом тянула его за собой и на все новые строки после
+  // Enter. Во всех прочих случаях молчим — буквы, слияние строк и удаление
+  // выделения делает браузер.
+  contentEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Backspace") return;
+    const selection = window.getSelection();
+    if (!selection.rangeCount || !selection.getRangeAt(0).collapsed) return;
+    const line = getCaretLine(contentEl);
+    if (!line || !isLineEmpty(line) || getIndentLevel(line) === 0) return;
+    event.preventDefault();
+    setIndentLevel(line, getIndentLevel(line) - 1);
+    // Смена атрибута мимо MutationObserver истории (он слушает только
+    // childList/characterData) — снимок пишем явно, как при перетаскивании фото.
+    recordHistory();
     onChange(serializeEditor(contentEl));
   });
 
