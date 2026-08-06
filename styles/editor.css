@@ -245,6 +245,15 @@
   box-shadow: inset 0 0 0 2px #33507e;
 }
 
+/* Цвет пера и ластик — взаимоисключающие режимы (см. toggleDrawPopover), и
+   видно должно быть, какой из них сейчас включён. У цветного свотча обводка
+   именно снаружи: inset-кольцо, как у ластика, закрыло бы собой сам цвет.
+   outline не занимает места и не сдвигает соседей. */
+.rte-draw-popover .rte-color-swatch.is-active:not(.rte-draw-eraser) {
+  outline: 2px solid #33507e;
+  outline-offset: 1px;
+}
+
 .rte-color-popover {
   position: absolute;
   top: calc(100% + 4px);

@@ -1146,16 +1146,25 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       popover.appendChild(swatch);
     });
 
+    // Цвета и ластик — один ряд взаимоисключающих режимов: в любой момент перо
+    // либо красит конкретным цветом, либо стирает. Раньше ластик был отдельным
+    // тумблером поверх цвета, и выбранный цвет молча не работал, пока ластик не
+    // выключишь вручную. Поэтому здесь не тумблеры, а выбор одного из вариантов:
+    // цвет гасит ластик, ластик гасит цвет — ровно так же, как цвета
+    // переключаются между собой.
+    const currentColor = getLastColor(def.storageKey, def.defaultColor);
     TEXT_COLORS.forEach((color) => {
       const swatch = document.createElement("button");
       swatch.type = "button";
       swatch.className = "rte-color-swatch";
       swatch.style.background = color;
+      swatch.classList.toggle("is-active", !erasingActive && color === currentColor);
       swatch.addEventListener("mousedown", (event) => event.preventDefault());
       swatch.addEventListener("click", (event) => {
         event.stopPropagation();
         setLastColor(def.storageKey, color);
         updateSwatch(btn, def);
+        erasingActive = false;
         setDrawing(true);
         closeColorPopovers();
         focusActivePage();
@@ -1172,7 +1181,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     eraserBtn.addEventListener("mousedown", (event) => event.preventDefault());
     eraserBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      erasingActive = !erasingActive;
+      erasingActive = true;
       setDrawing(true);
       closeColorPopovers();
       focusActivePage();
