@@ -1187,6 +1187,70 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     return Math.max(0, Math.min(x, width - objectWidth));
   }
 
+  // --- Порядок наложения -------------------------------------------------
+  // Кто создан позже, тот лежит выше — и рисунки, и фото в одной общей стопке.
+  // Раньше порядок был побочным эффектом разметки: слой рисования появлялся на
+  // странице один раз, при первом штрихе, а каждое новое фото уезжало в конец
+  // страницы, — отчего фото почти всегда оказывалось поверх любых рисунков.
+  //
+  // Теперь у каждого объекта свой z-index, выданный при создании и больше
+  // никогда не пересчитываемый: новый штрих поднимается только сам, а
+  // нарисованные до него остаются под теми фото, что их перекрывали.
+  // Фото в режиме обтекания лежит внутри строки, а не прямым потомком листа, и
+  // в стопке не участвует (CSS игнорирует z-index у непозиционированного
+  // элемента). Номер за ним всё равно числится — иначе его выдали бы кому-то
+  // ещё, и при возврате фото в плавающий режим двое спорили бы за одно место.
+  function stackObjects() {
+    return [...contentEl.querySelectorAll("svg.rte-drawing-layer, img.rte-photo")];
+  }
+
+  // Максимум ищем по разметке, а не держим в переменной: часть объектов пришла
+  // из сохранённой заметки со своими номерами (тот же приём, что в
+  // ensureAnchorId), да и undo/redo восстанавливает HTML вместе с ними.
+  function nextZIndex() {
+    let max = 0;
+    stackObjects().forEach((el) => {
+      max = Math.max(max, Number(el.style.zIndex) || 0);
+    });
+    return max + 1;
+  }
+
+  // Заметка из старого формата: все штрихи страницы лежат в одном общем <svg>, а
+  // номеров в стопке нет ни у кого. Разрезаем общий слой по штрихам на том же
+  // месте в разметке и раздаём номера по порядку следования — сегодня порядок в
+  // разметке и есть видимый порядок наложения, поэтому на экране ничего не
+  // меняется. Возвращает true, если что-то поправили.
+  function migrateStacking() {
+    let changed = false;
+
+    getPages().forEach((page) => {
+      drawingLayers(page).forEach((svg) => {
+        const paths = [...svg.querySelectorAll("path")];
+        if (paths.length < 2) return;
+        paths.forEach((path) => {
+          const layer = document.createElementNS(SVG_NS, "svg");
+          layer.setAttribute("class", "rte-drawing-layer");
+          layer.setAttribute("contenteditable", "false");
+          layer.appendChild(path);
+          svg.before(layer);
+        });
+        svg.remove();
+        changed = true;
+      });
+
+      // Прямые потомки в порядке разметки — в этом же порядке они сейчас и
+      // рисуются, так что нумерация просто закрепляет нынешнюю картину.
+      [...page.children].forEach((el) => {
+        if (!el.matches("svg.rte-drawing-layer, img.rte-photo") || el.style.zIndex) return;
+        el.style.zIndex = String(nextZIndex());
+        changed = true;
+      });
+    });
+
+    return changed;
+  }
+  // ---------------------------------------------------------------------
+
   // Пересчёт смещений. Вызывается из refreshPages: через неё проходит и ввод
   // текста, и смена режима страниц, и undo/redo, и первая отрисовка заметки.
   function syncAnchors() {
@@ -1196,10 +1260,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // после вставки: refreshLayout() вызывается там же, где updatePageFit.
     if (!contentEl.clientWidth) return;
 
-    // Заметка могла быть сохранена до процентов — тогда доли считаются здесь же
-    // из нынешних пиксельных позиций, и новый формат нужно закрепить в самой
-    // заметке, иначе пересчёт повторялся бы при каждом открытии.
-    let migrated = false;
+    // Заметка могла быть сохранена до процентов и до номеров в стопке — тогда и
+    // доли, и номера считаются здесь же из нынешнего вида, и новый формат нужно
+    // закрепить в самой заметке, иначе пересчёт повторялся бы при каждом
+    // открытии. Разрезание общего слоя — обязательно до обхода объектов ниже,
+    // чтобы тот увидел уже разложенные по своим слоям штрихи.
+    let migrated = migrateStacking();
 
     getPages().forEach((page) => {
       const lines = anchorLines(page);
@@ -1267,26 +1333,33 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // ---------------------------------------------------------------------
 
   // --- Рисование поверх документа ---------------------------------------
-  // Рисунок — <svg class="rte-drawing-layer"> с <path> на каждый штрих, лежащий
+  // Рисунок — <svg class="rte-drawing-layer"> с одним <path> внутри, лежащий
   // прямо внутри .rte-page: serializeEditor() берёт innerHTML страницы как есть,
   // поэтому рисунок сохраняется/загружается вместе с текстом без отдельного поля
   // в модели заметки, а MutationObserver истории (см. выше) подхватывает
-  // добавление/удаление <path> автоматически — свой стек отмены не нужен.
+  // добавление/удаление слоя автоматически — свой стек отмены не нужен.
+  //
+  // Именно по слою на штрих, а не один общий на страницу: z-index не действует
+  // на детей <svg> — внутри него порядок рисования равен порядку в разметке, и
+  // для внешнего мира весь слой один элемент. Пока все штрихи лежали в общем
+  // <svg>, вклинить между ними фото было нельзя (см. stackObjects).
   const SVG_NS = "http://www.w3.org/2000/svg";
   let erasingActive = false;
   let drawState = null; // { pointerId, page, path } — path === null во время стирания
 
-  function getDrawingLayer(page, create) {
-    let svg = page.querySelector(":scope > svg.rte-drawing-layer");
-    if (!svg && create) {
-      svg = document.createElementNS(SVG_NS, "svg");
-      svg.setAttribute("class", "rte-drawing-layer");
-      // Неедактируемый остров внутри contenteditable-страницы: браузер не лезет
-      // курсором внутрь и удаляет его целиком, а не по кусочкам.
-      svg.setAttribute("contenteditable", "false");
-      page.appendChild(svg);
-    }
+  function createStrokeLayer(page) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "rte-drawing-layer");
+    // Нередактируемый остров внутри contenteditable-страницы: браузер не лезет
+    // курсором внутрь и удаляет его целиком, а не по кусочкам.
+    svg.setAttribute("contenteditable", "false");
+    svg.style.zIndex = String(nextZIndex());
+    page.appendChild(svg);
     return svg;
+  }
+
+  function drawingLayers(page) {
+    return [...page.querySelectorAll(":scope > svg.rte-drawing-layer")];
   }
 
   // Координаты события → локальные координаты страницы. SVG без viewBox, значит
@@ -1303,15 +1376,18 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // задет. isPointInStroke — нативная геометрия SVG, без ручного подсчёта
   // расстояния до ломаной.
   function eraseAt(page, event) {
-    const svg = getDrawingLayer(page, false);
-    if (!svg) return;
     const { x, y } = drawPoint(page, event);
-    svg.querySelectorAll("path").forEach((path) => {
+    drawingLayers(page).forEach((svg) => {
+      const path = svg.querySelector("path");
+      if (!path) return;
       // Штрих сдвинут вслед за своей строкой и за шириной колонки, а его
       // собственные координаты в d об этом не знают — переводим точку в них по
       // обеим осям, иначе ластик мажет мимо.
       const offset = readOffset(path);
-      if (path.isPointInStroke(new DOMPoint(x - offset.x, y - offset.y))) path.remove();
+      // Уносим весь слой, а не один <path>: штрих в нём и так один, а пустой
+      // <svg> остался бы висеть в разметке заметки. Уцелевшие штрихи лежат в
+      // своих слоях и своё место в стопке сохраняют.
+      if (path.isPointInStroke(new DOMPoint(x - offset.x, y - offset.y))) svg.remove();
     });
   }
 
@@ -1423,7 +1499,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       return;
     }
 
-    const svg = getDrawingLayer(page, true);
+    const svg = createStrokeLayer(page);
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("fill", "none");
     path.setAttribute("stroke", getLastColor(DRAW_COLOR_KEY, DRAW_DEFAULT_COLOR));
@@ -1554,6 +1630,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     img.dataset.layout = "float";
     img.style.left = `${Math.round((imgRect.left - pageRect.left) / zoom)}px`;
     img.style.top = `${Math.round((imgRect.top - pageRect.top) / zoom)}px`;
+    // Место в стопке — только при первом появлении. Дальше оно принадлежит фото
+    // навсегда: и при возврате из обтекания, и после undo (номер едет в HTML).
+    if (!img.style.zIndex) img.style.zIndex = String(nextZIndex());
     // Плавающее фото переезжает прямым потомком листа. Вставлено оно в каретку,
     // то есть внутрь строки, и вместе с этой строкой удалилось бы навсегда — а
     // привязка к строке должна уметь пережить её удаление. На вид ничего не
