@@ -1112,13 +1112,24 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     return found;
   }
 
+  // Сдвиг двухосевой: по вертикали объект едет за своей строкой, по горизонтали —
+  // за шириной колонки (см. leftPercentOf). У штриха обе оси живут в transform,
+  // у фото горизонталь держит style.left, и x здесь всегда ноль.
   function readOffset(el) {
-    const match = el.style.transform.match(/-?[\d.]+/);
-    return match ? Number(match[0]) : 0;
+    const both = el.style.transform.match(/translate\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px\s*\)/);
+    if (both) return { x: Number(both[1]), y: Number(both[2]) };
+    // Заметки, сохранённые до перехода на проценты, несут одну координату.
+    const legacy = el.style.transform.match(/translateY\(\s*(-?[\d.]+)px\s*\)/);
+    return { x: 0, y: legacy ? Number(legacy[1]) : 0 };
   }
 
-  function applyOffset(el, offset) {
-    el.style.transform = offset ? `translateY(${offset}px)` : "";
+  // Округляем до сотых пикселя: доля ширины хранится с округлением, и обратный
+  // пересчёт даёт хвост вроде -0.00381px. На вид это ничто, но оно оседало бы в
+  // сохранённой разметке заметки при каждом проходе.
+  function applyOffset(el, x, y) {
+    const dx = Math.round(x * 100) / 100;
+    const dy = Math.round(y * 100) / 100;
+    el.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
   }
 
   function bindAnchor(page, el, y) {
@@ -1126,14 +1137,54 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (!line) return;
     el.dataset.anchor = ensureAnchorId(line);
     el.dataset.anchorTop = String(line.offsetTop);
-    applyOffset(el, 0);
+    applyOffset(el, 0, 0);
   }
 
-  // Верх объекта в координатах листа. У штриха собственных координат нет —
-  // берём верх его габаритного прямоугольника.
-  function objectTop(el) {
-    const base = el.tagName === "path" ? el.getBBox().y : parseFloat(el.style.top) || 0;
-    return base + readOffset(el);
+  // Габариты объекта в координатах листа. У штриха собственных координат нет —
+  // берём его габаритный прямоугольник; getBBox() не знает про transform самого
+  // элемента, поэтому возвращает исходную геометрию независимо от уже наложенного
+  // сдвига, и опорная точка не уползает от прохода к проходу.
+  function objectBox(el) {
+    if (el.tagName === "path") {
+      const box = el.getBBox();
+      return { x: box.x, y: box.y, width: box.width };
+    }
+    return {
+      x: parseFloat(el.style.left) || 0,
+      y: parseFloat(el.style.top) || 0,
+      width: parseFloat(el.style.width) || el.naturalWidth || 0,
+    };
+  }
+
+  // Ширина листа в его собственных координатах — тех же, в которых заданы left у
+  // фото и точки в d у штриха. Именно offsetWidth: getBoundingClientRect() вернул
+  // бы ширину уже после CSS-зума, которым постраничный режим ужимает рамку листа
+  // (см. updatePageFit), а offsetWidth — исходные 794px, от которых и отсчитаны
+  // координаты. Делить на зум вручную нельзя: --page-fit задан всегда, а
+  // применяется только в постраничном режиме. || 1 — пока узел не в документе.
+  function pageWidth(page) {
+    return page.offsetWidth || 1;
+  }
+
+  // Горизонталь хранится долей ширины листа, а не пикселями: колонка текста
+  // меняет ширину вместе с окном (и с монитором), а объект в абсолютных пикселях
+  // оставался на прежнем месте — отрывался от своей строки и вылезал за правый
+  // край. Доля считается от той же опорной точки, что и рисуется: левого края.
+  function leftPercentOf(box, offsetX, width) {
+    return ((box.x + offsetX) / width) * 100;
+  }
+
+  function storeLeftPercent(el) {
+    const page = el.closest(".rte-page");
+    if (!page) return;
+    el.dataset.leftPct = leftPercentOf(objectBox(el), readOffset(el).x, pageWidth(page)).toFixed(3);
+  }
+
+  // Узкое окно и широкое фото: доля увела бы объект за правый край. Придерживаем
+  // его у края — но только при отрисовке, сама доля остаётся нетронутой, поэтому
+  // на возвращённой ширине объект встаёт ровно туда, где его оставили.
+  function clampLeft(x, objectWidth, width) {
+    return Math.max(0, Math.min(x, width - objectWidth));
   }
 
   // Пересчёт смещений. Вызывается из refreshPages: через неё проходит и ввод
@@ -1145,9 +1196,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // после вставки: refreshLayout() вызывается там же, где updatePageFit.
     if (!contentEl.clientWidth) return;
 
+    // Заметка могла быть сохранена до процентов — тогда доли считаются здесь же
+    // из нынешних пиксельных позиций, и новый формат нужно закрепить в самой
+    // заметке, иначе пересчёт повторялся бы при каждом открытии.
+    let migrated = false;
+
     getPages().forEach((page) => {
       const lines = anchorLines(page);
       if (!lines.length) return;
+      const width = pageWidth(page);
 
       const byId = new Map();
       lines.forEach((line) => {
@@ -1159,21 +1216,53 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         else byId.set(id, line);
       });
 
-      anchoredObjects(page).forEach((el) => {
+      // Сначала считаем всё по каждому объекту, и только потом двигаем. Чтения
+      // раскладки (offsetTop строки, габариты штриха) и записи стилей идут двумя
+      // отдельными проходами: вперемешку браузер пересчитывал бы раскладку заново
+      // на каждом объекте, а проход этот идёт на каждое нажатие клавиши.
+      const moves = anchoredObjects(page).map((el) => {
+        const box = objectBox(el);
+        const offset = readOffset(el);
+
         let line = byId.get(el.dataset.anchor);
         if (!line) {
           // Якоря нет: объект либо старый (нарисован до этой правки), либо его
           // строку удалили. В обоих случаях цепляемся за строку, рядом с которой
           // объект сейчас находится, и оставляем его ровно на месте: удаление
           // строки не должно его дёргать, дальше он поедет уже с новой строкой.
-          line = lineAt(lines, objectTop(el));
+          line = lineAt(lines, box.y + offset.y);
           el.dataset.anchor = ensureAnchorId(line);
-          el.dataset.anchorTop = String(line.offsetTop - readOffset(el));
+          el.dataset.anchorTop = String(line.offsetTop - offset.y);
           byId.set(el.dataset.anchor, line);
         }
-        applyOffset(el, line.offsetTop - (Number(el.dataset.anchorTop) || 0));
+
+        let percent = Number(el.dataset.leftPct);
+        if (!Number.isFinite(percent)) {
+          // Объект из старой заметки: доля берётся от его нынешнего места, так
+          // что на экране он не шелохнётся — меняется только форма записи.
+          percent = leftPercentOf(box, offset.x, width);
+          el.dataset.leftPct = percent.toFixed(3);
+          migrated = true;
+        }
+
+        return { el, box, percent, offsetY: line.offsetTop - (Number(el.dataset.anchorTop) || 0) };
+      });
+
+      moves.forEach(({ el, box, percent, offsetY }) => {
+        const left = clampLeft((percent / 100) * width, box.width, width);
+        // У штриха горизонталь ложится в тот же transform, что и вертикаль:
+        // переписывать ломаную в d на каждое изменение ширины незачем. У фото
+        // своя координата — style.left, transform несёт только вертикаль.
+        if (el.tagName === "path") {
+          applyOffset(el, left - box.x, offsetY);
+        } else {
+          el.style.left = `${Math.round(left)}px`;
+          applyOffset(el, 0, offsetY);
+        }
       });
     });
+
+    if (migrated) onChange(serializeEditor(contentEl));
   }
   // ---------------------------------------------------------------------
 
@@ -1218,9 +1307,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (!svg) return;
     const { x, y } = drawPoint(page, event);
     svg.querySelectorAll("path").forEach((path) => {
-      // Штрих сдвинут вслед за своей строкой, а его собственные координаты в d
-      // этого сдвига не знают — переводим точку в них, иначе ластик мажет мимо.
-      if (path.isPointInStroke(new DOMPoint(x, y - readOffset(path)))) path.remove();
+      // Штрих сдвинут вслед за своей строкой и за шириной колонки, а его
+      // собственные координаты в d об этом не знают — переводим точку в них по
+      // обеим осям, иначе ластик мажет мимо.
+      const offset = readOffset(path);
+      if (path.isPointInStroke(new DOMPoint(x - offset.x, y - offset.y))) path.remove();
     });
   }
 
@@ -1362,6 +1453,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("pointerup", (event) => {
     if (!drawState || event.pointerId !== drawState.pointerId) return;
     contentEl.releasePointerCapture(event.pointerId);
+    // Долю ширины записываем только сейчас: на pointerdown у штриха ещё нет
+    // габаритов, от левого края которых она считается.
+    if (drawState.path) storeLeftPercent(drawState.path);
     drawState = null;
     // Снимок всего штриха/стирания одним шагом — записываем явно, только когда
     // жест завершён (пока drawState не пуст, scheduleHistory ничего не пишет).
@@ -1472,12 +1566,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // После вставки, перетаскивания или ресайза фото стоит на новом месте:
   // привязываем его к строке, рядом с которой оно теперь, и вписываем
   // накопленный сдвиг в top — сдвиг снова ноль, а фото не шелохнулось.
+  // Заодно это единственная точка фиксации новой горизонтали: во время самого
+  // жеста left пишется пикселями, доля считается по его завершении.
   function rebindPhoto(img) {
     const page = img.closest(".rte-page");
     if (!page) return;
-    const top = (parseFloat(img.style.top) || 0) + readOffset(img);
+    const top = (parseFloat(img.style.top) || 0) + readOffset(img).y;
     img.style.top = `${Math.round(top)}px`;
     bindAnchor(page, img, top);
+    storeLeftPercent(img);
   }
 
   function syncHandles() {
@@ -1685,9 +1782,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       img.dataset.layout = "flow";
       img.style.left = "";
       img.style.top = "";
-      applyOffset(img, 0);
+      applyOffset(img, 0, 0);
       delete img.dataset.anchor;
       delete img.dataset.anchorTop;
+      // В обтекании горизонталь держит CSS float — доля ширины здесь ничего не
+      // значит и при возврате в float будет посчитана заново.
+      delete img.dataset.leftPct;
     }
     syncHandles();
     recordHistory();
