@@ -998,9 +998,22 @@ function renderList(container, config, state) {
           return null;
         },
         onDrop: async (target) => {
+          // Перестановка внутри списка считается целиком в памяти, поэтому
+          // рисуем новый порядок сразу, а запись отправляем за кадр:
+          // setItemsOrder переписывает всю коллекцию вместе с фото в base64, и
+          // на паре мегабайт это десятки миллисекунд — ровно то залипание,
+          // которое было видно в момент отпускания кнопки. У папок такой
+          // развилки нет: их коллекция весит килобайты и пишется мгновенно.
           if (target.kind === "item") {
-            await reorderItem(itemId, target.id, state, target.after);
-          } else if (target.id === "favorites") {
+            const orderById = reorderItemInState(itemId, target.id, state, target.after);
+            // Только список: полный render() пересоздал бы ещё и редактор со
+            // всей открытой заметкой (и сбросил бы в нём каретку с прокруткой),
+            // хотя от перестановки строк он не меняется вовсе.
+            renderList(container, config, state);
+            afterPaint(() => itemsService.setItemsOrder(orderById));
+            return;
+          }
+          if (target.id === "favorites") {
             await itemsService.updateItem(itemId, { isFavorite: true });
           } else if (target.id === "unfiled") {
             await itemsService.updateItem(itemId, { folderIds: [] });
@@ -1107,27 +1120,48 @@ async function deleteItemFlow(itemId, container, config, state, confirm) {
   render(container, config, state);
 }
 
-// Переставляет заметку draggedId перед targetId или после неё, переназначает
-// order всем и сохраняет.
-async function reorderItem(draggedId, targetId, state, after) {
+// Переставляет заметку draggedId перед targetId или после неё и переназначает
+// order всем — но ТОЛЬКО в памяти. Сохранение отдельно, потому что оно дорогое:
+// см. вызов в onDrop.
+function reorderItemInState(draggedId, targetId, state, after) {
   const arr = state.items;
   const from = arr.findIndex((i) => i.id === draggedId);
-  if (from < 0) return;
+  if (from < 0) return {};
   const [moved] = arr.splice(from, 1);
   // Индекс цели ищем уже после удаления перетаскиваемой заметки — сдвиг учтён.
   const to = arr.findIndex((i) => i.id === targetId);
   arr.splice(after ? to + 1 : to, 0, moved);
-  await itemsService.setItemsOrder(collectOrder(arr));
+  return assignOrderByIndex(arr);
 }
 
-// Новый порядок как { id: order } — только для тех, у кого он изменился.
-// Одним объектом, потому что адаптер сохраняет всю перестановку одной записью.
-function collectOrder(arr) {
+// Проставляет order = index (массив уже в нужном порядке) и возвращает
+// изменившиеся как { id: order } — одним объектом, потому что адаптер сохраняет
+// всю перестановку одной записью. order правим и в самих объектах: список
+// сортируется по нему при каждой отрисовке, а перечитывать коллекцию из
+// хранилища ради этих же чисел — лишние миллисекунды на мегабайтах.
+function assignOrderByIndex(arr) {
   const orderById = {};
   arr.forEach((entry, index) => {
-    if (entry.order !== index) orderById[entry.id] = index;
+    if (entry.order === index) return;
+    entry.order = index;
+    orderById[entry.id] = index;
   });
   return orderById;
+}
+
+// Выполнить работу после того, как браузер покажет уже перерисованный экран:
+// rAF срабатывает перед отрисовкой кадра, таймер внутри него — после неё.
+// Второй таймер — дублёр: у скрытой вкладки rAF не вызывается вовсе, а
+// сохранить перестановку всё равно надо.
+function afterPaint(run) {
+  let done = false;
+  const once = () => {
+    if (done) return;
+    done = true;
+    run();
+  };
+  requestAnimationFrame(() => setTimeout(once, 0));
+  setTimeout(once, 100);
 }
 
 function getFilteredItems(state) {
