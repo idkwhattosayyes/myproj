@@ -420,6 +420,16 @@ button.rte-link-preview-row:hover {
   overflow: visible;
 }
 
+/* Точка отсчёта для scale() у штриха — размер рисунка тоже доля ширины листа, и
+   масштаб живёт в его transform (см. applyOffset в richTextEditor.js). Задаём
+   явно: по умолчанию transform-origin — центр элемента, и масштабирование увело
+   бы каждый штрих с места. view-box + 0 0 — ровно та система координат, в которой
+   записаны точки в d и в которой считает drawPoint(). */
+.rte-drawing-layer > path {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
 .rte-content.is-drawing .rte-page { cursor: crosshair; }
 
 /* В сплошном режиме страница по умолчанию высотой ровно в свой текст — рисовать

@@ -1115,21 +1115,31 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Сдвиг двухосевой: по вертикали объект едет за своей строкой, по горизонтали —
   // за шириной колонки (см. leftPercentOf). У штриха обе оси живут в transform,
   // у фото горизонталь держит style.left, и x здесь всегда ноль.
+  // Масштаб штриха живёт в том же transform: собственного размера у ломаной нет,
+  // растянуть её можно только через scale. У фото scale не бывает — там размер
+  // задан явными width/height, и единица здесь означает «как есть».
   function readOffset(el) {
+    const zoom = el.style.transform.match(/scale\(\s*([\d.]+)\s*\)/);
+    const scale = zoom ? Number(zoom[1]) : 1;
     const both = el.style.transform.match(/translate\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px\s*\)/);
-    if (both) return { x: Number(both[1]), y: Number(both[2]) };
+    if (both) return { x: Number(both[1]), y: Number(both[2]), scale };
     // Заметки, сохранённые до перехода на проценты, несут одну координату.
     const legacy = el.style.transform.match(/translateY\(\s*(-?[\d.]+)px\s*\)/);
-    return { x: 0, y: legacy ? Number(legacy[1]) : 0 };
+    return { x: 0, y: legacy ? Number(legacy[1]) : 0, scale };
   }
 
   // Округляем до сотых пикселя: доля ширины хранится с округлением, и обратный
   // пересчёт даёт хвост вроде -0.00381px. На вид это ничто, но оно оседало бы в
   // сохранённой разметке заметки при каждом проходе.
-  function applyOffset(el, x, y) {
+  function applyOffset(el, x, y, scale = 1) {
     const dx = Math.round(x * 100) / 100;
     const dy = Math.round(y * 100) / 100;
-    el.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
+    const s = Math.round(scale * 1000) / 1000;
+    const move = dx || dy ? `translate(${dx}px, ${dy}px)` : "";
+    // Порядок важен: сначала сдвиг, потом масштаб — на нём построен пересчёт
+    // координат в syncAnchors и обратный перевод точки в eraseAt.
+    const zoom = s === 1 ? "" : `scale(${s})`;
+    el.style.transform = [move, zoom].filter(Boolean).join(" ");
   }
 
   function bindAnchor(page, el, y) {
@@ -1170,14 +1180,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // меняет ширину вместе с окном (и с монитором), а объект в абсолютных пикселях
   // оставался на прежнем месте — отрывался от своей строки и вылезал за правый
   // край. Доля считается от той же опорной точки, что и рисуется: левого края.
-  function leftPercentOf(box, offsetX, width) {
-    return ((box.x + offsetX) / width) * 100;
+  // Масштаб штриха умножает и его собственную координату, поэтому левый край на
+  // экране — это box.x, умноженный на масштаб, плюс накопленный сдвиг. У фото
+  // масштаба не бывает, и формула вырождается в прежнюю.
+  function leftPercentOf(box, offset, width) {
+    return ((box.x * offset.scale + offset.x) / width) * 100;
   }
 
   function storeLeftPercent(el) {
     const page = el.closest(".rte-page");
     if (!page) return;
-    el.dataset.leftPct = leftPercentOf(objectBox(el), readOffset(el).x, pageWidth(page)).toFixed(3);
+    el.dataset.leftPct = leftPercentOf(objectBox(el), readOffset(el), pageWidth(page)).toFixed(3);
   }
 
   // Узкое окно и широкое фото: доля увела бы объект за правый край. Придерживаем
@@ -1185,6 +1198,88 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // на возвращённой ширине объект встаёт ровно туда, где его оставили.
   function clampLeft(x, objectWidth, width) {
     return Math.max(0, Math.min(x, width - objectWidth));
+  }
+
+  // --- Размер долей ширины листа -----------------------------------------
+  // Позиция уже считалась долей, а размер оставался абсолютным — и это ломало
+  // картину с обеих сторон: на узком окне объекты съезжались, но не уменьшались и
+  // налезали друг на друга, на широком — разъезжались, не подрастая, и теряли
+  // связь с текстом. Доля лечит оба случая разом: взаимное расположение объектов
+  // на любой ширине выглядит одинаково.
+  const PHOTO_MIN_WIDTH = 150;
+  const PHOTO_MAX_WIDTH = 800;
+  // Рисунку абсолютные пределы не годятся: подчёркивание шириной в 30px раздулось
+  // бы в полосу. Ему предел относительный — во сколько раз можно отойти от того
+  // размера, каким он нарисован.
+  const DRAW_MIN_SCALE = 0.5;
+  const DRAW_MAX_SCALE = 2;
+
+  // Границы раздвигаются под объект: тот, кто уже сейчас меньше 150px или больше
+  // 800px, при переходе на доли не должен ни подпрыгнуть, ни ужаться — в момент
+  // миграции на экране не меняется ничего. Дальше он масштабируется в своих.
+  function photoWidthLimits(base) {
+    return { min: Math.min(PHOTO_MIN_WIDTH, base), max: Math.max(PHOTO_MAX_WIDTH, base) };
+  }
+
+  // Доля размера пишется только по действию пользователя — вставка, ресайз,
+  // законченный штрих. На изменении ширины окна её трогать нельзя: размер полз бы
+  // от пересчёта к пересчёту, накапливая округления.
+  function storeSizePercent(el) {
+    const page = el.closest(".rte-page");
+    if (!page) return;
+    const width = pageWidth(page);
+
+    if (el.tagName === "path") {
+      // getBBox() отдаёт геометрию до применения transform, поэтому она и служит
+      // базой: сколько штрих занимает на экране — это она, умноженная на уже
+      // наложенный масштаб.
+      const box = el.getBBox();
+      if (!box.width) return;
+      el.dataset.sizePct = (((box.width * readOffset(el).scale) / width) * 100).toFixed(3);
+      return;
+    }
+
+    const shown = parseFloat(el.style.width) || el.naturalWidth;
+    const height = parseFloat(el.style.height) || el.naturalHeight;
+    if (!shown || !height) return; // картинка ещё не раскодирована — посчитаем позже
+    el.dataset.sizePct = ((shown / width) * 100).toFixed(3);
+    // База — размер, который пользователь только что выбрал сам. От неё считаются
+    // раздвинутые границы, поэтому отпущенный уголок не отскакивает обратно.
+    el.dataset.sizeBase = String(Math.round(shown));
+    // Пропорции держим числом, а не берём из naturalWidth: в момент первого
+    // пересчёта картинка может быть ещё не загружена, и высота ушла бы в NaN.
+    el.dataset.ratio = (shown / height).toFixed(4);
+  }
+
+  // Размер фото из доли. Отдельным проходом и раньше всего остального: фото в
+  // режиме обтекания стоит в потоке текста, и от его ширины зависит, где окажутся
+  // строки — читать их offsetTop до этого бессмысленно.
+  function applyPhotoSizes(page, width) {
+    let migrated = false;
+
+    page.querySelectorAll("img.rte-photo").forEach((img) => {
+      let percent = Number(img.dataset.sizePct);
+      let base = Number(img.dataset.sizeBase);
+      let ratio = Number(img.dataset.ratio);
+
+      if (!percent || !base || !ratio) {
+        // Фото из старой заметки: доля берётся от его нынешнего размера, так что
+        // на экране оно не шелохнётся — меняется только форма записи.
+        storeSizePercent(img);
+        percent = Number(img.dataset.sizePct);
+        base = Number(img.dataset.sizeBase);
+        ratio = Number(img.dataset.ratio);
+        if (!percent || !base || !ratio) return;
+        migrated = true;
+      }
+
+      const limits = photoWidthLimits(base);
+      const shown = clamp((percent / 100) * width, limits.min, limits.max);
+      img.style.width = `${Math.round(shown)}px`;
+      img.style.height = `${Math.round(shown / ratio)}px`;
+    });
+
+    return migrated;
   }
 
   // --- Порядок наложения -------------------------------------------------
@@ -1272,6 +1367,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (!lines.length) return;
       const width = pageWidth(page);
 
+      // Строго до чтения offsetTop: обтекаемое фото стоит в потоке, и его новая
+      // ширина меняет то, где лягут строки.
+      if (applyPhotoSizes(page, width)) migrated = true;
+
       const byId = new Map();
       lines.forEach((line) => {
         const id = line.dataset.anchor;
@@ -1290,15 +1389,21 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         const box = objectBox(el);
         const offset = readOffset(el);
 
+        // Верхний край объекта таким, как он сейчас на экране. У штриха масштаб
+        // умножает и его собственную координату, поэтому одного накопленного
+        // сдвига мало — иначе привязка к строке считалась бы от точки, в которой
+        // отмасштабированного штриха давно нет.
+        const shownTop = box.y * offset.scale + offset.y;
+
         let line = byId.get(el.dataset.anchor);
         if (!line) {
           // Якоря нет: объект либо старый (нарисован до этой правки), либо его
           // строку удалили. В обоих случаях цепляемся за строку, рядом с которой
           // объект сейчас находится, и оставляем его ровно на месте: удаление
           // строки не должно его дёргать, дальше он поедет уже с новой строкой.
-          line = lineAt(lines, box.y + offset.y);
+          line = lineAt(lines, shownTop);
           el.dataset.anchor = ensureAnchorId(line);
-          el.dataset.anchorTop = String(line.offsetTop - offset.y);
+          el.dataset.anchorTop = String(line.offsetTop - (shownTop - box.y));
           byId.set(el.dataset.anchor, line);
         }
 
@@ -1306,27 +1411,50 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         if (!Number.isFinite(percent)) {
           // Объект из старой заметки: доля берётся от его нынешнего места, так
           // что на экране он не шелохнётся — меняется только форма записи.
-          percent = leftPercentOf(box, offset.x, width);
+          percent = leftPercentOf(box, offset, width);
           el.dataset.leftPct = percent.toFixed(3);
           migrated = true;
         }
 
-        return { el, box, percent, offsetY: line.offsetTop - (Number(el.dataset.anchorTop) || 0) };
+        // Масштаб нужен только штриху: размер фото уже разложен по width/height
+        // отдельным проходом выше.
+        let scale = 1;
+        if (el.tagName === "path" && box.width) {
+          let sizePct = Number(el.dataset.sizePct);
+          if (!sizePct) {
+            // Штрих из старой заметки: его нынешний размер и есть база, доля от
+            // неё даёт масштаб ровно 1 — на экране ничего не меняется.
+            sizePct = ((box.width * offset.scale) / width) * 100;
+            el.dataset.sizePct = sizePct.toFixed(3);
+            migrated = true;
+          }
+          scale = clamp(((sizePct / 100) * width) / box.width, DRAW_MIN_SCALE, DRAW_MAX_SCALE);
+        }
+
+        return { el, box, percent, scale, offsetY: line.offsetTop - (Number(el.dataset.anchorTop) || 0) };
       });
 
-      moves.forEach(({ el, box, percent, offsetY }) => {
-        const left = clampLeft((percent / 100) * width, box.width, width);
+      moves.forEach(({ el, box, percent, scale, offsetY }) => {
+        const left = clampLeft((percent / 100) * width, box.width * scale, width);
         // У штриха горизонталь ложится в тот же transform, что и вертикаль:
         // переписывать ломаную в d на каждое изменение ширины незачем. У фото
         // своя координата — style.left, transform несёт только вертикаль.
         if (el.tagName === "path") {
-          applyOffset(el, left - box.x, offsetY);
+          // scale отсчитывается от точки (0,0) листа (transform-origin в CSS),
+          // то есть умножает обе координаты ломаной. Сдвиг это учитывает: по
+          // горизонтали возвращает левый край на нужное место, по вертикали —
+          // компенсирует уезд верхнего края, чтобы штрих остался у своей строки.
+          applyOffset(el, left - scale * box.x, box.y * (1 - scale) + offsetY, scale);
         } else {
           el.style.left = `${Math.round(left)}px`;
           applyOffset(el, 0, offsetY);
         }
       });
     });
+
+    // Выделенное фото только что сменило и размер, и место, а рамка с уголками —
+    // отдельный слой рядом с ним и сама за ним не идёт.
+    syncHandles();
 
     if (migrated) onChange(serializeEditor(contentEl));
   }
@@ -1380,14 +1508,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     drawingLayers(page).forEach((svg) => {
       const path = svg.querySelector("path");
       if (!path) return;
-      // Штрих сдвинут вслед за своей строкой и за шириной колонки, а его
-      // собственные координаты в d об этом не знают — переводим точку в них по
-      // обеим осям, иначе ластик мажет мимо.
+      // Штрих сдвинут вслед за своей строкой и за шириной колонки, да ещё и
+      // отмасштабирован под неё, а его собственные координаты в d об этом не
+      // знают — разворачиваем преобразование обратно, иначе ластик мажет мимо.
+      // Порядок обратный тому, в каком transform применяется: сначала сдвиг, потом
+      // масштаб (см. applyOffset).
       const offset = readOffset(path);
       // Уносим весь слой, а не один <path>: штрих в нём и так один, а пустой
       // <svg> остался бы висеть в разметке заметки. Уцелевшие штрихи лежат в
       // своих слоях и своё место в стопке сохраняют.
-      if (path.isPointInStroke(new DOMPoint(x - offset.x, y - offset.y))) svg.remove();
+      const point = new DOMPoint((x - offset.x) / offset.scale, (y - offset.y) / offset.scale);
+      if (path.isPointInStroke(point)) svg.remove();
     });
   }
 
@@ -1529,9 +1660,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("pointerup", (event) => {
     if (!drawState || event.pointerId !== drawState.pointerId) return;
     contentEl.releasePointerCapture(event.pointerId);
-    // Долю ширины записываем только сейчас: на pointerdown у штриха ещё нет
-    // габаритов, от левого края которых она считается.
-    if (drawState.path) storeLeftPercent(drawState.path);
+    // Доли ширины записываем только сейчас: на pointerdown у штриха ещё нет
+    // габаритов, от которых считаются и левый край, и размер.
+    if (drawState.path) {
+      storeLeftPercent(drawState.path);
+      storeSizePercent(drawState.path);
+    }
     drawState = null;
     // Снимок всего штриха/стирания одним шагом — записываем явно, только когда
     // жест завершён (пока drawState не пуст, scheduleHistory ничего не пишет).
@@ -1654,11 +1788,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     img.style.top = `${Math.round(top)}px`;
     bindAnchor(page, img, top);
     storeLeftPercent(img);
+    storeSizePercent(img);
   }
 
   function syncHandles() {
     if (!selectedPhoto || !handlesEl) return;
     const page = selectedPhoto.closest(".rte-page");
+    if (!page) return; // фото уже вырезали из документа, а рамка ещё не снята
     const zoom = currentZoom();
     const imgRect = selectedPhoto.getBoundingClientRect();
     const pageRect = page.getBoundingClientRect();
@@ -1805,7 +1941,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     contentEl.releasePointerCapture(event.pointerId);
     const img = resizePhotoState.img;
     resizePhotoState = null;
+    // Доля размера фиксируется по завершении жеста — как и доля горизонтали. Во
+    // время самого перетаскивания размер пиксельный и ничем не ограничен: его
+    // задаёт пользователь, подрезать его границами нельзя. Новая база пишется
+    // тут же, поэтому отпущенный уголок не отскакивает назад.
     if (img.dataset.layout === "float") rebindPhoto(img);
+    else storeSizePercent(img); // в обтекании rebindPhoto не зовём — там нет координат
     recordHistory();
     onChange(serializeEditor(contentEl));
   });
@@ -1837,6 +1978,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     img.src = result.dataUrl;
     img.style.width = `${result.width}px`;
     img.style.height = `${result.height}px`;
+    // Единственное место, где размер меняется мимо rebindPhoto, — доля и новая
+    // база пишутся здесь же.
+    storeSizePercent(img);
     if (result.name) img.dataset.name = result.name;
     else delete img.dataset.name;
     syncHandles();
