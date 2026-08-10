@@ -1176,6 +1176,18 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     return page.offsetWidth || 1;
   }
 
+  // Масштаб, с которым лист реально выведен на экран. Измеряем, а не читаем
+  // --page-fit: переменную JS выставляет всегда, а зумом её применяет только
+  // постраничный режим (.rte-content.is-paged .rte-page-frame в editor.css). В
+  // сплошном режиме на окне уже 794px деление на неё раздувало координаты, и
+  // чернила ложились правее и ниже курсора. Отношение измеренной ширины к
+  // offsetWidth врать не может: rect уже с зумом, offsetWidth ещё без него.
+  function pageZoom(page, rect) {
+    if (!page) return 1;
+    const shown = (rect || page.getBoundingClientRect()).width;
+    return shown && page.offsetWidth ? shown / page.offsetWidth : 1;
+  }
+
   // Горизонталь хранится долей ширины листа, а не пикселями: колонка текста
   // меняет ширину вместе с окном (и с монитором), а объект в абсолютных пикселях
   // оставался на прежнем месте — отрывался от своей строки и вылезал за правый
@@ -1491,12 +1503,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   }
 
   // Координаты события → локальные координаты страницы. SVG без viewBox, значит
-  // 1 единица = 1 CSS-пиксель немасштабированного слоя; --page-fit — тот же зум,
-  // каким постраничный режим уменьшает страницу целиком (см. updatePageFit). В
-  // сплошном режиме переменная не задана, и деление на 1 ничего не меняет.
+  // 1 единица = 1 CSS-пиксель немасштабированного слоя, а зум листа снимается
+  // через pageZoom — в сплошном режиме он равен единице, и деление ничего не
+  // меняет.
   function drawPoint(page, event) {
     const rect = page.getBoundingClientRect();
-    const zoom = parseFloat(getComputedStyle(contentEl).getPropertyValue("--page-fit")) || 1;
+    const zoom = pageZoom(page, rect);
     return { x: (event.clientX - rect.left) / zoom, y: (event.clientY - rect.top) / zoom };
   }
 
@@ -1738,12 +1750,6 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   let dragPhotoState = null; // { img, startX, startY, startLeft, startTop, moved }
   let resizePhotoState = null; // { img, corner, startX, startY, startW, startH, startLeft, startTop, ratio }
 
-  // Тот же зум-фактор постраничного режима, что использует drawPoint() у слоя
-  // рисования — координаты фото считаются в тех же локальных единицах страницы.
-  function currentZoom() {
-    return parseFloat(getComputedStyle(contentEl).getPropertyValue("--page-fit")) || 1;
-  }
-
   // Фото, вставленное как обычный элемент (или унаследованное из старой
   // заметки), становится плавающим при первом выделении — координаты берём из
   // текущего положения на экране, чтобы оно не прыгнуло. Уже переключённое
@@ -1758,9 +1764,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const page = img.closest(".rte-page");
     if (!img.style.width) img.style.width = `${img.naturalWidth}px`;
     if (!img.style.height) img.style.height = `${img.naturalHeight}px`;
-    const zoom = currentZoom();
     const imgRect = img.getBoundingClientRect();
     const pageRect = page.getBoundingClientRect();
+    const zoom = pageZoom(page, pageRect);
     img.dataset.layout = "float";
     img.style.left = `${Math.round((imgRect.left - pageRect.left) / zoom)}px`;
     img.style.top = `${Math.round((imgRect.top - pageRect.top) / zoom)}px`;
@@ -1795,9 +1801,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (!selectedPhoto || !handlesEl) return;
     const page = selectedPhoto.closest(".rte-page");
     if (!page) return; // фото уже вырезали из документа, а рамка ещё не снята
-    const zoom = currentZoom();
     const imgRect = selectedPhoto.getBoundingClientRect();
     const pageRect = page.getBoundingClientRect();
+    const zoom = pageZoom(page, pageRect);
     handlesEl.style.left = `${(imgRect.left - pageRect.left) / zoom}px`;
     handlesEl.style.top = `${(imgRect.top - pageRect.top) / zoom}px`;
     handlesEl.style.width = `${imgRect.width / zoom}px`;
@@ -1888,7 +1894,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   contentEl.addEventListener("pointermove", (event) => {
     if (!dragPhotoState) return;
-    const zoom = currentZoom();
+    const zoom = pageZoom(dragPhotoState.img.closest(".rte-page"));
     const dx = (event.clientX - dragPhotoState.startX) / zoom;
     const dy = (event.clientY - dragPhotoState.startY) / zoom;
     // Порог в 3px — иначе обычный клик выделения (без намерения тащить) уже
@@ -1920,7 +1926,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("pointermove", (event) => {
     if (!resizePhotoState) return;
     const { img, corner, startX, startW, startH, startLeft, startTop, ratio } = resizePhotoState;
-    const zoom = currentZoom();
+    const zoom = pageZoom(img.closest(".rte-page"));
     const dx = (event.clientX - startX) / zoom;
     const sign = corner === "nw" || corner === "sw" ? -1 : 1;
     const width = Math.max(24, startW + sign * dx);
