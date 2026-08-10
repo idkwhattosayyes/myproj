@@ -218,8 +218,12 @@
    cursor: pointer — класс is-draggable у них не появляется (renderFolderRow
    рендерит только настоящие папки). Специфичность второго правила выше первого
    без !important — три класса против двух побеждают. */
-.folder-item.is-draggable { cursor: grab; }
-body.is-dragging-folder .folder-item.is-draggable { cursor: grabbing; }
+/* Строки заметок тащатся все; у них признак — data-item-id, потому что тот же
+   класс носят строки-переходы к папкам в списке, а они не перетаскиваются. */
+.folder-item.is-draggable,
+.item-list-row[data-item-id] { cursor: grab; }
+body.is-dragging-row .folder-item.is-draggable,
+body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 
 /* Закреплённые строки — лёгкий зеленоватый оттенок (в тон булавке #C2D1C9),
    чтобы отличались от обычных. Правило стоит ДО :hover и .is-active, поэтому
@@ -381,16 +385,18 @@ body.is-dragging-folder .folder-item.is-draggable { cursor: grabbing; }
 }
 
 /* Оригинальная строка на время переноса — приглушена, чтобы не задваивалось
-   визуально с "призраком" (см. .folder-drag-ghost). */
-.folder-item.is-drag-source { opacity: 0.35; }
+   визуально с "призраком" (см. .row-drag-ghost). */
+.folder-item.is-drag-source,
+.item-list-row.is-drag-source { opacity: 0.35; }
 
-/* "Призрак" папки — клон строки, следует за курсором во время кастомного
-   mouse-based drag (см. mousedown-обработчик в panelSection.js). Это настоящий
-   DOM-узел с теми же классами, что и живая строка, — скруглённые углы, шрифт
-   и раскладка сохраняются как есть, без "скриншотных" браузерных артефактов.
+/* "Призрак" — клон перетаскиваемой строки, следует за курсором во время
+   кастомного drag (см. startRowDrag в panelSection.js). Один на обе панели:
+   и папка, и заметка едут своим настоящим DOM-узлом с теми же классами —
+   скруглённые углы, шрифт и раскладка сохраняются как есть, без "скриншотных"
+   браузерных артефактов и курсора "запрещено".
    pointer-events: none обязателен — иначе призрак сам попадал бы под курсор в
    elementFromPoint, который ищет цель под ним. */
-.folder-drag-ghost {
+.row-drag-ghost {
   pointer-events: none;
   z-index: 2000;
   background: #ffffff;
