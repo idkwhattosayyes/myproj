@@ -2,7 +2,7 @@ import * as itemsService from "../../services/itemsService.js";
 import { createRichTextEditor } from "./richTextEditor.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
-import { escapeHtml, escapeAttr } from "../../utils/dom.js";
+import { escapeHtml } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
@@ -197,23 +197,24 @@ function applySearchTarget(state) {
 }
 
 function render(container, config, state) {
-  // Свёрнутый список заметок не исчезает. Пока панель папок развёрнута — он
-  // складывается в неё горизонтальной вкладкой. Но когда и сами папки свёрнуты
-  // в полоску, этой вкладке внутри них места нет (её содержимое скрыто вместе с
-  // телом папок) — поэтому список показываем отдельной вертикальной полоской
-  // рядом. Так обе панели сворачиваются и разворачиваются независимо.
+  // Свёрнутый список заметок не исчезает: пока панель папок развёрнута, он
+  // складывается в неё горизонтальной вкладкой.
+  //
+  // Когда свёрнуты обе панели, слева остаётся ровно ОДНА полоска — папок. Своей
+  // полоски у списка нет намеренно: две вертикальные полоски рядом невозможно
+  // различить, и порядок сворачивания менял их местами. Список из этого
+  // состояния достаётся в два шага — полоска разворачивает папки, а вкладка
+  // внутри них (она появится сама, listCollapsed ведь ещё true) — список.
+  //
+  // Условие с !foldersCollapsed обязательно: внутри 10-пиксельной полоски
+  // вкладке места нет, её содержимое скрыто вместе с телом папок.
   const listAsTab = state.listCollapsed && !state.foldersCollapsed;
-  const listAsStrip = state.listCollapsed && state.foldersCollapsed;
 
   const listTab = listAsTab
     ? `<button type="button" class="panel-tab" data-action="toggle-list" title="${t("panel.togglePanel")}">
          <span class="panel-tab-title">${escapeHtml(getListTitle(state))}</span>
          <span class="panel-tab-icon">›</span>
        </button>`
-    : "";
-
-  const listStrip = listAsStrip
-    ? `<button type="button" class="panel-strip panel-strip-list" data-action="toggle-list" title="${escapeAttr(getListTitle(state))}"></button>`
     : "";
 
   container.innerHTML = `
@@ -227,8 +228,6 @@ function render(container, config, state) {
         ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
       </aside>
-
-      ${listStrip}
 
       <section class="panel panel-list ${state.listCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
