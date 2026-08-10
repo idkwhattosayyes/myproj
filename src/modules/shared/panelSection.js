@@ -341,6 +341,8 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
   let offsetY = 0;
   let unregisterLayer = null;
   let lastHighlighted = null; // строка, у которой сейчас висят is-drop-* классы
+  let pendingPoint = null; // последняя позиция курсора, ждущая своего кадра
+  let frame = 0;
 
   function suppressNextClick(clickEvent) {
     // Вешается на document (НЕ на sourceEl) с capture: true. Для двух слушателей
@@ -394,6 +396,7 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
   }
 
   function updateTarget(clientX, clientY) {
+    if (!ghost) return null;
     if (lastHighlighted) {
       clearDropMarks(lastHighlighted);
       lastHighlighted = null;
@@ -410,6 +413,12 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("mouseup", onMouseUp);
     window.removeEventListener("blur", onBlur);
+    // Кадр, назначенный последним движением, может ещё не отработать — иначе он
+    // дёрнулся бы уже после уборки, когда призрака нет.
+    if (frame) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    }
     // once:true снимает себя сам ПОСЛЕ первого клика, но если drag отменили через
     // Esc/blur (клика не было вовсе), слушатель всё ещё висит и без явного снятия
     // съел бы следующий, уже никак не связанный клик где угодно в приложении.
@@ -443,7 +452,17 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
       beginDrag();
     }
-    updateTarget(e.clientX, e.clientY);
+    // Мышь шлёт события чаще, чем экран успевает перерисоваться, а каждый проход
+    // сначала пишет призраку стиль, а потом сразу читает раскладку
+    // (elementFromPoint, getBoundingClientRect) — на таком чередовании браузер
+    // обязан пересчитывать её синхронно, по разу на событие. Считаем не чаще
+    // кадра: картинка та же, работы кратно меньше.
+    pendingPoint = { x: e.clientX, y: e.clientY };
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      updateTarget(pendingPoint.x, pendingPoint.y);
+    });
   }
 
   function onMouseUp(e) {
