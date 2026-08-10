@@ -829,9 +829,7 @@ async function reorderFolder(draggedId, targetId, state, after) {
   // Индекс цели ищем уже после удаления перетаскиваемой папки — сдвиг учтён.
   const to = arr.findIndex((f) => f.id === targetId);
   arr.splice(after ? to + 1 : to, 0, moved);
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i].order !== i) await itemsService.updateFolder(arr[i].id, { order: i });
-  }
+  await itemsService.setFoldersOrder(collectOrder(arr));
 }
 
 // Все удалённые папки и заметки одним списком — недавно удалённое сверху,
@@ -1107,9 +1105,17 @@ async function reorderItem(draggedId, targetId, state, after) {
   // Индекс цели ищем уже после удаления перетаскиваемой заметки — сдвиг учтён.
   const to = arr.findIndex((i) => i.id === targetId);
   arr.splice(after ? to + 1 : to, 0, moved);
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i].order !== i) await itemsService.updateItem(arr[i].id, { order: i });
-  }
+  await itemsService.setItemsOrder(collectOrder(arr));
+}
+
+// Новый порядок как { id: order } — только для тех, у кого он изменился.
+// Одним объектом, потому что адаптер сохраняет всю перестановку одной записью.
+function collectOrder(arr) {
+  const orderById = {};
+  arr.forEach((entry, index) => {
+    if (entry.order !== index) orderById[entry.id] = index;
+  });
+  return orderById;
 }
 
 function getFilteredItems(state) {

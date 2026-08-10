@@ -78,6 +78,20 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.folders, folders);
     return folders[index];
   },
+  // Новый порядок сразу у многих папок — одной записью. Поштучный updateFolder
+  // на каждую перестановку перечитывал и переписывал всю коллекцию, а
+  // перетаскивание меняет order почти у всех сразу. См. setItemsOrder.
+  async setFoldersOrder(orderById) {
+    const folders = readCollection(STORAGE_KEYS.folders);
+    let changed = false;
+    folders.forEach((folder, index) => {
+      const order = orderById[folder.id];
+      if (order === undefined || folder.order === order) return;
+      folders[index] = { ...folder, order };
+      changed = true;
+    });
+    if (changed) writeCollection(STORAGE_KEYS.folders, folders);
+  },
   async deleteFolder(id) {
     const folders = readCollection(STORAGE_KEYS.folders).filter((folder) => folder.id !== id);
     writeCollection(STORAGE_KEYS.folders, folders);
@@ -113,6 +127,23 @@ export const localStorageAdapter = {
     items[index] = touch({ ...items[index], ...patch });
     writeCollection(STORAGE_KEYS.items, items);
     return items[index];
+  },
+  // Новый порядок сразу у многих заметок — одной записью. Раньше перестановка
+  // звала updateItem на каждую сдвинувшуюся заметку, а он читает и переписывает
+  // всю коллекцию целиком — вместе с фото, которые лежат в теле заметок
+  // base64-строками. Одно перетаскивание стоило столько полных проходов по
+  // многомегабайтной строке, сколько заметок в списке, и отпускание заметно
+  // подвисало. touch здесь не зовём: меняется только порядок, а не содержимое.
+  async setItemsOrder(orderById) {
+    const items = readCollection(STORAGE_KEYS.items);
+    let changed = false;
+    items.forEach((item, index) => {
+      const order = orderById[item.id];
+      if (order === undefined || item.order === order) return;
+      items[index] = { ...item, order };
+      changed = true;
+    });
+    if (changed) writeCollection(STORAGE_KEYS.items, items);
   },
   async deleteItem(id) {
     const items = readCollection(STORAGE_KEYS.items).filter((item) => item.id !== id);

@@ -16,6 +16,17 @@ export async function updateFolder(id, patch) {
   return storage.updateFolder(id, patch);
 }
 
+// Перестановка меняет порядок сразу у многих записей. Отдельный метод, а не
+// цикл из updateFolder/updateItem: у адаптера это одна запись в хранилище
+// вместо одной на каждую сдвинувшуюся строку. orderById — { id: order }.
+export async function setFoldersOrder(orderById) {
+  return storage.setFoldersOrder(orderById);
+}
+
+export async function setItemsOrder(orderById) {
+  return storage.setItemsOrder(orderById);
+}
+
 // Папки, созданные до появления вложенности, ещё не имеют parentFolderIds в
 // хранилище — везде, где это поле читаем, подстраховываемся пустым массивом
 // (тот же приём, что и у item.pinnedIn).

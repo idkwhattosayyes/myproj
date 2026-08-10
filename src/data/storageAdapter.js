@@ -9,12 +9,14 @@ import { localStorageAdapter } from "./localStorageAdapter.js";
  * @property {(section: string) => Promise<Object[]>} getFolders
  * @property {(folder: Object) => Promise<Object>} createFolder
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateFolder
+ * @property {(orderById: Object) => Promise<void>} setFoldersOrder
  * @property {(id: string) => Promise<void>} deleteFolder
  * @property {(section: string) => Promise<Object[]>} getTrashedFolders
  * @property {(section: string) => Promise<Object[]>} getItems
  * @property {(id: string) => Promise<Object|null>} getItem
  * @property {(item: Object) => Promise<Object>} createItem
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateItem
+ * @property {(orderById: Object) => Promise<void>} setItemsOrder
  * @property {(id: string) => Promise<void>} deleteItem
  * @property {(section: string) => Promise<Object[]>} getTrashedItems
  * @property {() => Promise<Object[]>} getDiaryEntries
