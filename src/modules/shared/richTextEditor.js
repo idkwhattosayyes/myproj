@@ -611,9 +611,10 @@ function getCaretLine(editorEl) {
   if (!node || !editorEl.contains(node)) return null;
   const page = node.closest(".rte-page");
   if (!page) return null;
-  // Внутри списка строки нет: там отступ — вложенность пункта, её делает
-  // браузер. Сам <ul> Chrome кладёт внутрь строки-обёртки, поэтому подъём до
-  // прямого потомка листа нашёл бы эту обёртку и сдвинул весь список целиком.
+  // Внутри списка строки нет: там отступ — вложенность пункта, и занимается ею
+  // отдельная пара indentListItem/outdentListItem. Сам <ul> Chrome кладёт внутрь
+  // строки-обёртки, поэтому подъём до прямого потомка листа нашёл бы эту обёртку
+  // и сдвинул весь список целиком — ровно тот баг, от которого уходим.
   if (node.closest("ul,ol")) return null;
   let line = node;
   while (line && line.parentElement !== page) line = line.parentElement;
@@ -629,6 +630,80 @@ function getSelectedLines(editorEl) {
   if (!range || range.collapsed) return [line];
   const page = line.parentElement;
   return [...page.children].filter((child) => child.matches(LINE_SELECTOR) && range.intersectsNode(child));
+}
+
+// Пункты списка, которых касается выделение: при схлопнутой каретке ровно один.
+// Отдельно от getSelectedLines — там строки лежат прямыми потомками листа, а
+// здесь <li> внутри <ul>/<ol>, и уровень у каждого свой.
+function getSelectedListItems(editorEl) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return [];
+  const range = selection.getRangeAt(0);
+  let node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return [];
+  const li = node.closest("li");
+  if (!li || !editorEl.contains(li)) return [];
+  if (range.collapsed) return [li];
+
+  const page = li.closest(".rte-page");
+  if (!page) return [li];
+  const touched = [...page.querySelectorAll("li")].filter((item) => range.intersectsNode(item));
+  // Вложенный пункт уедет вместе со своим родителем — двигать его ещё и
+  // отдельно значило бы сдвинуть на два уровня вместо одного.
+  return touched.filter((item) => !touched.some((other) => other !== item && other.contains(item)));
+}
+
+/**
+ * Tab на пункте списка — настоящая вложенность, а не поле слева: сдвинутый пункт
+ * начинает свой уровень нумерации, а внешняя нумерация идёт дальше без пропусков
+ * (1. / 1. вложенная / 2.). Полем это было бы «1. / 2. со сдвигом / 3.».
+ *
+ * Первый пункт списка сдвинуть нельзя — его не подо что вкладывать; так же
+ * ведут себя Word и Google Docs.
+ *
+ * Несколько выделенных пунктов обходятся по порядку документа, и этого
+ * достаточно: как только первый переехал в подсписок предыдущего соседа,
+ * предыдущим для следующего становится тот же сосед, и пункт попадает в тот же
+ * подсписок — соседями, а не глубже.
+ */
+function indentListItem(li) {
+  const prev = li.previousElementSibling;
+  if (!prev || prev.tagName !== "LI") return false;
+
+  const list = li.parentElement;
+  let nested = prev.lastElementChild;
+  if (!nested || nested.tagName !== list.tagName) {
+    nested = document.createElement(list.tagName);
+    // Квадратики чек-листа висят на классе списка (см. .checklist в editor.css) —
+    // без него у вложенных пунктов пропали бы маркеры.
+    if (list.classList.contains("checklist")) nested.classList.add("checklist");
+    prev.appendChild(nested);
+  }
+  nested.appendChild(li);
+  return true;
+}
+
+// Shift+Tab — обратно на уровень выше: пункт встаёт следующим соседом своего
+// родительского <li>. Пункты, шедшие за ним, уезжают вместе с ним отдельным
+// подсписком — иначе они остались бы висеть под чужим пунктом.
+function outdentListItem(li) {
+  const list = li.parentElement;
+  const parentItem = list.parentElement;
+  if (!parentItem || parentItem.tagName !== "LI") return false; // уже верхний уровень
+
+  const following = [];
+  for (let next = li.nextElementSibling; next; next = next.nextElementSibling) following.push(next);
+  if (following.length) {
+    const tail = document.createElement(list.tagName);
+    if (list.classList.contains("checklist")) tail.classList.add("checklist");
+    following.forEach((item) => tail.appendChild(item));
+    li.appendChild(tail);
+  }
+
+  parentItem.after(li);
+  if (!list.children.length) list.remove();
+  return true;
 }
 
 // Пустая строка: ни текста, ни вставленного объекта — только <br>, который
@@ -2621,9 +2696,24 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     event.preventDefault();
     const lines = getSelectedLines(contentEl);
     if (!lines.length) {
-      // Каретка внутри списка: там отступ — это вложенность пункта, её делает
-      // браузер. Своим data-indent её не подменить, семантика другая.
-      document.execCommand(event.shiftKey ? "outdent" : "indent");
+      // Каретка внутри списка: отступ здесь — вложенность пункта, а не поле
+      // слева. Раньше тут стоял execCommand("indent"/"outdent"), но он двигал
+      // список целиком: Tab на одной строке уводил вправо и всех её соседей.
+      const items = getSelectedListItems(contentEl);
+      if (!items.length) return;
+      // Перенос узлов сбивает выделение — снимаем позицию каретки заранее.
+      // Порядок текста от вложенности не меняется, поэтому смещение остаётся
+      // верным и каретка встаёт ровно туда, где была.
+      const caret = getCaretOffset();
+      let moved = false;
+      items.forEach((li) => {
+        if (event.shiftKey ? outdentListItem(li) : indentListItem(li)) moved = true;
+      });
+      if (!moved) return; // первый пункт списка сдвигать некуда
+      setCaretOffset(caret);
+      // Ctrl+Z: MutationObserver истории ловит childList, но снимок пишется с
+      // задержкой — фиксируем сразу, как и в ветке обычных строк.
+      recordHistory();
     } else {
       const step = event.shiftKey ? -1 : 1;
       lines.forEach((line) => setIndentLevel(line, getIndentLevel(line) + step));
