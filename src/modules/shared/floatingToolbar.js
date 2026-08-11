@@ -73,9 +73,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   // над своим местом в разметке.
   let position = null;
   let drag = null;
-  // Ширина, к которой едет анимация. Держим отдельно, чтобы по окончании перехода
-  // снять фиксацию: дальше панель должна сама подстраиваться под свёрнутый/полный набор.
-  let widthAnimation = null;
+
 
   // Во сколько раз координаты элемента отличаются от экранных. При зуме 100% это 1.
   function scale() {
@@ -217,27 +215,12 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     return null;
   }
 
-  // Ширину max-content анимировать нельзя, поэтому меряем цель и едем явными px.
-  // По окончании перехода фиксацию снимаем — иначе панель перестанет реагировать на
-  // сворачивание тулбара.
-  function animateWidth(to) {
-    const from = toolbarEl.offsetWidth;
-    // Ехать некуда — и transitionend не придёт, а значит фиксация осталась бы
-    // висеть навсегда и панель перестала бы подстраиваться под содержимое.
-    if (Math.abs(from - to) < 1) {
-      widthAnimation = null;
-      toolbarEl.style.width = "";
-      return;
-    }
-    toolbarEl.style.width = `${from}px`;
-    void toolbarEl.offsetWidth; // принудительный пересчёт, иначе браузер склеит два присваивания
-    widthAnimation = to;
-    toolbarEl.style.width = `${to}px`;
-  }
-
-  function onWidthTransitionEnd(event) {
-    if (event.propertyName !== "width" || widthAnimation === null) return;
-    widthAnimation = null;
+  // Ширина не анимируется вовсе (см. transition в editor.css): пока она ехала,
+  // панель на отрыве покачивалась размером, а при прилипании к краю выглядела как
+  // сужение от центра экрана вбок. Плавным должно быть превращение формы, а не
+  // изменение габаритов, поэтому инлайновую ширину только снимаем — дальше её
+  // задаёт содержимое.
+  function releaseWidth() {
     toolbarEl.style.width = "";
   }
 
@@ -245,30 +228,22 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     // Хост держит высоту вместо ушедшей панели: без этого страница подскочит ровно
     // на её высоту и порог тут же сработает обратно.
     hostEl.style.height = `${toolbarEl.offsetHeight}px`;
-    const from = toolbarEl.offsetWidth;
     toolbarEl.classList.add("is-floating");
     applyDockClasses();
-    // Снимаем остаток прошлой анимации ПЕРЕД замером: с пришпиленной шириной
-    // offsetWidth вернул бы её же, а не ширину по содержимому, — панель так и
-    // висела бы полосой во всю строку с пустым местом под недостающие кнопки.
-    toolbarEl.style.width = "";
-    const target = toolbarEl.offsetWidth; // теперь это max-content
-    toolbarEl.style.width = `${from}px`; // возвращаем точку старта для перехода
+    releaseWidth();
     place();
-    animateWidth(target);
     floating = true;
   }
 
   // Возврат в разметку. Прилипание к краю при этом не забывается — оно живёт в
   // dock и снова сработает, когда панель опять оторвётся (ТЗ, п.6).
   function goInline() {
-    const target = hostEl.clientWidth;
     toolbarEl.classList.remove("is-floating", "is-docked", "is-docked-right");
     toolbarEl.style.left = "";
     toolbarEl.style.top = "";
     toolbarEl.style.maxHeight = "";
     toolbarEl.style.maxWidth = "";
-    animateWidth(target);
+    releaseWidth();
     hostEl.style.height = "";
     floating = false;
   }
@@ -391,7 +366,6 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
 
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", onWindowResize);
-  toolbarEl.addEventListener("transitionend", onWidthTransitionEnd);
   // Позиция общая для раздела, поэтому поднимается при каждом открытии заметки.
   restorePosition();
   update();
@@ -400,7 +374,6 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     if (frame) cancelAnimationFrame(frame);
     window.removeEventListener("scroll", schedule);
     window.removeEventListener("resize", onWindowResize);
-    toolbarEl.removeEventListener("transitionend", onWidthTransitionEnd);
     handleEl.remove();
     toolbarEl.classList.remove("is-floating");
     toolbarEl.style.cssText = toolbarEl.style.cssText.replace(/(left|top|width):[^;]*;?/g, "");
