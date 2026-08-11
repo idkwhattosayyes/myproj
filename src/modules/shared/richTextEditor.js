@@ -97,6 +97,8 @@ function getButtonDefs() {
     strikethrough: { label: "S", labelClass: "rte-ico-strike", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
     h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
     h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
+    // H3 — единственный уровень МЕЛЬЧЕ обычного текста (см. шкалу в editor.css).
+    h3: { label: "H3", title: t("editor.h3"), command: (editorEl) => applyHeading(editorEl, "H3"), isActive: (editorEl) => isHeading(editorEl, "H3") },
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
     alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
     alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
@@ -211,6 +213,7 @@ const FORMATS = {
   s: { selector: "s", create: () => document.createElement("s") },
   h1: { selector: "span.rte-h1", create: () => createHeadingSpan("rte-h1") },
   h2: { selector: "span.rte-h2", create: () => createHeadingSpan("rte-h2") },
+  h3: { selector: "span.rte-h3", create: () => createHeadingSpan("rte-h3") },
   linkExternal: {
     selector: 'a.rte-link[data-link-type="external"]',
     create: () => {
@@ -231,7 +234,11 @@ const FORMATS = {
   },
 };
 
-const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2,a.rte-link";
+// Уровни размера в одном месте: они взаимоисключающие, и applyHeading снимает
+// с фрагмента все, кроме выбранного.
+const HEADING_LEVELS = ["h1", "h2", "h3"];
+
+const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2,span.rte-h3,a.rte-link";
 
 function createHeadingSpan(className) {
   const span = document.createElement("span");
@@ -280,7 +287,7 @@ function stripEditingLeftovers(page) {
   // Пустой — значит без единого узла внутри: <span><br></span> это пустая строка
   // с ждущим оформлением, а не мусор. Идём с конца, чтобы вложенные обёртки
   // (<u><s></s></u>) успели опустеть раньше, чем дойдёт очередь до внешней.
-  [...page.querySelectorAll("u,s,a.rte-link,span[style],span.rte-h1,span.rte-h2")]
+  [...page.querySelectorAll("u,s,a.rte-link,span[style],span.rte-h1,span.rte-h2,span.rte-h3")]
     .reverse()
     .forEach((el) => {
       if (!el.childNodes.length) el.remove();
@@ -588,7 +595,7 @@ function getBlockElement(editorEl) {
   let node = selection.getRangeAt(0).startContainer;
   if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
   if (!node || !editorEl.contains(node)) return null;
-  const block = node.closest("h1,h2,p,div,li,blockquote");
+  const block = node.closest("h1,h2,h3,p,div,li,blockquote");
   return block && block !== editorEl && editorEl.contains(block) ? block : null;
 }
 
@@ -607,7 +614,7 @@ function isHeading(editorEl, tagName) {
 //
 // li сюда не входит намеренно: внутри списков Tab по-прежнему делает
 // вложенность средствами браузера, это другая семантика.
-const LINE_SELECTOR = "h1,h2,p,div";
+const LINE_SELECTOR = "h1,h2,h3,p,div";
 
 function getIndentLevel(line) {
   return Number(line.dataset.indent) || 0;
@@ -914,16 +921,19 @@ function wrapInDiv(node) {
  * заголовком (и повторное нажатие снимает его).
  */
 function applyHeading(editorEl, tagName) {
-  const format = FORMATS[tagName.toLowerCase()];
-  const other = FORMATS[tagName.toLowerCase() === "h1" ? "h2" : "h1"];
+  const level = tagName.toLowerCase();
+  const format = FORMATS[level];
   const selection = window.getSelection();
   const range = selection.rangeCount ? selection.getRangeAt(0) : null;
 
   if (range && !range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
-    // H1 и H2 взаимоисключающие: снимаем соседний уровень с этого же фрагмента.
-    if (isInlineFormatActive(editorEl, other)) {
-      unwrapSelection(editorEl, other, selection.getRangeAt(0));
-    }
+    // Уровни размера взаимоисключающие: снимаем с этого же фрагмента все прочие,
+    // иначе они наслаивались бы и размер задавал бы вложенный.
+    HEADING_LEVELS.filter((other) => other !== level).forEach((other) => {
+      if (isInlineFormatActive(editorEl, FORMATS[other])) {
+        unwrapSelection(editorEl, FORMATS[other], selection.getRangeAt(0));
+      }
+    });
     toggleInlineFormat(editorEl, format);
     return;
   }
@@ -1308,7 +1318,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // загрузки, и его можно прочитать обратно, когда строку-якорь удалили.
   // Всё это обычные атрибуты внутри содержимого заметки — отдельного поля в
   // модели, как и самому рисунку, не нужно.
-  const ANCHOR_LINE_SELECTOR = "h1,h2,p,div,ul,ol,table";
+  const ANCHOR_LINE_SELECTOR = "h1,h2,h3,p,div,ul,ol,table";
   let nextAnchorId = 1;
 
   // Якорем может быть любая строка листа. Маркеры выделения фото — тоже div

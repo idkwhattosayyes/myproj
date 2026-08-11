@@ -584,13 +584,20 @@ button.rte-link-preview-row:hover {
 
 .rte-add-page[hidden] { display: none; }
 
-.rte-content h1 { font-size: 1.5rem; margin: 0.6rem 0 0.4rem; }
-.rte-content h2 { font-size: 1.2rem; margin: 0.5rem 0 0.3rem; }
+/* Заголовки меняют ТОЛЬКО размер: жирный ставится отдельно кнопкой "B". У блочных
+   h1/h2/h3 насыщенность приходит из браузерного стиля по умолчанию, поэтому её
+   приходится гасить явно. Именно inherit, а не normal: если заголовок лежит внутри
+   <b> (или наоборот), жирность должна сохраниться.
+   Шкала размеров: h1 → h2 → обычный текст (0.98rem) → h3. */
+.rte-content h1 { font-size: 1.5rem; font-weight: inherit; margin: 0.6rem 0 0.4rem; }
+.rte-content h2 { font-size: 1.2rem; font-weight: inherit; margin: 0.5rem 0 0.3rem; }
+.rte-content h3 { font-size: 0.82rem; font-weight: inherit; margin: 0.4rem 0 0.25rem; }
 
-/* Заголовок, применённый к части строки: выглядит как h1/h2, но остаётся
-   внутри абзаца и не разрывает текст (см. FORMATS в richTextEditor.js). */
-.rte-content .rte-h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
-.rte-content .rte-h2 { font-size: 1.2rem; font-weight: 700; line-height: 1.3; }
+/* Заголовок, применённый к части строки: выглядит так же, но остаётся внутри
+   абзаца и не разрывает текст (см. FORMATS в richTextEditor.js). */
+.rte-content .rte-h1 { font-size: 1.5rem; font-weight: inherit; line-height: 1.2; }
+.rte-content .rte-h2 { font-size: 1.2rem; font-weight: inherit; line-height: 1.3; }
+.rte-content .rte-h3 { font-size: 0.82rem; font-weight: inherit; line-height: 1.4; }
 .rte-content ul,
 .rte-content ol {
   padding-left: 1.4rem;

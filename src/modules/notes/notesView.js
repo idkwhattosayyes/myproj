@@ -8,7 +8,7 @@ export async function renderNotesView(container) {
     toolbarButtons: [
       "undo", "redo",
       "bold", "underline", "strikethrough", "textColor", "highlight",
-      "h1", "h2", "alignLeft", "alignCenter", "alignRight",
+      "h1", "h2", "h3", "alignLeft", "alignCenter", "alignRight",
       "bulletList", "orderedList", "checklist", "table", "insertPhoto", "voice", "draw", "pageMode",
     ],
     // Свёрнутый тулбар (кнопка "+" справа) показывает только этот набор — бывший
