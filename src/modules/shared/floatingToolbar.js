@@ -160,6 +160,14 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
       x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - toolbarEl.getBoundingClientRect().width - EDGE_PAD_PX;
     }
     const box = toolbarEl.getBoundingClientRect();
+    // Пока панель тащат, границы не применяем: она свободно уходит за край, чтобы
+    // её можно было подвести к самому краю и увидеть, куда ставишь. В границы её
+    // возвращает отпускание (см. onPointerUp).
+    if (drag) {
+      toolbarEl.style.left = `${x / s}px`;
+      toolbarEl.style.top = `${y / s}px`;
+      return;
+    }
     const clamped = clampToBounds(x, y, box.width, box.height);
     // На месте по умолчанию горизонталь не трогаем: зазор границ сдвинул бы панель
     // на свои несколько пикселей, а по ТЗ там она обязана стоять ровно там же, где
@@ -283,11 +291,23 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     if (handleEl.hasPointerCapture(event.pointerId)) handleEl.releasePointerCapture(event.pointerId);
     drag = null;
     toolbarEl.classList.remove("is-dragging");
+    // Порог прилипания и магнит считаем по НЕзажатой позиции — по той точке, куда
+    // панель реально подвели, даже если она вышла за край.
     dock = resolveDock();
     // Магнит проверяется после краёв: у самого края побеждает прилипание.
     if (dock === null && position && Math.abs(position.x - defaultAnchor().x) < MAGNET_PX) position = null;
+    // И только теперь возвращаем панель в границы — уже насовсем, в саму позицию,
+    // чтобы запомнилось и восстанавливалось тоже зажатое значение.
+    if (dock === null && position) {
+      const box = toolbarEl.getBoundingClientRect();
+      position = clampToBounds(position.x, position.y, box.width, box.height);
+    }
     applyDockClasses();
     place();
+    // Второй проход для прилипшей полосы: её ширина зависит от того, во сколько
+    // колонок легли кнопки, а это становится известно только после первой
+    // установки — с шириной от горизонтальной панели край уезжал за рамку.
+    if (dock !== null) place();
     savePosition();
   }
 
