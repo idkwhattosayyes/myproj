@@ -1353,7 +1353,9 @@ function renderDetail(container, config, state) {
   const { toolbarEl, contentEl } = editor;
   const toolbarHostEl = detailEl.querySelector('[data-role="toolbar-host"]');
   toolbarHostEl.appendChild(toolbarEl);
-  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl });
+  // boundsEl — белая рамка редактора: по ней считаются границы перетаскивания и
+  // порог прилипания к краю (ТЗ: «текстовое поле»).
+  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl });
   detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();

@@ -18,6 +18,10 @@ const TOP_GAP_PX = 10;
 // Порог возврата чуть ниже порога отрыва: ровно на границе панель иначе дребезжит —
 // оторвалась, страница стала короче на её высоту, порог сработал обратно, и так по кругу.
 const HYSTERESIS_PX = 2;
+// Ближе этой доли ширины текстового поля к его краю — панель прилипает к краю.
+const EDGE_SNAP_RATIO = 0.1;
+// Зазор между прилипшей панелью и краем поля, чтобы она не наезжала на рамку.
+const EDGE_PAD_PX = 6;
 
 function topbarHeightPx() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--topbar-height");
@@ -36,9 +40,11 @@ function createDragHandle() {
   return handle;
 }
 
-export function attachFloatingToolbar({ hostEl, toolbarEl }) {
+export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   let floating = false;
   let frame = 0;
+  // К какому краю текстового поля прилипла панель: "left" | "right" | null.
+  let dock = null;
   // Куда пользователь перетащил панель. null — панель ещё не двигали, она висит
   // над своим местом в разметке.
   let position = null;
@@ -61,11 +67,63 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     return { x: host.left, y: topbarHeightPx() + TOP_GAP_PX };
   }
 
+  // Прилипла ли панель к краю текстового поля и к какому. Прилипание меняет не
+  // только координату, но и вид — панель разворачивается в вертикальную полосу.
+  function applyDockClasses() {
+    toolbarEl.classList.toggle("is-docked", dock !== null);
+    toolbarEl.classList.toggle("is-docked-right", dock === "right");
+  }
+
+  // В вертикальном виде колонка ограничена по высоте, и flex-wrap сам переносит
+  // не влезшие кнопки во вторую колонку: полный набор разворачивается в две,
+  // сокращённый остаётся в одной. Считать количество колонок не нужно.
+  function applyDockHeight(top) {
+    if (dock === null) {
+      toolbarEl.style.maxHeight = "";
+      return;
+    }
+    const bounds = boundsEl.getBoundingClientRect();
+    const available = Math.min(window.innerHeight, bounds.bottom) - top - EDGE_PAD_PX;
+    toolbarEl.style.maxHeight = `${Math.max(available, 0) / scale()}px`;
+  }
+
+  // Прилипшая полоса встаёт по верху видимой части текстового поля, а не в точке,
+  // где её отпустили: чем выше начало, тем больше высоты у колонки и тем меньше
+  // колонок нужно. По вертикали у полосы, растянутой на всё поле, положение всё
+  // равно ничего не значит — значение имеет край, к которому она прилипла.
+  function dockedTop() {
+    const bounds = boundsEl.getBoundingClientRect();
+    return Math.max(topbarHeightPx() + TOP_GAP_PX, bounds.top + EDGE_PAD_PX);
+  }
+
   function place() {
     const s = scale();
     const anchor = position || defaultAnchor();
-    toolbarEl.style.left = `${anchor.x / s}px`;
-    toolbarEl.style.top = `${anchor.y / s}px`;
+    let { x, y } = anchor;
+    if (dock !== null) {
+      const bounds = boundsEl.getBoundingClientRect();
+      y = dockedTop();
+      // Инлайновая ширина осталась от анимации отрыва — в колонке она не нужна,
+      // ширину задаёт число получившихся колонок.
+      toolbarEl.style.width = "";
+      applyDockHeight(y);
+      // Ширину меряем после maxHeight: от неё зависит, во сколько колонок лягут кнопки.
+      x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - toolbarEl.getBoundingClientRect().width - EDGE_PAD_PX;
+    }
+    toolbarEl.style.left = `${x / s}px`;
+    toolbarEl.style.top = `${y / s}px`;
+  }
+
+  // Куда панель попала по итогам перетаскивания: к краю текстового поля или в
+  // свободную точку. Порог — десятая часть ширины поля, считается по центру панели.
+  function resolveDock() {
+    const bounds = boundsEl.getBoundingClientRect();
+    const box = toolbarEl.getBoundingClientRect();
+    const centerX = box.left + box.width / 2;
+    const threshold = bounds.width * EDGE_SNAP_RATIO;
+    if (centerX - bounds.left < threshold) return "left";
+    if (bounds.right - centerX < threshold) return "right";
+    return null;
   }
 
   // Ширину max-content анимировать нельзя, поэтому меряем цель и едем явными px.
@@ -90,17 +148,21 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     // на её высоту и порог тут же сработает обратно.
     hostEl.style.height = `${toolbarEl.offsetHeight}px`;
     toolbarEl.classList.add("is-floating");
+    applyDockClasses();
     const target = toolbarEl.offsetWidth; // ширина уже по содержимому — класс применён
     place();
     animateWidth(target);
     floating = true;
   }
 
-  function goDocked() {
+  // Возврат в разметку. Прилипание к краю при этом не забывается — оно живёт в
+  // dock и снова сработает, когда панель опять оторвётся (ТЗ, п.6).
+  function goInline() {
     const target = hostEl.clientWidth;
-    toolbarEl.classList.remove("is-floating");
+    toolbarEl.classList.remove("is-floating", "is-docked", "is-docked-right");
     toolbarEl.style.left = "";
     toolbarEl.style.top = "";
+    toolbarEl.style.maxHeight = "";
     animateWidth(target);
     hostEl.style.height = "";
     floating = false;
@@ -112,7 +174,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     const hostTop = hostEl.getBoundingClientRect().top;
     const threshold = topbarHeightPx() + TOP_GAP_PX;
     if (!floating && hostTop < threshold) goFloating();
-    else if (floating && hostTop > threshold + HYSTERESIS_PX) goDocked();
+    else if (floating && hostTop > threshold + HYSTERESIS_PX) goInline();
     else if (floating) place();
   }
 
@@ -130,6 +192,11 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     event.preventDefault();
     const box = toolbarEl.getBoundingClientRect();
     drag = { grabX: event.clientX - box.left, grabY: event.clientY - box.top, point: null };
+    // Пока панель едет, она снова горизонтальная: тащить вертикальную полосу,
+    // которая на лету меняет ширину под курсором, невозможно.
+    dock = null;
+    applyDockClasses();
+    applyDockHeight(box.top);
     handleEl.setPointerCapture(event.pointerId);
     // Пока панель едет за курсором, переходы мешают: панель тянулась бы следом с
     // задержкой вместо того, чтобы держаться под указателем.
@@ -154,6 +221,9 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     if (handleEl.hasPointerCapture(event.pointerId)) handleEl.releasePointerCapture(event.pointerId);
     drag = null;
     toolbarEl.classList.remove("is-dragging");
+    dock = resolveDock();
+    applyDockClasses();
+    place();
   }
 
   const handleEl = createDragHandle();
