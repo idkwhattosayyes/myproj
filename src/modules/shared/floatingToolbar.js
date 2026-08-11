@@ -96,10 +96,37 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     return Math.max(topbarHeightPx() + TOP_GAP_PX, bounds.top + EDGE_PAD_PX);
   }
 
+  // Допустимая область — пересечение вьюпорта и текстового поля: за экран и за
+  // поле панель не выходит ни при каких условиях (ТЗ, п.4). Проверять приходится
+  // на каждом кадре прокрутки: поле едет вместе со страницей, а панель стоит.
+  function clampToBounds(x, y, width, height) {
+    const bounds = boundsEl.getBoundingClientRect();
+    const left = Math.max(0, bounds.left) + EDGE_PAD_PX;
+    const right = Math.min(window.innerWidth, bounds.right) - EDGE_PAD_PX;
+    const top = Math.max(topbarHeightPx(), bounds.top) + EDGE_PAD_PX;
+    const bottom = Math.min(window.innerHeight, bounds.bottom) - EDGE_PAD_PX;
+    return {
+      // Math.min с left на случай, когда панель шире или выше области: тогда
+      // прижимаем её к началу, а не выталкиваем за противоположный край.
+      x: Math.min(Math.max(x, left), Math.max(left, right - width)),
+      y: Math.min(Math.max(y, top), Math.max(top, bottom - height)),
+    };
+  }
+
+  // Панель не должна быть шире допустимой области — иначе зажимать координату
+  // бессмысленно, она всё равно вылезет краем. Горизонтальная при этом переносит
+  // кнопки на вторую строку (см. max-content + max-width в editor.css).
+  function applyMaxWidth() {
+    const bounds = boundsEl.getBoundingClientRect();
+    const available = Math.min(window.innerWidth, bounds.right) - Math.max(0, bounds.left) - EDGE_PAD_PX * 2;
+    toolbarEl.style.maxWidth = `${Math.max(available, 0) / scale()}px`;
+  }
+
   function place() {
     const s = scale();
     const anchor = position || defaultAnchor();
     let { x, y } = anchor;
+    applyMaxWidth();
     if (dock !== null) {
       const bounds = boundsEl.getBoundingClientRect();
       y = dockedTop();
@@ -110,8 +137,10 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
       // Ширину меряем после maxHeight: от неё зависит, во сколько колонок лягут кнопки.
       x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - toolbarEl.getBoundingClientRect().width - EDGE_PAD_PX;
     }
-    toolbarEl.style.left = `${x / s}px`;
-    toolbarEl.style.top = `${y / s}px`;
+    const box = toolbarEl.getBoundingClientRect();
+    const clamped = clampToBounds(x, y, box.width, box.height);
+    toolbarEl.style.left = `${clamped.x / s}px`;
+    toolbarEl.style.top = `${clamped.y / s}px`;
   }
 
   // Куда панель попала по итогам перетаскивания: к краю текстового поля или в
@@ -163,6 +192,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     toolbarEl.style.left = "";
     toolbarEl.style.top = "";
     toolbarEl.style.maxHeight = "";
+    toolbarEl.style.maxWidth = "";
     animateWidth(target);
     hostEl.style.height = "";
     floating = false;
