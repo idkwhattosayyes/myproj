@@ -202,6 +202,13 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   // сворачивание тулбара.
   function animateWidth(to) {
     const from = toolbarEl.offsetWidth;
+    // Ехать некуда — и transitionend не придёт, а значит фиксация осталась бы
+    // висеть навсегда и панель перестала бы подстраиваться под содержимое.
+    if (Math.abs(from - to) < 1) {
+      widthAnimation = null;
+      toolbarEl.style.width = "";
+      return;
+    }
     toolbarEl.style.width = `${from}px`;
     void toolbarEl.offsetWidth; // принудительный пересчёт, иначе браузер склеит два присваивания
     widthAnimation = to;
@@ -218,9 +225,15 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     // Хост держит высоту вместо ушедшей панели: без этого страница подскочит ровно
     // на её высоту и порог тут же сработает обратно.
     hostEl.style.height = `${toolbarEl.offsetHeight}px`;
+    const from = toolbarEl.offsetWidth;
     toolbarEl.classList.add("is-floating");
     applyDockClasses();
-    const target = toolbarEl.offsetWidth; // ширина уже по содержимому — класс применён
+    // Снимаем остаток прошлой анимации ПЕРЕД замером: с пришпиленной шириной
+    // offsetWidth вернул бы её же, а не ширину по содержимому, — панель так и
+    // висела бы полосой во всю строку с пустым местом под недостающие кнопки.
+    toolbarEl.style.width = "";
+    const target = toolbarEl.offsetWidth; // теперь это max-content
+    toolbarEl.style.width = `${from}px`; // возвращаем точку старта для перехода
     place();
     animateWidth(target);
     floating = true;
