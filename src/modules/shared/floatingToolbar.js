@@ -24,9 +24,25 @@ function topbarHeightPx() {
   return parseFloat(raw) * parseFloat(getComputedStyle(document.documentElement).fontSize) || 0;
 }
 
+// Ручка перетаскивания: шесть точек инлайн-SVG с fill="currentColor" — тем же
+// приёмом, что булавка и значок папки в panelSection.js. Эмодзи не красится, а
+// цвет тут приглушённый, чтобы ручка читалась, но не спорила с кнопками.
+function createDragHandle() {
+  const handle = document.createElement("span");
+  handle.className = "rte-drag-handle";
+  handle.setAttribute("aria-hidden", "true");
+  const dots = [2.5, 7, 11.5].map((cy) => `<circle cx="3" cy="${cy}" r="1.3"/><circle cx="8" cy="${cy}" r="1.3"/>`).join("");
+  handle.innerHTML = `<svg viewBox="0 0 11 14" width="11" height="14" fill="currentColor">${dots}</svg>`;
+  return handle;
+}
+
 export function attachFloatingToolbar({ hostEl, toolbarEl }) {
   let floating = false;
   let frame = 0;
+  // Куда пользователь перетащил панель. null — панель ещё не двигали, она висит
+  // над своим местом в разметке.
+  let position = null;
+  let drag = null;
   // Ширина, к которой едет анимация. Держим отдельно, чтобы по окончании перехода
   // снять фиксацию: дальше панель должна сама подстраиваться под свёрнутый/полный набор.
   let widthAnimation = null;
@@ -37,16 +53,17 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     return toolbarEl.offsetWidth ? box.width / toolbarEl.offsetWidth : 1;
   }
 
-  // Куда панель встаёт, когда висит: по горизонтали ровно туда же, где она стоит в
-  // разметке (по ТЗ она «входит сама в себя» и в стороны не смещается).
-  function floatingAnchor() {
+  // Куда панель встаёт, когда висит и её ещё не двигали: по горизонтали ровно туда
+  // же, где она стоит в разметке (по ТЗ она «входит сама в себя» и в стороны не
+  // смещается), по вертикали — под верхнюю полосу приложения.
+  function defaultAnchor() {
     const host = hostEl.getBoundingClientRect();
     return { x: host.left, y: topbarHeightPx() + TOP_GAP_PX };
   }
 
   function place() {
     const s = scale();
-    const anchor = floatingAnchor();
+    const anchor = position || defaultAnchor();
     toolbarEl.style.left = `${anchor.x / s}px`;
     toolbarEl.style.top = `${anchor.y / s}px`;
   }
@@ -104,6 +121,48 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     frame = requestAnimationFrame(update);
   }
 
+  // --- Перетаскивание за ручку -------------------------------------------
+  // Своя механика, а не startRowDrag из panelSection.js: тот про клон-призрак и
+  // попадание в цель, а здесь двигается сам элемент и цели нет. Указатель
+  // захватываем, чтобы панель продолжала ехать, даже когда курсор ушёл с ручки.
+  function onPointerDown(event) {
+    if (event.button !== 0 || !floating) return;
+    event.preventDefault();
+    const box = toolbarEl.getBoundingClientRect();
+    drag = { grabX: event.clientX - box.left, grabY: event.clientY - box.top, point: null };
+    handleEl.setPointerCapture(event.pointerId);
+    // Пока панель едет за курсором, переходы мешают: панель тянулась бы следом с
+    // задержкой вместо того, чтобы держаться под указателем.
+    toolbarEl.classList.add("is-dragging");
+  }
+
+  function applyDragPoint() {
+    frame = 0;
+    if (!drag || !drag.point) return;
+    position = { x: drag.point.x - drag.grabX, y: drag.point.y - drag.grabY };
+    place();
+  }
+
+  function onPointerMove(event) {
+    if (!drag) return;
+    drag.point = { x: event.clientX, y: event.clientY };
+    if (!frame) frame = requestAnimationFrame(applyDragPoint);
+  }
+
+  function onPointerUp(event) {
+    if (!drag) return;
+    if (handleEl.hasPointerCapture(event.pointerId)) handleEl.releasePointerCapture(event.pointerId);
+    drag = null;
+    toolbarEl.classList.remove("is-dragging");
+  }
+
+  const handleEl = createDragHandle();
+  toolbarEl.insertBefore(handleEl, toolbarEl.firstChild);
+  handleEl.addEventListener("pointerdown", onPointerDown);
+  handleEl.addEventListener("pointermove", onPointerMove);
+  handleEl.addEventListener("pointerup", onPointerUp);
+  handleEl.addEventListener("pointercancel", onPointerUp);
+
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule);
   toolbarEl.addEventListener("transitionend", onWidthTransitionEnd);
@@ -114,6 +173,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl }) {
     window.removeEventListener("scroll", schedule);
     window.removeEventListener("resize", schedule);
     toolbarEl.removeEventListener("transitionend", onWidthTransitionEnd);
+    handleEl.remove();
     toolbarEl.classList.remove("is-floating");
     toolbarEl.style.cssText = toolbarEl.style.cssText.replace(/(left|top|width):[^;]*;?/g, "");
     hostEl.style.height = "";

@@ -92,6 +92,30 @@
   pointer-events: none;
 }
 
+/* Ручка перетаскивания: видна только у оторванной панели — в разметке двигать
+   нечего. Цвет приглушённый, чтобы точки читались, но не спорили с кнопками. */
+.rte-drag-handle {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 0.15rem;
+  color: #b6bec9;
+  cursor: grab;
+  touch-action: none; /* иначе на тач-экране жест уедет в прокрутку страницы */
+}
+
+.rte-toolbar.is-floating .rte-drag-handle { display: inline-flex; }
+.rte-drag-handle:hover { color: #8b95a3; }
+
+/* Пока панель едет за курсором, переходы только мешают — она тянулась бы следом
+   с задержкой вместо того, чтобы держаться под указателем. */
+.rte-toolbar.is-dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+.rte-toolbar.is-dragging .rte-drag-handle { cursor: grabbing; }
+
 /* Кнопка сворачивания в левом углу тулбара — как ☰ у панели папок. */
 .rte-toolbar-toggle {
   min-width: 1.4rem;
