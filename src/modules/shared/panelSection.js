@@ -212,7 +212,7 @@ function render(container, config, state) {
       <aside class="panel panel-folders ${state.foldersCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
           <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
-          <span class="panel-title">${t("panel.folders")}</span>
+          <span class="panel-title">${folderIcon()}${t("panel.folders")}</span>
         </div>
         ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
@@ -511,6 +511,13 @@ function rowBadges(entity, showPin) {
     ? `<span class="pin-badge" title="${t("panel.pinned")}"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M8 1c-2.5 0-4.5 2-4.5 4.5 0 3.4 4.5 9 4.5 9s4.5-5.6 4.5-9C12.5 3 10.5 1 8 1zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z"/></svg></span>`
     : "";
   return heart + pin;
+}
+
+// Значок папки — по тому же приёму, что булавка: инлайн-SVG с fill="currentColor",
+// чтобы цвет задавался в CSS и наследовался от текста строки. В «Избранном» папки и
+// заметки идут одним списком, и без значка их не отличить.
+function folderIcon() {
+  return `<span class="folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M1.5 3.5a1 1 0 0 1 1-1h3.3a1 1 0 0 1 .7.3l1 1h6a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V3.5z"/></svg></span>`;
 }
 
 // Закреплена ли заметка в конкретном месте показа (ключ: "all"/"favorites"/
@@ -938,7 +945,10 @@ function renderList(container, config, state) {
   bodyEl.innerHTML = `
     <ul class="item-list">
       ${favFolders
-        .map((folder) => `<li class="item-list-row" data-jump-folder-id="${folder.id}">${escapeHtml(folder.name)}</li>`)
+        .map(
+          (folder) =>
+            `<li class="item-list-row" data-jump-folder-id="${folder.id}">${folderIcon()}<span class="item-title">${escapeHtml(folder.name)}</span></li>`
+        )
         .join("")}
       ${items
         .map((item) => {

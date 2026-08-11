@@ -309,6 +309,17 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   color: #C2D1C9;
 }
 
+/* Значок папки: в «Избранном» отличает строку-папку от строки-заметки, у заголовка
+   панели Folders стоит для того же узнавания. Инлайн-SVG красится через
+   currentColor, как булавка; цвет приглушённый, чтобы не спорить с названием. */
+.folder-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.35rem;
+  color: #A9B4C2;
+}
+
 .folder-delete,
 .item-delete {
   border: none;
