@@ -146,22 +146,36 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     toolbarEl.style.maxWidth = `${Math.max(available, 0) / scale()}px`;
   }
 
-  function place() {
-    const s = scale();
-    const anchor = position || defaultAnchor();
-    let { x, y } = anchor;
+  // Размер и позиция разделены намеренно. Раньше это была одна функция, и она
+  // вызывалась на каждом кадре прокрутки: внутри вперемешку писались стили размера
+  // и читалась геометрия, из-за чего браузер пересчитывал вёрстку по нескольку раз
+  // за кадр. Колонка при этом перевыкладывалась заново, ширина скакала, и панель
+  // тряслась всю прокрутку. Размер теперь считается только при смене состояния,
+  // на прокрутке панель просто едет.
+
+  function resize() {
+    if (!floating) return;
     applyMaxWidth();
+    if (dock === null) {
+      toolbarEl.style.maxHeight = "";
+      return;
+    }
+    // Инлайновая ширина осталась от анимации отрыва — в колонке она не нужна,
+    // ширину задаёт число получившихся колонок.
+    toolbarEl.style.width = "";
+    applyDockHeight(dockedTop());
+  }
+
+  function move() {
+    if (!floating) return;
+    const s = scale();
+    const box = toolbarEl.getBoundingClientRect();
+    let { x, y } = position || defaultAnchor();
     if (dock !== null) {
       const bounds = boundsEl.getBoundingClientRect();
       y = dockedTop();
-      // Инлайновая ширина осталась от анимации отрыва — в колонке она не нужна,
-      // ширину задаёт число получившихся колонок.
-      toolbarEl.style.width = "";
-      applyDockHeight(y);
-      // Ширину меряем после maxHeight: от неё зависит, во сколько колонок лягут кнопки.
-      x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - toolbarEl.getBoundingClientRect().width - EDGE_PAD_PX;
+      x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - box.width - EDGE_PAD_PX;
     }
-    const box = toolbarEl.getBoundingClientRect();
     // Пока панель тащат, границы не применяем: она свободно уходит за край, чтобы
     // её можно было подвести к самому краю и увидеть, куда ставишь. В границы её
     // возвращает отпускание (см. onPointerUp).
@@ -176,6 +190,12 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     // в разметке — «входить сама в себя».
     toolbarEl.style.left = `${(position === null && dock === null ? x : clamped.x) / s}px`;
     toolbarEl.style.top = `${clamped.y / s}px`;
+  }
+
+  // Смена состояния: сначала пересчитать размер, потом поставить на место.
+  function place() {
+    resize();
+    move();
   }
 
   // Куда панель попала по итогам перетаскивания: к краю текстового поля или в
@@ -260,7 +280,8 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     const threshold = topbarHeightPx() + TOP_GAP_PX;
     if (!floating && hostTop < threshold) goFloating();
     else if (floating && hostTop > threshold + HYSTERESIS_PX) goInline();
-    else if (floating) place();
+    // На прокрутке — только позиция. Пересчёт размера тут и вызывал тряску.
+    else if (floating) move();
   }
 
   function schedule() {
@@ -281,7 +302,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     // которая на лету меняет ширину под курсором, невозможно.
     dock = null;
     applyDockClasses();
-    applyDockHeight(box.top);
+    resize();
     handleEl.setPointerCapture(event.pointerId);
     // Пока панель едет за курсором, переходы мешают: панель тянулась бы следом с
     // задержкой вместо того, чтобы держаться под указателем.
@@ -318,11 +339,12 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
       position = clampToBounds(position.x, position.y, box.width, box.height);
     }
     applyDockClasses();
-    place();
-    // Второй проход для прилипшей полосы: её ширина зависит от того, во сколько
-    // колонок легли кнопки, а это становится известно только после первой
-    // установки — с шириной от горизонтальной панели край уезжал за рамку.
-    if (dock !== null) place();
+    resize();
+    move();
+    // Второй проход по позиции для прилипшей полосы: её ширина зависит от того, во
+    // сколько колонок легли кнопки, а это становится известно только после того,
+    // как размер применён, — с шириной от горизонтальной панели край уезжал за рамку.
+    if (dock !== null) move();
     savePosition();
   }
 
@@ -360,8 +382,15 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   handleEl.addEventListener("pointerup", onPointerUp);
   handleEl.addEventListener("pointercancel", onPointerUp);
 
+  // Смена размера окна меняет и допустимую область, и число колонок — тут пересчёт
+  // размера нужен, в отличие от прокрутки.
+  function onWindowResize() {
+    resize();
+    schedule();
+  }
+
   window.addEventListener("scroll", schedule, { passive: true });
-  window.addEventListener("resize", schedule);
+  window.addEventListener("resize", onWindowResize);
   toolbarEl.addEventListener("transitionend", onWidthTransitionEnd);
   // Позиция общая для раздела, поэтому поднимается при каждом открытии заметки.
   restorePosition();
@@ -370,7 +399,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   return function detach() {
     if (frame) cancelAnimationFrame(frame);
     window.removeEventListener("scroll", schedule);
-    window.removeEventListener("resize", schedule);
+    window.removeEventListener("resize", onWindowResize);
     toolbarEl.removeEventListener("transitionend", onWidthTransitionEnd);
     handleEl.remove();
     toolbarEl.classList.remove("is-floating");
