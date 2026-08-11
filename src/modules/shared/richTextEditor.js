@@ -3341,20 +3341,61 @@ function isInsideChecklist(editorEl) {
 function applyChecklist(editorEl) {
   const list = getCurrentList(editorEl);
 
+  // Снятие: пункт перестаёт быть пунктом, а список остаётся чек-листом. Разрез
+  // списка надвое браузер делает сам и обеим половинам оставляет и пометку, и
+  // отметки «выполнено». Раньше пометка снималась со всего списка разом, до
+  // команды: соседние строки превращались в точки, а их галочки стирались.
   if (list && list.closest("ul.checklist")) {
-    const checklist = list.closest("ul.checklist");
-    checklist.classList.remove("checklist");
-    checklist.querySelectorAll("li.is-done").forEach((li) => li.classList.remove("is-done"));
-    document.execCommand("insertUnorderedList"); // развернуть список обратно в текст
+    document.execCommand("insertUnorderedList");
     return;
   }
 
-  // Списка нет — создаём; нумерованный execCommand превратит в маркированный.
-  // Обычный <ul> помечаем на месте, не пересоздавая.
-  if (!list || list.tagName === "OL") document.execCommand("insertUnorderedList");
+  // Внутри обычного маркированного списка: пометка живёт на <ul>, поэтому
+  // «сделать to-do только эту строку» — это вынести её в собственный список.
+  if (list && list.tagName === "UL") {
+    const items = getSelectedListItems(editorEl).filter((li) => li.parentElement === list);
+    const own = splitOutItems(list, items);
+    if (own) own.classList.add("checklist");
+    return;
+  }
 
+  // Списка нет вовсе (или он нумерованный) — создаём маркированный и помечаем.
+  document.execCommand("insertUnorderedList");
   const target = getCurrentList(editorEl);
   if (target) target.classList.add("checklist");
+}
+
+// Выносит подряд идущие пункты в собственный список того же вида. Соседи остаются
+// каждый в своём: то, что шло выше, — в исходном, то, что ниже, — в такой же копии
+// следом. Пункты переносятся, а не копируются, поэтому каретка внутри переезжает
+// вместе с ними — как в indentListItem.
+function splitOutItems(list, items) {
+  if (!items.length) return null;
+
+  const following = [];
+  for (let next = items[items.length - 1].nextElementSibling; next; next = next.nextElementSibling) {
+    following.push(next);
+  }
+
+  const own = cloneEmptyList(list);
+  items.forEach((li) => own.appendChild(li));
+  list.after(own);
+
+  if (following.length) {
+    const tail = cloneEmptyList(list);
+    following.forEach((li) => tail.appendChild(li));
+    own.after(tail);
+  }
+  if (!list.children.length) list.remove();
+  return own;
+}
+
+// Пустая копия списка: тег и классы те же, а якорь рисунка — нет, он указывает на
+// один блок (см. syncAnchors).
+function cloneEmptyList(list) {
+  const copy = list.cloneNode(false);
+  delete copy.dataset.anchor;
+  return copy;
 }
 
 // Заметки, сохранённые до перехода на CSS-маркер, содержат немые чекбоксы
