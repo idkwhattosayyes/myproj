@@ -2736,7 +2736,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     closeSelectionToolbar();
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
-    const selectionButtons = ["underline", "strikethrough", "textColor", "highlight", "link"];
+    const selectionButtons = ["bold", "underline", "strikethrough", "textColor", "highlight", "link"];
     if (allowInternalLinks) selectionButtons.push("internalLink");
     selectionButtons.forEach((key) => {
       const btn = buildToolbarButton(key, closeSelectionToolbar);
