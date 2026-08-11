@@ -104,8 +104,10 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
       toolbarEl.style.maxHeight = "";
       return;
     }
-    const bounds = boundsEl.getBoundingClientRect();
-    const available = Math.min(window.innerHeight, bounds.bottom) - top - EDGE_PAD_PX;
+    // Считаем по экрану, а не по нижнему краю поля: край едет при прокрутке, и
+    // высота полосы менялась бы каждый кадр — это возвращало бы тряску. По экрану
+    // величина постоянная, и полоса гарантированно не вылезает сверху и снизу.
+    const available = window.innerHeight - top - EDGE_PAD_PX;
     toolbarEl.style.maxHeight = `${Math.max(available, 0) / scale()}px`;
   }
 
@@ -114,8 +116,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   // колонок нужно. По вертикали у полосы, растянутой на всё поле, положение всё
   // равно ничего не значит — значение имеет край, к которому она прилипла.
   function dockedTop() {
-    const bounds = boundsEl.getBoundingClientRect();
-    return Math.max(topbarHeightPx() + TOP_GAP_PX, bounds.top + EDGE_PAD_PX);
+    return topbarHeightPx() + TOP_GAP_PX;
   }
 
   // Допустимая область — пересечение вьюпорта и текстового поля: за экран и за
@@ -173,6 +174,12 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
       const bounds = boundsEl.getBoundingClientRect();
       y = dockedTop();
       x = dock === "left" ? bounds.left + EDGE_PAD_PX : bounds.right - box.width - EDGE_PAD_PX;
+      // Прилипшая полоса ставится по краю поля как есть: вбок за экран ей выходить
+      // можно (узкое окно — поле шире экрана), а по вертикали её держат постоянные
+      // dockedTop и maxHeight, так что сверху и снизу она не вылезает.
+      toolbarEl.style.left = `${x / s}px`;
+      toolbarEl.style.top = `${y / s}px`;
+      return;
     }
     // Пока панель тащат, границы не применяем: она свободно уходит за край, чтобы
     // её можно было подвести к самому краю и увидеть, куда ставишь. В границы её
