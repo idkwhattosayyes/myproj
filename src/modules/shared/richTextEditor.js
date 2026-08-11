@@ -255,12 +255,36 @@ function serializeEditor(editorEl) {
       const clone = page.cloneNode(true);
       clone.querySelectorAll(".rte-interim, .rte-photo-handles").forEach((node) => node.remove());
       clone.querySelectorAll(".rte-photo.is-selected").forEach((el) => el.classList.remove("is-selected"));
+      stripEditingLeftovers(clone);
       return `<div class="rte-page">${clone.innerHTML}</div>`;
     })
-    .join("")
-    .split(CARET_ANCHOR)
-    .join("")
-    .replace(/<(u|s)><\/\1>/g, "");
+    .join("");
+}
+
+// Следы редактирования, которым в сохранённой заметке делать нечего: якоря
+// каретки и опустевшие после них теги. Пустой тег снаружи не виден, но каретка,
+// попав внутрь, снова печатает оформленной — как раз та «невидимая зона», из
+// которой невозможно выйти кнопкой.
+function stripEditingLeftovers(page) {
+  // Сначала якоря: тег с якорем внутри пустым не выглядит.
+  const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+  const anchored = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent.includes(CARET_ANCHOR)) anchored.push(node);
+  }
+  anchored.forEach((node) => {
+    node.textContent = node.textContent.split(CARET_ANCHOR).join("");
+    if (!node.textContent) node.remove();
+  });
+
+  // Пустой — значит без единого узла внутри: <span><br></span> это пустая строка
+  // с ждущим оформлением, а не мусор. Идём с конца, чтобы вложенные обёртки
+  // (<u><s></s></u>) успели опустеть раньше, чем дойдёт очередь до внешней.
+  [...page.querySelectorAll("u,s,a.rte-link,span[style],span.rte-h1,span.rte-h2")]
+    .reverse()
+    .forEach((el) => {
+      if (!el.childNodes.length) el.remove();
+    });
 }
 
 // Заметки, сохранённые до появления страниц, лежат одним куском HTML — такой
@@ -621,6 +645,21 @@ function getCaretLine(editorEl) {
   return line && line.matches(LINE_SELECTOR) ? line : null;
 }
 
+// Блок, внутри которого стоит каретка: строка листа либо пункт списка. Пункт
+// приходится искать отдельно — getCaretLine внутри списков молчит намеренно,
+// строк там нет. Нужен там, где важен сам блок, а не отступ: см. clearEmptiedBlock.
+function getCaretBlock(editorEl) {
+  const line = getCaretLine(editorEl);
+  if (line) return line;
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return null;
+  let node = selection.getRangeAt(0).startContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (!node || !editorEl.contains(node)) return null;
+  const li = node.closest("li");
+  return li && editorEl.contains(li) ? li : null;
+}
+
 // Все строки, которых касается выделение: при схлопнутой каретке — ровно одна,
 // при растянутом на несколько строк — все они, как это делал execCommand.
 function getSelectedLines(editorEl) {
@@ -704,6 +743,14 @@ function outdentListItem(li) {
   parentItem.after(li);
   if (!list.children.length) list.remove();
   return true;
+}
+
+// Голая строка: перенос, держащий её высоту, и больше ничего — ни тега, из
+// которого пришлось бы выбираться, ни текста. Снимать с такой нечего.
+function isBareLine(line) {
+  const nodes = [...line.childNodes];
+  return nodes.some((node) => node.nodeName === "BR")
+    && nodes.every((node) => node.nodeName === "BR" || (node.nodeType === Node.TEXT_NODE && !node.textContent));
 }
 
 // Пустая строка: ни текста, ни вставленного объекта — только <br>, который
@@ -2613,7 +2660,36 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     });
   }
 
-  contentEl.addEventListener("input", () => {
+  /**
+   * Стёртая до конца строка не должна тащить за собой невидимое форматирование.
+   * Заливка, цвет, U/S переезжают на новую строку по Enter и ждут там пустыми
+   * тегами. Пока в такой строке ничего не набрано, кнопка тег снимает; но стоит
+   * напечатать букву и стереть — каретка оказывается уже вне опустевшего тега,
+   * снимать кнопке нечего, и она включает формат заново. Печать при этом всё
+   * равно шла оформленной: Chrome помнит стиль сам, помимо разметки.
+   *
+   * Опустела — значит чистая: сносим остатки и ставим каретку заново.
+   */
+  function clearEmptiedBlock() {
+    const selection = window.getSelection();
+    const block = selection.rangeCount ? getCaretBlock(contentEl) : null;
+    if (!block || !isLineEmpty(block)) return;
+    // Прибранную строку узнаём по каретке в пустом текстовом узле: строку Chrome
+    // обычно чистит и сам, а вот стиль ввода в ней держит до сих пор.
+    const caret = selection.getRangeAt(0).startContainer;
+    if (isBareLine(block) && block.contains(caret) && caret.nodeType === Node.TEXT_NODE && !caret.textContent) return;
+
+    // Каретку принимает пустой текстовый узел, а не сама строка: стоя на позиции
+    // внутри элемента, Chrome свой стиль ввода не пересчитывает — от разметки уже
+    // ничего не осталось, а печать всё равно шла бы оформленной.
+    const caretHost = document.createTextNode("");
+    block.replaceChildren(caretHost, document.createElement("br"));
+    placeCaretAfter(caretHost, 0);
+  }
+
+  contentEl.addEventListener("input", (event) => {
+    // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
+    if (event.inputType && event.inputType.startsWith("delete")) clearEmptiedBlock();
     // Сначала пересчёт, потом сохранение: syncAnchors внутри refreshPages
     // двигает рисунки и фото вслед за строками, и в заметку должно попасть уже
     // новое положение, а не то, что было до правки.
