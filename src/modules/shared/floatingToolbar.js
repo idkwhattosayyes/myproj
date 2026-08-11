@@ -170,16 +170,20 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
 
   // Куда панель попала по итогам перетаскивания: к краю текстового поля или в
   // свободную точку. Порог — десятая часть ширины поля, считается по центру панели.
-  // Считаем по НЕзажатой позиции, а не по прямоугольнику на экране: тот уже
-  // вдавлен в границы, и панель шире пятой части поля своим центром до края
-  // просто не доезжает — прилипнуть было бы невозможно.
+  // Считаем по НЕзажатой позиции, а не по прямоугольнику на экране: тот уже вдавлен
+  // в границы и до края не доезжает.
+  //
+  // И по БЛИЖНЕМУ КРАЮ панели, а не по её центру: у широкого тулбара центр от края
+  // отделён половиной её ширины, и до порога он не добирается никогда — прилипнуть
+  // было невозможно, сколько ни тащи. «Ближе 10% ширины поля к краю» — это про то,
+  // насколько близко подошла сама панель.
   function resolveDock() {
     if (!position) return null;
     const bounds = boundsEl.getBoundingClientRect();
-    const centerX = position.x + toolbarEl.getBoundingClientRect().width / 2;
+    const width = toolbarEl.getBoundingClientRect().width;
     const threshold = bounds.width * EDGE_SNAP_RATIO;
-    if (centerX - bounds.left < threshold) return "left";
-    if (bounds.right - centerX < threshold) return "right";
+    if (position.x - bounds.left < threshold) return "left";
+    if (bounds.right - (position.x + width) < threshold) return "right";
     return null;
   }
 
