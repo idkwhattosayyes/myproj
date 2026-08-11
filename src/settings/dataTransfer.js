@@ -1,13 +1,20 @@
 import { getStorage } from "../data/storageAdapter.js";
+import { appendCircles } from "../modules/home/customCircles.js";
 
 // Экспорт/импорт заметок и папок одним JSON-файлом. Форматирование хранится
 // прямо в item.content (HTML), поэтому выгрузка моделей сохраняет жирность,
 // цвета, ссылки и вставленные фото как есть — импорт восстанавливает точь-в-точь.
-const EXPORT_VERSION = 1;
+//
+// Версия 2 добавила к папкам и заметкам кружки главной и календарь. Файлы версии 1
+// читаются по-прежнему: новых полей в них просто нет, и импорт их пропускает.
+const EXPORT_VERSION = 2;
 
-// Экспорт из выбранного набора (дерево с галочками). Набор папок/заметок приходит
-// уже согласованным: дерево добавляет папки-владельцев выбранных заметок само.
-export function buildExportFrom(folders, items) {
+/**
+ * Экспорт из выбранного набора (дерево с галочками). Набор папок/заметок приходит
+ * уже согласованным: дерево добавляет папки-владельцев выбранных заметок само.
+ * Кружки и календарь собирает вызывающий код — здесь только сборка файла.
+ */
+export function buildExportFrom({ folders, items, homeCircles = [], calendar = null }) {
   return {
     app: "myproj",
     version: EXPORT_VERSION,
@@ -15,7 +22,16 @@ export function buildExportFrom(folders, items) {
     scope: "custom",
     folders,
     items,
+    homeCircles,
+    calendar,
   };
+}
+
+// Кружки главной ссылаются на заметку по id. Кружок на заметку, которую в выгрузку
+// не включили, восстанавливать не на что — такие в файл не кладём.
+export function circlesForItems(circles, items) {
+  const exportedIds = new Set(items.map((item) => item.id));
+  return circles.filter((circle) => exportedIds.has(circle.noteId));
 }
 
 export function downloadJson(data, filename) {
@@ -62,19 +78,87 @@ export function isValidExport(data) {
   return !!data && data.app === "myproj" && Array.isArray(data.items);
 }
 
-// Создаёт новые записи, не затирая существующие. Старые id папок перемаппливаем
-// на свежие, чтобы принадлежность импортируемых заметок указывала на вновь
-// созданные папки, а не на возможно чужие/несуществующие. Поддерживаем и старый
-// формат (folderId/pinned скаляры), и новый (folderIds/pinnedIn массивы).
+// Ссылка на другую заметку живёт в самом HTML заметки — <a data-item-id="...">
+// (см. applyInternalLink в richTextEditor.js). При импорте заметки получают новые
+// id, поэтому ссылку нужно переписать, иначе она указывает на id, которого в этой
+// базе нет. Цель вне выгрузки оставляем как есть: файл могут импортировать туда,
+// где та заметка существует, — там ссылка сработает, а где нет — редактор скажет
+// «заметка не найдена».
+//
+// Разбираем через DOM, а не регуляркой: в content лежат фото и рисунки, и любая
+// текстовая замена по разметке рискует зацепить их данные. Заметки без внутренних
+// ссылок не трогаем вовсе — незачем гонять через парсер мегабайты base64.
+function remapInternalLinks(content, itemIdMap) {
+  if (!content || !content.includes("data-item-id")) return content || "";
+  const holder = document.createElement("div");
+  holder.innerHTML = content;
+  holder.querySelectorAll("a[data-item-id]").forEach((link) => {
+    const mapped = itemIdMap.get(link.dataset.itemId);
+    if (mapped) link.dataset.itemId = mapped;
+  });
+  return holder.innerHTML;
+}
+
+// Кружки главной: заметку и папку-контекст переводим на новые id, кружок на
+// невосстановленную заметку отбрасываем. Позицию переносим как есть — если
+// импортированный кружок сядет поверх существующего, раскладка главной разведёт
+// их сама (см. fitsAt/findPosition в homeView.js).
+function importHomeCircles(circles, folderIdMap, itemIdMap) {
+  const restored = (circles || [])
+    .map((circle) => ({
+      noteId: itemIdMap.get(circle.noteId),
+      folderId: folderIdMap.get(circle.folderId) || null,
+      angle: circle.angle,
+      radius: circle.radius,
+    }))
+    .filter((circle) => circle.noteId);
+  appendCircles(restored);
+  return restored.length;
+}
+
+// Календарь идёт в файл целиком (в дереве выбора его нет). Записи ссылаются на тег
+// по id, поэтому сначала теги — и запись получает уже новый tagId.
+async function importCalendar(calendar) {
+  const storage = getStorage();
+  const tagIdMap = new Map();
+
+  for (const tag of (calendar && calendar.tags) || []) {
+    const newId = crypto.randomUUID();
+    tagIdMap.set(tag.id, newId);
+    await storage.createCalendarTag({ ...tag, id: newId });
+  }
+
+  const entries = (calendar && calendar.entries) || [];
+  for (const entry of entries) {
+    await storage.createCalendarEntry({
+      ...entry,
+      id: crypto.randomUUID(),
+      tagId: entry.tagId ? tagIdMap.get(entry.tagId) || null : null,
+    });
+  }
+  return entries.length;
+}
+
+// Создаёт новые записи, не затирая существующие. Старые id перемаппливаем на
+// свежие — и папкам, и заметкам, — чтобы все связи указывали на вновь созданные
+// записи, а не на возможно чужие/несуществующие. Поддерживаем и старый формат
+// (folderId/pinned скаляры), и новый (folderIds/pinnedIn массивы).
 export async function importData(data) {
   const storage = getStorage();
   const now = new Date().toISOString();
-  const folderIdMap = new Map();
+
+  // Новые id раздаём заранее, до единой записи: связь может смотреть и вперёд
+  // (заметка ссылается на ту, что идёт ниже по файлу; папка вложена в папку,
+  // объявленную позже), а на момент создания все id уже должны быть известны.
+  const folderIdMap = new Map((data.folders || []).map((folder) => [folder.id, crypto.randomUUID()]));
+  const itemIdMap = new Map(data.items.map((item) => [item.id, crypto.randomUUID()]));
 
   for (const folder of data.folders || []) {
-    const newId = crypto.randomUUID();
-    folderIdMap.set(folder.id, newId);
-    await storage.createFolder({ ...folder, id: newId });
+    // Вложенность папки живёт в parentFolderIds (папка может лежать сразу в
+    // нескольких). Раньше поле копировалось как есть — со ссылками на исчезнувшие
+    // id, из-за чего вложенные папки после импорта всплывали на верхний уровень.
+    const parentFolderIds = (folder.parentFolderIds || []).map((id) => folderIdMap.get(id)).filter(Boolean);
+    await storage.createFolder({ ...folder, id: folderIdMap.get(folder.id), parentFolderIds });
   }
 
   for (const item of data.items) {
@@ -88,7 +172,8 @@ export async function importData(data) {
       .filter(Boolean);
     await storage.createItem({
       ...item,
-      id: crypto.randomUUID(),
+      id: itemIdMap.get(item.id),
+      content: remapInternalLinks(item.content, itemIdMap),
       folderIds,
       pinnedIn,
       createdAt: item.createdAt || now,
@@ -96,5 +181,8 @@ export async function importData(data) {
     });
   }
 
-  return { folders: (data.folders || []).length, items: data.items.length };
+  const circles = importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
+  const calendarEntries = await importCalendar(data.calendar);
+
+  return { folders: (data.folders || []).length, items: data.items.length, circles, calendarEntries };
 }

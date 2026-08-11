@@ -47,6 +47,19 @@ export function addCircle({ noteId, folderId, angle, radius }) {
   writeState(state);
 }
 
+// Кружки, пришедшие из импорта, дописываются к уже существующим — импорт ничего
+// не затирает. id кружка выдаём новый: в файле мог лежать id, уже занятый здесь.
+// Ремап noteId/folderId на новые заметки и папки делает settings/dataTransfer.js —
+// этот модуль остаётся чистым хранилищем.
+export function appendCircles(circles) {
+  if (!circles.length) return;
+  const state = readState();
+  circles.forEach(({ noteId, folderId, angle, radius }) => {
+    state.circles.push({ id: crypto.randomUUID(), noteId, folderId, angle, radius });
+  });
+  writeState(state);
+}
+
 export function removeCircle(id) {
   const state = readState();
   state.circles = state.circles.filter((circle) => circle.id !== id);

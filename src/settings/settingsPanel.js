@@ -3,8 +3,9 @@ import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
-import { buildExportFrom, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
+import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
+import { getState as getHomeCirclesState } from "../modules/home/customCircles.js";
 
 // Одна шестерёнка в углу вместо россыпи плавающих переключателей: язык,
 // обводка панелей и опасное действие "очистить данные" живут в одной панели.
@@ -149,7 +150,21 @@ async function runExport() {
       const name = await openPrompt({ message: t("settings.exportFilenamePrompt"), defaultValue: "myproj-export" });
       if (!name || !name.trim()) return; // отмена — экспорт не происходит
       const filename = name.trim().endsWith(".json") ? name.trim() : `${name.trim()}.json`;
-      downloadJson(buildExportFrom(pickedFolders, pickedItems), filename);
+      // Кружки главной и календарь в дереве выбора не участвуют: кружки берём те,
+      // что указывают на выгружаемые заметки, календарь — целиком.
+      const [calendarEntries, calendarTags] = await Promise.all([
+        storage.getAllCalendarEntries(),
+        storage.getCalendarTags(),
+      ]);
+      downloadJson(
+        buildExportFrom({
+          folders: pickedFolders,
+          items: pickedItems,
+          homeCircles: circlesForItems(getHomeCirclesState().circles, pickedItems),
+          calendar: { entries: calendarEntries, tags: calendarTags },
+        }),
+        filename
+      );
     },
   });
 }
@@ -176,7 +191,9 @@ async function runImport() {
     items: data.items,
     onConfirm: async ({ folders, items }) => {
       if (!folders.length && !items.length) return;
-      await importData({ folders, items });
+      // Дерево выбирает только папки и заметки — кружки и календарь берём из файла
+      // как есть. Кружок на невыбранную заметку importData отбросит сам.
+      await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar });
       location.reload();
     },
   });
