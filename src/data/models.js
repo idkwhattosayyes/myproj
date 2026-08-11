@@ -30,6 +30,9 @@ export function createItemModel({ title = "", content = "", folderIds = [], sect
     // "unfiled" / id папки. Закрепление независимо для каждого места показа.
     pinnedIn: [],
     pageMode: "flow", // вид редактора: "flow" — сплошной лист, "paged" — постранично
+    // Открывать заметку сразу прокрученной в конец текста. Для длинных заметок,
+    // которые всё время дописывают снизу. Настройка своя у каждой заметки.
+    openAtEnd: false,
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,
     updatedAt: now,

@@ -1317,6 +1317,16 @@ function renderDetail(container, config, state) {
             label: editor.getPageMode() === "paged" ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
             onClick: () => editor.togglePageMode(),
           },
+          {
+            // Длинную заметку, которую всё время дописывают снизу, удобно открывать
+            // сразу в конце. Настройка живёт в самой заметке (как pageMode), поэтому
+            // у каждой она своя и переживает экспорт/импорт.
+            label: item.openAtEnd ? t("editor.openAtTop") : t("editor.openAtEnd"),
+            onClick: () => {
+              item.openAtEnd = !item.openAtEnd;
+              scheduleSave({ openAtEnd: item.openAtEnd });
+            },
+          },
         ]
       : null,
   });
@@ -1331,6 +1341,12 @@ function renderDetail(container, config, state) {
   if (state.pendingMatch) {
     editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoIndex);
     state.pendingMatch = null;
+  } else if (item.openAtEnd) {
+    // Прокручивается само окно (внутреннего скролл-контейнера у редактора нет),
+    // поэтому показываем нижний край текста. Только после refreshLayout: до него
+    // высоты страниц ещё не посчитаны и прыжок пришёлся бы не туда. Переход из
+    // поиска важнее — там прыгаем к найденному, а не в конец.
+    contentEl.scrollIntoView({ block: "end" });
   }
 
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
