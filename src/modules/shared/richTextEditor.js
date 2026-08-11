@@ -713,6 +713,118 @@ function isLineEmpty(line) {
   return line.textContent.split(CARET_ANCHOR).join("").trim() === "";
 }
 
+// --- Одна строка — один блок ---------------------------------------------
+// Отступ, выравнивание и якоря рисунков принадлежат блоку-строке, поэтому строки
+// обязаны лежать в листе поштучно. Chrome это правило ломает: сняв список, он
+// складывает все бывшие пункты в ОДИН блок и разделяет их переносами —
+// <div><span>aaa</span><br><span>bbb</span></div>. Внешне это по-прежнему
+// отдельные строки, но Tab на любой из них двигает весь блок разом. Здесь
+// разметка возвращается к виду «одна строка — один блок».
+
+// Что уже лежит на уровне листа само по себе. Строки и списки — содержимое,
+// фото с рисунками и маркеры выделения — служебные слои: заворачивать их в
+// строку нельзя, иначе объект потеряет привязку (см. anchoredObjects).
+const PAGE_LEVEL_SELECTOR = `${LINE_SELECTOR},ul,ol,table,blockquote,img.rte-photo,svg.rte-drawing-layer,.rte-photo-handles`;
+
+// Строка с текстом, а не служебный слой: маркеры выделения фото — тоже div среди
+// прямых потомков листа, но резать их по переносам нечего.
+function isTextLine(el) {
+  return el.matches(LINE_SELECTOR) && !el.className.startsWith("rte-");
+}
+
+// Возвращает true, если разметку пришлось править: вызывающий код по этому
+// признаку решает, восстанавливать ли каретку. Трогать её без нужды нельзя —
+// после обычной команды вроде «жирный» выделение должно остаться выделением.
+function normalizeLines(editorEl) {
+  let changed = false;
+  editorEl.querySelectorAll(".rte-page").forEach((page) => {
+    if (wrapLooseContent(page)) changed = true;
+    [...page.children].filter(isTextLine).forEach((line) => {
+      if (splitLineAtBreaks(line)) changed = true;
+    });
+  });
+  return changed;
+}
+
+// Если список занимал страницу целиком, при снятии Chrome оставляет текст голым,
+// прямо в листе. Такой текст не строка вовсе: getCaretLine его не находит, и Tab
+// по нему молчит. Собираем подряд идущие «бездомные» узлы в строку.
+function wrapLooseContent(page) {
+  let loose = [];
+  let changed = false;
+
+  function flush() {
+    if (!loose.length) return;
+    const line = document.createElement("div");
+    loose[0].before(line);
+    loose.forEach((node) => line.appendChild(node));
+    loose = [];
+    changed = true;
+  }
+
+  [...page.childNodes].forEach((node) => {
+    if (node.nodeType === Node.ELEMENT_NODE && node.matches(PAGE_LEVEL_SELECTOR)) {
+      flush();
+      return;
+    }
+    // Перевод строки между блоками — форматирование самой разметки, а не текст:
+    // из него получилась бы пустая строка на ровном месте.
+    if (!loose.length && node.nodeType === Node.TEXT_NODE && node.textContent.trim() === "") return;
+    loose.push(node);
+  });
+  flush();
+  return changed;
+}
+
+// Режем строку по переносам: каждый кусок становится самостоятельной строкой
+// того же вида. Перенос в самом конце не трогаем — это заполнитель, которым
+// браузер держит высоту строки, а одинокий <br> держит пустую строку.
+function splitLineAtBreaks(line) {
+  let current = line;
+  let changed = false;
+  for (let br = nextSplitBreak(current); br; br = nextSplitBreak(current)) {
+    changed = true;
+    const tail = document.createRange();
+    tail.setStartAfter(br);
+    tail.setEnd(current, current.childNodes.length);
+
+    const next = current.cloneNode(false);
+    // Якорь рисунка указывает на одну строку — у копии его быть не должно.
+    delete next.dataset.anchor;
+    next.appendChild(tail.extractContents());
+    br.remove();
+    current.after(next);
+    fillEmptyLine(current);
+    current = next;
+  }
+  fillEmptyLine(current);
+  return changed;
+}
+
+// Первый перенос, после которого в строке ещё что-то есть. Соседний <br> тоже
+// считается содержимым: два переноса подряд — это пустая строка между кусками.
+//
+// Переносы внутри вложенных блоков пропускаем: <br> держит высоту пустого пункта
+// списка и пустой ячейки таблицы, и разрез по нему развалил бы сам список.
+function nextSplitBreak(line) {
+  return [...line.querySelectorAll("br")].find((br) => {
+    if (br.closest("li,ul,ol,table,blockquote")) return false;
+    const rest = document.createRange();
+    rest.setStartAfter(br);
+    rest.setEnd(line, line.childNodes.length);
+    const content = rest.cloneContents();
+    return content.textContent.trim() !== "" || !!content.querySelector("br,img,svg,table");
+  }) || null;
+}
+
+// Пустой строке нужен <br>: без него браузер схлопывает её высоту и поставить в
+// неё каретку нечем.
+function fillEmptyLine(line) {
+  if (line.textContent.trim() === "" && !line.querySelector("br,img,svg,table")) {
+    line.appendChild(document.createElement("br"));
+  }
+}
+
 // Заметки, сохранённые до перехода на data-indent, держат отступ браузерным
 // <blockquote>. Разворачиваем при открытии: каждая строка внутри получает свой
 // уровень (вложенные blockquote суммируются), после чего blockquote в заметке
@@ -824,6 +936,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   parsePages(content).forEach((html) => contentEl.appendChild(createPageFrame(html)));
   upgradeLegacyChecklists(contentEl);
   upgradeLegacyIndents(contentEl);
+  // Слипшиеся строки уже разошлись по сохранённым заметкам — чиним при открытии,
+  // отдельной миграции для этого не нужно.
+  normalizeLines(contentEl);
 
   // Новая страница появляется только по явному действию — текст сам по себе на
   // следующую страницу не перетекает.
@@ -2435,6 +2550,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         // await — командой может быть insertTable, которая асинхронно спрашивает
         // размер через модалку; для обычных execCommand-команд просто no-op.
         await def.command(contentEl);
+        // Кнопки списка — главный источник слипшихся строк, но правим разметку
+        // после любой команды: проход дешёвый, а на ровной разметке он ничего не
+        // делает. Каретку снимаем заранее — перенос узлов сбивает выделение,
+        // порядок текста при этом не меняется, поэтому смещение остаётся верным.
+        const caret = getCaretOffset();
+        if (normalizeLines(contentEl)) setCaretOffset(caret);
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
