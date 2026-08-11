@@ -1,5 +1,6 @@
 import * as itemsService from "../../services/itemsService.js";
 import { createRichTextEditor } from "./richTextEditor.js";
+import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml } from "../../utils/dom.js";
@@ -1258,8 +1259,17 @@ function renderTrashDetail(detailEl, container, config, state) {
   wireActions("item", item.id);
 }
 
+// Отцепка плавающего тулбара от предыдущей заметки. Деталь перерисовывается на
+// каждую навигацию, а модуль вешает слушатели на window — без этого они копились бы.
+let detachFloatingToolbar = null;
+
 function renderDetail(container, config, state) {
   const detailEl = container.querySelector('[data-role="detail"]');
+
+  if (detachFloatingToolbar) {
+    detachFloatingToolbar();
+    detachFloatingToolbar = null;
+  }
 
   if (state.selectedTrash) {
     renderTrashDetail(detailEl, container, config, state);
@@ -1341,7 +1351,9 @@ function renderDetail(container, config, state) {
       : null,
   });
   const { toolbarEl, contentEl } = editor;
-  detailEl.querySelector('[data-role="toolbar-host"]').appendChild(toolbarEl);
+  const toolbarHostEl = detailEl.querySelector('[data-role="toolbar-host"]');
+  toolbarHostEl.appendChild(toolbarEl);
+  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl });
   detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();
