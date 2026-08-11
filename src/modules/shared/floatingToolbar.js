@@ -20,6 +20,28 @@ const TOP_GAP_PX = 10;
 const HYSTERESIS_PX = 2;
 // Ближе этой доли ширины текстового поля к его краю — панель прилипает к краю.
 const EDGE_SNAP_RATIO = 0.1;
+// Ближе этого расстояния к своему месту в разметке — панель примагничивается к нему.
+const MAGNET_PX = 28;
+
+// Позиция панели общая для всего раздела, а не своя у каждой заметки: поставил
+// справа в одной — в другой она там же (ТЗ). Это настройка вида, не данные, поэтому
+// живёт в localStorage мимо storageAdapter — как app:toolbarExpanded.
+const POSITION_KEY = "app:toolbarFloat";
+
+function readPosition() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(POSITION_KEY) || "null");
+    if (!saved || typeof saved !== "object") return null;
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function writePosition(value) {
+  if (value === null) localStorage.removeItem(POSITION_KEY);
+  else localStorage.setItem(POSITION_KEY, JSON.stringify(value));
+}
 // Зазор между прилипшей панелью и краем поля, чтобы она не наезжала на рамку.
 const EDGE_PAD_PX = 6;
 
@@ -139,16 +161,22 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     }
     const box = toolbarEl.getBoundingClientRect();
     const clamped = clampToBounds(x, y, box.width, box.height);
-    toolbarEl.style.left = `${clamped.x / s}px`;
+    // На месте по умолчанию горизонталь не трогаем: зазор границ сдвинул бы панель
+    // на свои несколько пикселей, а по ТЗ там она обязана стоять ровно там же, где
+    // в разметке — «входить сама в себя».
+    toolbarEl.style.left = `${(position === null && dock === null ? x : clamped.x) / s}px`;
     toolbarEl.style.top = `${clamped.y / s}px`;
   }
 
   // Куда панель попала по итогам перетаскивания: к краю текстового поля или в
   // свободную точку. Порог — десятая часть ширины поля, считается по центру панели.
+  // Считаем по НЕзажатой позиции, а не по прямоугольнику на экране: тот уже
+  // вдавлен в границы, и панель шире пятой части поля своим центром до края
+  // просто не доезжает — прилипнуть было бы невозможно.
   function resolveDock() {
+    if (!position) return null;
     const bounds = boundsEl.getBoundingClientRect();
-    const box = toolbarEl.getBoundingClientRect();
-    const centerX = box.left + box.width / 2;
+    const centerX = position.x + toolbarEl.getBoundingClientRect().width / 2;
     const threshold = bounds.width * EDGE_SNAP_RATIO;
     if (centerX - bounds.left < threshold) return "left";
     if (bounds.right - centerX < threshold) return "right";
@@ -252,8 +280,38 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     drag = null;
     toolbarEl.classList.remove("is-dragging");
     dock = resolveDock();
+    // Магнит проверяется после краёв: у самого края побеждает прилипание.
+    if (dock === null && position && Math.abs(position.x - defaultAnchor().x) < MAGNET_PX) position = null;
     applyDockClasses();
     place();
+    savePosition();
+  }
+
+  // Храним смещение от левого края поля, а не экранный x: так позиция переживает
+  // смену ширины окна. y — от верха вьюпорта, панель ведь fixed.
+  function savePosition() {
+    if (dock !== null) {
+      writePosition({ dock });
+      return;
+    }
+    if (position === null) {
+      writePosition(null); // вернулись к месту по умолчанию — помнить нечего
+      return;
+    }
+    const bounds = boundsEl.getBoundingClientRect();
+    writePosition({ dock: null, dx: position.x - bounds.left, y: position.y });
+  }
+
+  function restorePosition() {
+    const saved = readPosition();
+    if (!saved) return;
+    if (saved.dock === "left" || saved.dock === "right") {
+      dock = saved.dock;
+      return;
+    }
+    if (typeof saved.dx === "number" && typeof saved.y === "number") {
+      position = { x: boundsEl.getBoundingClientRect().left + saved.dx, y: saved.y };
+    }
   }
 
   const handleEl = createDragHandle();
@@ -266,6 +324,8 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule);
   toolbarEl.addEventListener("transitionend", onWidthTransitionEnd);
+  // Позиция общая для раздела, поэтому поднимается при каждом открытии заметки.
+  restorePosition();
   update();
 
   return function detach() {
