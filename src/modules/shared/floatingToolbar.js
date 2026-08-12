@@ -233,13 +233,19 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
 
   function goFloating() {
     // Хост держит высоту вместо ушедшей панели: без этого страница подскочит ровно
-    // на её высоту и порог тут же сработает обратно.
+    // на её высоту и порог тут же сработает обратно. Замер идёт первым — снимать
+    // высоту нужно с ещё горизонтальной панели, стоящей в разметке.
     hostEl.style.height = `${toolbarEl.offsetHeight}px`;
+    // Флаг поднимается ДО place(), и это не косметика: resize() и move() обе
+    // начинаются с `if (!floating) return`, поэтому при поднятом позже флаге
+    // place() уходил вхолостую. Панель получала fixed без left/top, maxWidth и
+    // maxHeight — прилипшая полоса разворачивалась в одну колонку мимо низа
+    // экрана, а на кадр отрыва вспыхивала не на своём месте.
+    floating = true;
     toolbarEl.classList.add("is-floating");
     applyDockClasses();
     releaseWidth();
     place();
-    floating = true;
   }
 
   // Возврат в разметку. Прилипание к краю при этом не забывается — оно живёт в
