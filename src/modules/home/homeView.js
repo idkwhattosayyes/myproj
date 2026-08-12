@@ -44,13 +44,21 @@ export async function renderHomeView(container) {
         </div>
         ${pencilHtml}
         ${customCirclesHtml}
-        <button type="button" class="home-add-circle" title="${escapeHtml(t("home.addCircle"))}"></button>
       </div>
+      <!-- Центральная точка лежит СНАРУЖИ .home-circles, хотя логически стоит в
+           его середине: у контейнера есть transform (масштаб сцены), а
+           трансформированный предок становится точкой отсчёта для position: fixed
+           потомков — внутри дот считал бы свои пиксельные координаты от
+           контейнера, да ещё и ужимался бы вместе со сценой. -->
+      <button type="button" class="home-add-circle" title="${escapeHtml(t("home.addCircle"))}"></button>
     </div>
   `;
 
   positionExtraCircles(container, customCirclesData);
   applyJitter(container);
+  // Порядок важен: масштаб меряется по ректам, в которые уже входят сдвиги
+  // --tx/--ty от джиттера, а линии рисуются по ректам, уже сжатым масштабом.
+  fitSceneToViewport(container);
   drawConnectorLines(container);
   wirePencil(container);
   wireCustomCircles(container, customCirclesData);
@@ -250,8 +258,17 @@ function applyJitter(container) {
   const jitterOne = (circle, magnitude) => {
     const tx = Math.round((Math.random() * 2 - 1) * magnitude);
     const ty = Math.round((Math.random() * 2 - 1) * magnitude);
+    // Первый бросок обязан примениться мгновенно. У .home-circle анимируется
+    // transform (нужен для наведения), а --tx/--ty сидят в нём же — со включённым
+    // переходом кружок 0.22s едет на своё место, и всё, что меряет его рект в это
+    // время, получает промежуточные координаты. Линии рисовались как раз тогда и
+    // приходили мимо центров на ~11px. Снимаем переход, применяем сдвиг,
+    // принудительным чтением геометрии закрываем кадр и возвращаем переход.
+    circle.style.transition = "none";
     circle.style.setProperty("--tx", `${tx}px`);
     circle.style.setProperty("--ty", `${ty}px`);
+    circle.getBoundingClientRect();
+    circle.style.transition = "";
   };
   container
     .querySelectorAll(".home-circle--notes, .home-circle--calendar, .home-circle--ai")
@@ -261,9 +278,55 @@ function applyJitter(container) {
     .forEach((circle) => jitterOne(circle, EXTRA_JITTER));
 }
 
+// Сцену с кружками ужимаем до свободного места, вместо того чтобы переделывать
+// раскладку. Кружков может быть сколько угодно, и findPosition разгоняет их от
+// центра без верхней границы — рано или поздно они вылезали за экран, и главная
+// начинала прокручиваться. Один коэффициент масштаба решает это разом, а заодно
+// даёт требуемое «чем больше кружков, тем они мельче»: шире разлёт — меньше
+// коэффициент. Сохранённые позиции при этом не трогаются и не переезжают.
+function fitSceneToViewport(container) {
+  const home = container.querySelector(".home");
+  const box = container.querySelector(".home-circles");
+  if (!home || !box) return;
+
+  // Мерить нужно несжатую сцену, иначе счёт выходит круговой: коэффициент
+  // считался бы по габаритам, которые он сам и задал.
+  box.style.setProperty("--home-scale", "1");
+
+  // Свободное место спрашиваем у самого DOM, а не считаем в JS высоту полоски
+  // поиска и отступы заново: у .home они уже учтены в padding (см. home.css),
+  // и число 3.2rem остаётся жить в одном месте.
+  const homeStyle = getComputedStyle(home);
+  const availWidth =
+    home.clientWidth - parseFloat(homeStyle.paddingLeft) - parseFloat(homeStyle.paddingRight);
+  const availHeight =
+    home.clientHeight - parseFloat(homeStyle.paddingTop) - parseFloat(homeStyle.paddingBottom);
+
+  const boxRect = box.getBoundingClientRect();
+  const centerX = boxRect.left + boxRect.width / 2;
+  const centerY = boxRect.top + boxRect.height / 2;
+
+  // Габариты считаем симметрично центру: scale жмёт именно к нему, поэтому
+  // важно, насколько далеко ушёл самый дальний край, а не где границы сцены.
+  let halfWidth = 0;
+  let halfHeight = 0;
+  container.querySelectorAll(".home-circle").forEach((circle) => {
+    const rect = circle.getBoundingClientRect();
+    halfWidth = Math.max(halfWidth, Math.abs(rect.left + rect.width / 2 - centerX) + rect.width / 2);
+    halfHeight = Math.max(halfHeight, Math.abs(rect.top + rect.height / 2 - centerY) + rect.height / 2);
+  });
+  if (!halfWidth || !halfHeight) return;
+
+  // Больше единицы не растягиваем: когда кружков мало и всё помещается, вид
+  // остаётся ровно таким, каким его задаёт CSS.
+  const scale = Math.min(1, availWidth / (halfWidth * 2), availHeight / (halfHeight * 2));
+  box.style.setProperty("--home-scale", String(scale));
+}
+
 // Круги позиционируются в CSS процентами внутри .home-circles — реальные
 // экранные координаты известны только после рендера, поэтому линии к центру
-// экрана считаем через getBoundingClientRect, а не аналитически.
+// считаем через getBoundingClientRect, а не аналитически. Он же учитывает
+// масштаб от fitSceneToViewport, поэтому линии обязаны рисоваться после него.
 function drawConnectorLines(container) {
   const svg = container.querySelector(".home-lines");
   const circles = container.querySelectorAll(".home-circle");
@@ -272,12 +335,16 @@ function drawConnectorLines(container) {
   svg.setAttribute("width", vw);
   svg.setAttribute("height", vh);
 
-  const centerX = vw / 2;
-  const centerY = vh / 2;
+  // Сводим в центр .home-circles, а не экрана: кружки разложены вокруг первого,
+  // и точки расходятся — по горизонтали из-за scrollbar-gutter, по вертикали
+  // из-за резерва под полоску поиска. С центром экрана линии приходили мимо
+  // середины схемы.
+  const boxRect = container.querySelector(".home-circles").getBoundingClientRect();
+  const centerX = boxRect.left + boxRect.width / 2;
+  const centerY = boxRect.top + boxRect.height / 2;
 
-  // CSS-проценты у position:fixed на паре пикселей расходятся с window.inner*
-  // (скроллбар по-разному учитывается) — координаты той же точки, что и у
-  // схождения линий, поэтому ставим явно, а не через top/left:50% в CSS.
+  // Точка в пикселях, той же парой чисел, что и схождение линий — так это
+  // гарантированно одна точка, а не два независимых расчёта.
   const addCircle = container.querySelector(".home-add-circle");
   addCircle.style.left = `${centerX}px`;
   addCircle.style.top = `${centerY}px`;
