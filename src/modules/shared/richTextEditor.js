@@ -135,6 +135,11 @@ function getButtonDefs() {
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
     alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
     alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
+    // Перенос выделенного на следующую страницу. Определение живёт здесь, рядом с
+    // остальными, но в списки тулбаров этот ключ не попадает: инструмент
+    // подставляется только в меню по ПКМ и только в постраничном режиме
+    // (см. showSelectionToolbar).
+    moveToNextPage: { label: "⤵", isMoveToNextPage: true, title: t("editor.moveToNextPage") },
     // Направление письма текущей строки. is-active тут значит не «режим включён»,
     // а «строка идёт справа налево» — по нему CSS и решает, какую из двух стрелок
     // на кнопке зажечь (см. .rte-dir-* в editor.css).
@@ -1149,6 +1154,53 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     activePageEl.focus();
     onChange(serializeEditor(contentEl));
     refreshPages();
+  }
+
+  // Новый лист сразу ЗА указанным, а не в конец, как addPage. Нужно инструменту
+  // переноса: он работает со следующей страницей, и если её ещё нет, она должна
+  // появиться именно здесь, а не последней. Фокус и сохранение оставляем
+  // вызывающему — ему виднее, что делать с только что созданным листом.
+  function insertPageAfter(page) {
+    const frame = createPageFrame("");
+    page.parentElement.after(frame);
+    return frame.querySelector(".rte-page");
+  }
+
+  // Переносит выделенный текст на следующую страницу; нет её — создаёт. Живёт
+  // только в меню по ПКМ и только в постраничном режиме: в сплошном «следующей
+  // страницы» не существует (ТЗ).
+  function moveSelectionToNextPage() {
+    const range = getCurrentRange(contentEl);
+    if (!range || range.collapsed) return;
+    let node = range.startContainer;
+    if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+    const page = node instanceof Element ? node.closest(".rte-page") : null;
+    if (!page) return;
+
+    // Следующий лист — соседняя рамка. У последней страницы соседом идёт кнопка
+    // «добавить страницу», поэтому мало взять nextElementSibling — надо убедиться,
+    // что это действительно рамка листа.
+    const sibling = page.parentElement.nextElementSibling;
+    const nextPage =
+      sibling && sibling.classList.contains("rte-page-frame")
+        ? sibling.querySelector(".rte-page")
+        : insertPageAfter(page);
+
+    const moved = range.extractContents();
+    // Якорь привязывает рисунок к строке ЕГО страницы — уехав на другую, строка
+    // утащила бы за собой чужую привязку. Тем же приёмом, что в splitLineAtBreaks.
+    moved.querySelectorAll("[data-anchor]").forEach((el) => delete el.dataset.anchor);
+    // В начало, а не в конец: текст пришёл выше по документу, и порядок чтения
+    // так и сохраняется.
+    nextPage.insertBefore(moved, nextPage.firstChild);
+
+    // Выделение могло захватить кусок строки — на новом листе он оседает голым
+    // текстом, которому нужна строка-обёртка. Заодно проставится dir.
+    normalizeLines(contentEl);
+    activePageEl = nextPage;
+    refreshPages();
+    onChange(serializeEditor(contentEl));
+    focusActivePage();
   }
 
   function removePage(page) {
@@ -2599,6 +2651,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           openVoiceLangMenu(event);
         });
       }
+    } else if (def.isMoveToNextPage) {
+      btn.addEventListener("click", () => {
+        // Внутри всё своё: и сохранение, и пересчёт страниц, и фокус — перенос
+        // меняет разметку сильнее обычной команды форматирования.
+        moveSelectionToNextPage();
+        onApplied();
+      });
     } else if (def.isDirection) {
       btn.addEventListener("click", () => {
         if (!toggleTextDirection(contentEl)) return; // каретки в тексте нет — переключать нечего
@@ -2885,6 +2944,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     bar.className = "rte-selection-toolbar";
     const selectionButtons = ["bold", "underline", "strikethrough", "textColor", "highlight", "link"];
     if (allowInternalLinks) selectionButtons.push("internalLink");
+    // Перенос на следующую страницу — только здесь и только в постраничном режиме.
+    // В toolbarButtons/basicToolbarButtons этот ключ не значится вовсе, поэтому в
+    // верхнем и плавающем тулбаре инструмента нет ни при каких настройках (ТЗ).
+    if (currentPageMode === "paged") selectionButtons.push("moveToNextPage");
     selectionButtons.forEach((key) => {
       const btn = buildToolbarButton(key, closeSelectionToolbar);
       if (btn) bar.appendChild(btn);
