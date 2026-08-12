@@ -7,7 +7,18 @@ import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.
 import { showContextMenu } from "../shared/contextMenu.js";
 import { findPosition, fitsAt } from "./circleLayout.js";
 
+// Отцепка слушателя resize от предыдущего захода на главную. Роутер чистит
+// #app-view при каждом переходе, но слушатель висит на window и это переживает —
+// без снятия они копились бы с каждым возвратом на главную. Тот же приём, что у
+// detachFloatingToolbar в modules/shared/panelSection.js.
+let detachHomeResize = null;
+
 export async function renderHomeView(container) {
+  if (detachHomeResize) {
+    detachHomeResize();
+    detachHomeResize = null;
+  }
+
   const { pencilDismissed } = customCircles.getState();
   const customCirclesData = await loadCustomCirclesData();
 
@@ -60,6 +71,7 @@ export async function renderHomeView(container) {
   // --tx/--ty от джиттера, а линии рисуются по ректам, уже сжатым масштабом.
   fitSceneToViewport(container);
   drawConnectorLines(container);
+  detachHomeResize = watchViewportResize(container);
   wirePencil(container);
   wireCustomCircles(container, customCirclesData);
   wireAddCircle(container);
@@ -276,6 +288,39 @@ function applyJitter(container) {
   container
     .querySelectorAll(".home-circle--pencil, .home-circle--custom")
     .forEach((circle) => jitterOne(circle, EXTRA_JITTER));
+}
+
+// Размер окна поменялся — сцена и линии обязаны переехать вместе. Кружки стоят в
+// процентах от ширины .home-circles и уезжают на новые места сами, а вот линии
+// рисуются в пикселях один раз, поэтому без пересчёта оставались от старого
+// размера окна: тянулись в прежнюю сторону и прежней длины, и всё вставало на
+// место только после F5.
+//
+// Чего тут намеренно НЕ делается:
+//   - не зовём positionExtraCircles: раскладка перезапустилась бы прямо под
+//     курсором и кружки прыгали бы во время тяги за рамку. Сохранённые позиции
+//     пропорциональны ширине контейнера и едут правильно сами, а разошедшиеся
+//     чинятся на следующем полном рендере — этот путь уже есть;
+//   - не зовём applyJitter: новый бросок дёргал бы кружки случайно на каждом
+//     кадре изменения размера. Уже проставленные --tx/--ty переиспользуются.
+function watchViewportResize(container) {
+  // resize сыплется пачками, а работа тут — чтение геометрии, поэтому на кадр
+  // делаем её один раз. Тем же приёмом, что schedule() в floatingToolbar.js.
+  let frame = 0;
+  const update = () => {
+    frame = 0;
+    fitSceneToViewport(container);
+    drawConnectorLines(container);
+  };
+  const onResize = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(update);
+  };
+  window.addEventListener("resize", onResize);
+  return function detach() {
+    if (frame) cancelAnimationFrame(frame);
+    window.removeEventListener("resize", onResize);
+  };
 }
 
 // Сцену с кружками ужимаем до свободного места, вместо того чтобы переделывать
