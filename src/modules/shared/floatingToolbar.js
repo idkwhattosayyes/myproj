@@ -13,6 +13,8 @@
  * зум ни пришёл.
  */
 
+import { TOOLBAR_LAYOUT_EVENT } from "./richTextEditor.js";
+
 // Насколько панель отступает от верхней полосы приложения, когда висит.
 const TOP_GAP_PX = 10;
 // Порог возврата чуть ниже порога отрыва: ровно на границе панель иначе дребезжит —
@@ -370,8 +372,18 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     }
   }
 
+  // Кнопки тулбара свернули или развернули — габариты стали другими. На прокрутке
+  // размер намеренно не пересчитывается (см. комментарий у resize), поэтому смена
+  // набора кнопок — тот самый случай, когда пересчёт нужен: у прилипшей полосы
+  // от числа кнопок зависит число колонок, а от него ширина и левая координата.
+  function onToolbarLayout() {
+    resize();
+    move();
+  }
+
   const handleEl = createDragHandle();
   toolbarEl.insertBefore(handleEl, toolbarEl.firstChild);
+  toolbarEl.addEventListener(TOOLBAR_LAYOUT_EVENT, onToolbarLayout);
   handleEl.addEventListener("pointerdown", onPointerDown);
   handleEl.addEventListener("pointermove", onPointerMove);
   handleEl.addEventListener("pointerup", onPointerUp);
@@ -394,6 +406,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     if (frame) cancelAnimationFrame(frame);
     window.removeEventListener("scroll", schedule);
     window.removeEventListener("resize", onWindowResize);
+    toolbarEl.removeEventListener(TOOLBAR_LAYOUT_EVENT, onToolbarLayout);
     handleEl.remove();
     toolbarEl.classList.remove("is-floating");
     toolbarEl.style.cssText = toolbarEl.style.cssText.replace(/(left|top|width):[^;]*;?/g, "");

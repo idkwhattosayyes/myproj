@@ -36,6 +36,17 @@ function updateSwatch(btn, def) {
 // создаёт редактор заново.
 const TOOLBAR_COLLAPSED_KEY = "app:toolbarCollapsed";
 
+// Тулбар сменил набор видимых кнопок — значит сменил и габариты. Тому, кто держит
+// его на экране (floatingToolbar.js), это надо знать: у прилипшей к краю полосы от
+// числа кнопок зависит число колонок, а от него — ширина и левая координата.
+// Событие, а не прямой вызов: редактор про плавающий модуль ничего не знает, и
+// поток данных остаётся односторонним.
+export const TOOLBAR_LAYOUT_EVENT = "rte-toolbar-layout";
+
+function notifyToolbarLayout(toolbarEl) {
+  toolbarEl.dispatchEvent(new CustomEvent(TOOLBAR_LAYOUT_EVENT));
+}
+
 function createToolbarToggle(toolbarEl) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -45,6 +56,7 @@ function createToolbarToggle(toolbarEl) {
   function apply(collapsed) {
     toolbarEl.classList.toggle("is-collapsed", collapsed);
     btn.textContent = collapsed ? "▾" : "▴";
+    notifyToolbarLayout(toolbarEl);
   }
 
   apply(localStorage.getItem(TOOLBAR_COLLAPSED_KEY) === "1");
@@ -75,6 +87,7 @@ function createToolbarExpandToggle(toolbarEl) {
   function apply(expanded) {
     toolbarEl.classList.toggle("is-expanded", expanded);
     btn.textContent = expanded ? "−" : "+";
+    notifyToolbarLayout(toolbarEl);
   }
 
   apply(localStorage.getItem(TOOLBAR_EXPANDED_KEY) === "1");
