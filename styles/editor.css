@@ -293,6 +293,32 @@
 .rte-btn[data-command="draw"],
 .rte-btn[data-command="photoDraw"] { border-bottom: 3px solid var(--swatch); }
 
+/* Кнопка направления письма: обе стрелки видны всегда, горит та, в которую идёт
+   строка под кареткой. is-active тут значит не «режим включён», а «строка RTL»,
+   поэтому общий синий фон активной кнопки гасим — иначе кнопка выглядела бы
+   нажатой каждый раз, когда курсор просто стоит в ивритской строке. */
+.rte-btn[data-command="textDirection"].is-active {
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.rte-btn[data-command="textDirection"].is-active:hover,
+.rte-btn[data-command="textDirection"]:hover { background: #f3f4f6; }
+
+.rte-dir-arrow {
+  color: #9ca3af; /* приглушённая — та сторона, куда строка НЕ идёт */
+  padding: 0 0.06rem;
+}
+
+/* Горит стрелка текущего направления: по умолчанию строка слева направо, с
+   классом is-active — справа налево. */
+.rte-btn[data-command="textDirection"] .rte-dir-ltr,
+.rte-btn[data-command="textDirection"].is-active .rte-dir-rtl {
+  color: #33507e;
+}
+
+.rte-btn[data-command="textDirection"].is-active .rte-dir-ltr { color: #9ca3af; }
+
 /* Толщина/цвет/ластик пера — тот же поповер, что у цвета текста, только шире и
    в несколько строк (пресетов толщины + вся палитра + ластик не влезают в одну). */
 .rte-draw-popover {

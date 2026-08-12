@@ -135,6 +135,14 @@ function getButtonDefs() {
     alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
     alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
     alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
+    // Направление письма текущей строки. is-active тут значит не «режим включён»,
+    // а «строка идёт справа налево» — по нему CSS и решает, какую из двух стрелок
+    // на кнопке зажечь (см. .rte-dir-* в editor.css).
+    textDirection: {
+      isDirection: true,
+      title: t("editor.textDirection"),
+      isActive: (editorEl) => currentLineDirection(editorEl) === "rtl",
+    },
     bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList"), isActive: () => document.queryCommandState("insertUnorderedList") },
     orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList"), isActive: () => document.queryCommandState("insertOrderedList") },
     checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl), isActive: (editorEl) => isInsideChecklist(editorEl) },
@@ -731,6 +739,36 @@ function getSelectedListItems(editorEl) {
   // Вложенный пункт уедет вместе со своим родителем — двигать его ещё и
   // отдельно значило бы сдвинуть на два уровня вместо одного.
   return touched.filter((item) => !touched.some((other) => other !== item && other.contains(item)));
+}
+
+// То, чему переключается направление: строки листа, а внутри списка — пункты.
+// getCaretLine в списках намеренно отдаёт null (там своя семантика отступа), так
+// что пункты приходится доставать отдельной парой.
+function getDirectionTargets(editorEl) {
+  const lines = getSelectedLines(editorEl);
+  return lines.length ? lines : getSelectedListItems(editorEl);
+}
+
+// Направление строки под кареткой. Спрашиваем вычисленный стиль, а не атрибут:
+// при dir="auto" в атрибуте так и написано «auto», а куда в итоге развернулась
+// строка, знает только браузер — он разбирает текст по алгоритму bidi.
+function currentLineDirection(editorEl) {
+  const target = getDirectionTargets(editorEl)[0];
+  return target ? getComputedStyle(target).direction : "ltr";
+}
+
+// Ручной переворот направления — на случай, когда автоопределение промахнулось:
+// строка начинается с латинского слова или цифры, а по смыслу ивритская.
+// Переворачиваем относительно того, что видно сейчас, и ставим направление явно —
+// после этого applyLineDirection эту строку уже не трогает.
+function toggleTextDirection(editorEl) {
+  const targets = getDirectionTargets(editorEl);
+  if (!targets.length) return false;
+  const next = getComputedStyle(targets[0]).direction === "rtl" ? "ltr" : "rtl";
+  targets.forEach((el) => {
+    el.dir = next;
+  });
+  return true;
 }
 
 /**
@@ -2481,7 +2519,18 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     btn.className = "rte-btn";
     btn.dataset.command = key;
     btn.title = def.title;
-    if (def.labelClass) {
+    if (def.isDirection) {
+      // Обе стрелки живут в кнопке всегда, а горит та, в которую идёт строка под
+      // кареткой. Значит подпись — два отдельных узла: покрасить половину одного
+      // символа нельзя. Саму подсветку двигает общий механизм подсветки кнопок.
+      const ltr = document.createElement("span");
+      ltr.className = "rte-dir-arrow rte-dir-ltr";
+      ltr.textContent = "→";
+      const rtl = document.createElement("span");
+      rtl.className = "rte-dir-arrow rte-dir-rtl";
+      rtl.textContent = "←";
+      btn.append(ltr, rtl);
+    } else if (def.labelClass) {
       // Линия рисуется вокруг буквы, поэтому подпись нужна отдельным узлом.
       const icon = document.createElement("span");
       icon.className = `rte-ico ${def.labelClass}`;
@@ -2541,6 +2590,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           openVoiceLangMenu(event);
         });
       }
+    } else if (def.isDirection) {
+      btn.addEventListener("click", () => {
+        if (!toggleTextDirection(contentEl)) return; // каретки в тексте нет — переключать нечего
+        focusActivePage();
+        onChange(serializeEditor(contentEl));
+        refreshToolbarState();
+        onApplied();
+      });
     } else if (def.isPageMode) {
       btn.addEventListener("click", () => {
         togglePageMode();
