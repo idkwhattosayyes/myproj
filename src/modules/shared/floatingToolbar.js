@@ -76,9 +76,16 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
 
 
   // Во сколько раз координаты элемента отличаются от экранных. При зуме 100% это 1.
+  //
+  // Знаменатель берётся из вычисленных стилей, а НЕ из offsetWidth: тот округляется
+  // до целого, и на прилипшей полосе шириной 86.6 давал 87 — множитель выходил
+  // 0.9955 вместо единицы. Полпроцента на координате 1135px — это 5px, и полоса
+  // вставала не в 6px от края поля, а в 1px. Обе величины тут дробные, и при зуме
+  // 100% отношение получается ровно 1.
   function scale() {
     const box = toolbarEl.getBoundingClientRect();
-    return toolbarEl.offsetWidth ? box.width / toolbarEl.offsetWidth : 1;
+    const layoutWidth = parseFloat(getComputedStyle(toolbarEl).width);
+    return layoutWidth ? box.width / layoutWidth : 1;
   }
 
   // Куда панель встаёт, когда висит и её ещё не двигали: по горизонтали ровно туда
