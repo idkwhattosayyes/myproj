@@ -379,6 +379,11 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   function onToolbarLayout() {
     resize();
     move();
+    // Второй проход по позиции — тем же приёмом и по той же причине, что в
+    // onPointerUp: ширина полосы зависит от того, во сколько колонок легли кнопки,
+    // а это становится известно только после того, как размер уже применён. С
+    // шириной, снятой до перевыкладки, правый край уезжал за рамку поля.
+    if (dock !== null) move();
   }
 
   const handleEl = createDragHandle();

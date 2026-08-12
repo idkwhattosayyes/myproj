@@ -59,16 +59,21 @@ function createToolbarToggle(toolbarEl) {
     notifyToolbarLayout(toolbarEl);
   }
 
+  function setCollapsed(collapsed) {
+    localStorage.setItem(TOOLBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+    apply(collapsed);
+  }
+
   apply(localStorage.getItem(TOOLBAR_COLLAPSED_KEY) === "1");
   // Как и у кнопок форматирования: не забираем фокус, иначе выделение в тексте
   // схлопнется ещё до клика.
   btn.addEventListener("mousedown", (event) => event.preventDefault());
-  btn.addEventListener("click", () => {
-    const collapsed = !toolbarEl.classList.contains("is-collapsed");
-    localStorage.setItem(TOOLBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
-    apply(collapsed);
-  });
-  return btn;
+  btn.addEventListener("click", () => setCollapsed(!toolbarEl.classList.contains("is-collapsed")));
+  // expand отдаётся наружу: в свёрнутом виде эта кнопка превращается в тонкую
+  // полоску во всю ширину тулбара, а у оторванной панели ширина считается по
+  // содержимому — полоске взяться неоткуда, и развернуть панель нечем. Поэтому
+  // разворот берёт на себя кнопка справа, см. createToolbarExpandToggle.
+  return { el: btn, expand: () => setCollapsed(false) };
 }
 
 // Как и TOOLBAR_COLLAPSED_KEY — настройка вида, живёт в localStorage, а не
@@ -78,21 +83,36 @@ const TOOLBAR_EXPANDED_KEY = "app:toolbarExpanded";
 // Кнопка "+/−" справа от тулбара: показывает/прячет расширенный набор кнопок
 // (помечены data-toolbar-extra, см. .rte-toolbar в editor.css), в отличие от
 // createToolbarToggle выше — та прячет тулбар целиком, а не часть кнопок.
-function createToolbarExpandToggle(toolbarEl) {
+function createToolbarExpandToggle(toolbarEl, collapseToggle) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "rte-toolbar-expand";
-  btn.title = t("editor.toggleExtraTools");
+
+  // У кнопки две работы, и какая из них сейчас — видно по знаку. Плюс-минус про
+  // дополнительные инструменты имеет смысл, только когда инструменты вообще видны;
+  // у свёрнутой панели прятать нечего, зато её саму нужно чем-то разворачивать.
+  function refresh() {
+    const collapsed = toolbarEl.classList.contains("is-collapsed");
+    btn.textContent = collapsed ? "▴" : toolbarEl.classList.contains("is-expanded") ? "−" : "+";
+    btn.title = collapsed ? t("editor.toggleToolbar") : t("editor.toggleExtraTools");
+  }
 
   function apply(expanded) {
     toolbarEl.classList.toggle("is-expanded", expanded);
-    btn.textContent = expanded ? "−" : "+";
     notifyToolbarLayout(toolbarEl);
   }
 
   apply(localStorage.getItem(TOOLBAR_EXPANDED_KEY) === "1");
+  refresh();
+  // Знак обновляется и когда панель свернули левой кнопкой, а не этой. Сам refresh
+  // события не шлёт, поэтому петли не выходит.
+  toolbarEl.addEventListener(TOOLBAR_LAYOUT_EVENT, refresh);
   btn.addEventListener("mousedown", (event) => event.preventDefault());
   btn.addEventListener("click", () => {
+    if (toolbarEl.classList.contains("is-collapsed")) {
+      collapseToggle.expand();
+      return;
+    }
     const expanded = !toolbarEl.classList.contains("is-expanded");
     localStorage.setItem(TOOLBAR_EXPANDED_KEY, expanded ? "1" : "0");
     apply(expanded);
@@ -996,7 +1016,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   const toolbarEl = document.createElement("div");
   toolbarEl.className = "rte-toolbar";
   toolbarEl.setAttribute("role", "toolbar");
-  toolbarEl.appendChild(createToolbarToggle(toolbarEl));
+  const collapseToggle = createToolbarToggle(toolbarEl);
+  toolbarEl.appendChild(collapseToggle.el);
 
   // Сам контейнер не редактируется — редактируются страницы внутри него. Все
   // проверки форматирования смотрят на editorEl.contains(узел), поэтому им
@@ -2658,7 +2679,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   // Кнопка-переключатель полного набора инструментов — только если вызывающий
   // код различает базовый и расширенный список (см. notesView.js).
-  if (basicButtons) toolbarEl.appendChild(createToolbarExpandToggle(toolbarEl));
+  if (basicButtons) toolbarEl.appendChild(createToolbarExpandToggle(toolbarEl, collapseToggle));
 
   // Считаем только по страницам (getPages()), а не contentEl.textContent
   // целиком — иначе в счёт попала бы ещё и подпись служебной кнопки
