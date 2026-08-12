@@ -648,7 +648,11 @@ function isHeading(editorEl, tagName) {
 
 // --- Отступ строки (Tab) ------------------------------------------------
 // Уровень отступа живёт на самой строке: data-indent — источник истины,
-// margin-left его рисует. Раньше отступ делал браузерный execCommand("indent"),
+// margin-inline-start его рисует. Свойство именно логическое, а не margin-left:
+// оно отмеряется от НАЧАЛА строки, а начало зависит от направления. В ивритской
+// строке Tab благодаря этому сдвигает текст от правого края, зеркально обычному,
+// и отдельной ветки под RTL здесь не нужно.
+// Раньше отступ делал браузерный execCommand("indent"),
 // который заворачивает строки в общий <blockquote>: соседние строки попадали в
 // одну обёртку, и снять отступ у одной, не задев остальные, было нельзя. Здесь
 // задеть соседа физически невозможно — отступ принадлежит строке.
@@ -665,10 +669,10 @@ function setIndentLevel(line, level) {
   const next = clamp(level, 0, MAX_INDENT);
   if (next === 0) {
     delete line.dataset.indent;
-    line.style.marginLeft = "";
+    line.style.marginInlineStart = "";
   } else {
     line.dataset.indent = String(next);
-    line.style.marginLeft = `${next * INDENT_STEP_PX}px`;
+    line.style.marginInlineStart = `${next * INDENT_STEP_PX}px`;
   }
 }
 
@@ -876,11 +880,16 @@ function applyLineDirection(editorEl) {
     [...page.children].filter(isTextLine).forEach((line) => {
       if (!line.hasAttribute("dir")) line.dir = "auto";
     });
-    // Пункту нужно своё направление — от него зависит сторона маркера. Самому
-    // списку тоже: его внутренний отступ логический, и без direction он остался
-    // бы слева даже у полностью ивритского списка.
-    page.querySelectorAll("li,ul,ol").forEach((el) => {
-      if (!el.hasAttribute("dir")) el.dir = "auto";
+    // Пункт списка — такая же строка, направление у него своё.
+    //
+    // А вот самому <ul>/<ol> dir не ставим, хотя соблазн есть. При dir="auto"
+    // направление считается по тексту элемента, но содержимое потомков, у которых
+    // есть СВОЙ dir, из расчёта исключается. Проставив атрибут и списку, и его
+    // пунктам, мы отняли у списка весь текст, и он всегда получался ltr — точка у
+    // ивритского пункта оставалась слева. Поэтому направление держит только пункт,
+    // а внутренний отступ списка перенесён на него же (см. editor.css).
+    page.querySelectorAll("li").forEach((li) => {
+      if (!li.hasAttribute("dir")) li.dir = "auto";
     });
   });
 }
@@ -2941,7 +2950,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("click", (event) => {
     const li = event.target instanceof Element ? event.target.closest("li") : null;
     if (!li || !li.closest("ul.checklist") || event.target !== li) return;
-    if (event.clientX - li.getBoundingClientRect().left > CHECKLIST_MARKER_WIDTH) return;
+    // Квадратик стоит в НАЧАЛЕ пункта, а начало зависит от направления: в
+    // ивритском пункте оно справа. Меряем с той же стороны, с которой его рисует
+    // inset-inline-start, иначе клик по квадратику в RTL уходил бы в текст, а
+    // клик по концу строки — переключал бы «выполнено».
+    const box = li.getBoundingClientRect();
+    const fromStart =
+      getComputedStyle(li).direction === "rtl" ? box.right - event.clientX : event.clientX - box.left;
+    if (fromStart > CHECKLIST_MARKER_WIDTH) return;
     li.classList.toggle("is-done");
     onChange(serializeEditor(contentEl));
   });
