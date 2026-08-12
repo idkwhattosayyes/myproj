@@ -1353,12 +1353,16 @@ function renderDetail(container, config, state) {
   const { toolbarEl, contentEl } = editor;
   const toolbarHostEl = detailEl.querySelector('[data-role="toolbar-host"]');
   toolbarHostEl.appendChild(toolbarEl);
-  // boundsEl — белая рамка редактора: по ней считаются границы перетаскивания и
-  // порог прилипания к краю (ТЗ: «текстовое поле»).
-  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl });
   detailEl.querySelector('[data-role="content-host"]').appendChild(contentEl);
   // Высота страниц считается по реальным размерам — только после вставки в DOM.
   editor.refreshLayout();
+  // boundsEl — белая рамка редактора: по ней считаются границы перетаскивания и
+  // порог прилипания к краю (ТЗ: «текстовое поле»). Подключаемся только теперь,
+  // когда рамка уже в DOM и посчитана: модуль при подключении поднимает
+  // сохранённую позицию, а она хранится как смещение от левого края рамки. Пока
+  // рамка висела вне документа, её край читался нулём, и панель после
+  // перезагрузки уезжала к началу поля вместо своего места.
+  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl });
 
   // Пришли из поиска — прокручиваем к найденному и мигаем им. Цель одноразовая:
   // следующая перерисовка (правка, переключение папки) прыгать уже не должна.
