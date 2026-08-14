@@ -933,6 +933,9 @@ function renderTrashList(bodyEl, titleEl, container, config, state) {
   bodyEl.querySelectorAll("[data-trash-id]").forEach((el) => {
     const id = el.dataset.trashId;
     const kind = el.dataset.trashKind;
+    // Название берём из самой строки: там уже разобрано и папка/заметка, и
+    // подстановка «Без названия», второй раз это считать незачем.
+    const name = el.querySelector(".item-title").textContent;
 
     el.addEventListener("click", () => {
       state.selectedTrash = { kind, id };
@@ -954,7 +957,7 @@ function renderTrashList(bodyEl, titleEl, container, config, state) {
         {
           label: t("panel.deleteForever"),
           onClick: async () => {
-            const ok = await openConfirm({ message: t("panel.deleteForeverConfirm") });
+            const ok = await confirmDelete("panel.deleteForeverConfirm", name);
             if (!ok) return;
             if (kind === "folder") await itemsService.deleteFolderForever(id);
             else await itemsService.deleteItemForever(id);
@@ -1256,7 +1259,7 @@ function renderTrashDetail(detailEl, container, config, state) {
     return;
   }
 
-  function wireActions(kind, id) {
+  function wireActions(kind, id, name) {
     detailEl.querySelector('[data-action="trash-restore"]').addEventListener("click", async () => {
       if (kind === "folder") await itemsService.restoreFolder(id);
       else await itemsService.restoreItem(id);
@@ -1264,7 +1267,7 @@ function renderTrashDetail(detailEl, container, config, state) {
       await refreshTrashState(container, config, state);
     });
     detailEl.querySelector('[data-action="trash-delete-forever"]').addEventListener("click", async () => {
-      const ok = await openConfirm({ message: t("panel.deleteForeverConfirm") });
+      const ok = await confirmDelete("panel.deleteForeverConfirm", name);
       if (!ok) return;
       if (kind === "folder") await itemsService.deleteFolderForever(id);
       else await itemsService.deleteItemForever(id);
@@ -1289,7 +1292,7 @@ function renderTrashDetail(detailEl, container, config, state) {
         </div>
       </div>
     `;
-    wireActions("folder", folder.id);
+    wireActions("folder", folder.id, folder.name);
     return;
   }
 
@@ -1308,7 +1311,7 @@ function renderTrashDetail(detailEl, container, config, state) {
       <div class="rte-content trash-detail-content">${item.content}</div>
     </div>
   `;
-  wireActions("item", item.id);
+  wireActions("item", item.id, item.title);
 }
 
 // Отцепка плавающего тулбара от предыдущей заметки. Деталь перерисовывается на
