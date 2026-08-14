@@ -148,9 +148,12 @@ function getButtonDefs() {
       title: t("editor.textDirection"),
       isActive: (editorEl) => currentLineDirection(editorEl) === "rtl",
     },
-    bulletList: { label: "•", title: t("editor.bulletList"), command: () => document.execCommand("insertUnorderedList"), isActive: () => document.queryCommandState("insertUnorderedList") },
-    orderedList: { label: "1.", title: t("editor.orderedList"), command: () => document.execCommand("insertOrderedList"), isActive: () => document.queryCommandState("insertOrderedList") },
-    checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => applyChecklist(editorEl), isActive: (editorEl) => isInsideChecklist(editorEl) },
+    // Все три вида списка ведёт один движок (toggleList): браузерная команда
+    // insertUnorderedList склеивала соседние списки через пустую строку и не
+    // различала их вид — см. комментарий у LIST_KINDS.
+    bulletList: { label: "•", title: t("editor.bulletList"), command: (editorEl) => toggleList(editorEl, "bullet"), isActive: (editorEl) => currentListKind(editorEl) === "bullet" },
+    orderedList: { label: "1.", title: t("editor.orderedList"), command: (editorEl) => toggleList(editorEl, "ordered"), isActive: (editorEl) => currentListKind(editorEl) === "ordered" },
+    checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => toggleList(editorEl, "checklist"), isActive: (editorEl) => currentListKind(editorEl) === "checklist" },
     textColor: {
       label: "A",
       title: t("editor.textColorHint"),
@@ -2889,7 +2892,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   contentEl.addEventListener("input", (event) => {
     // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
-    if (event.inputType && event.inputType.startsWith("delete")) clearEmptiedBlock();
+    if (event.inputType && event.inputType.startsWith("delete")) {
+      clearEmptiedBlock();
+      // Удалили строку между двумя списками одного вида — списки стали соседями
+      // вплотную, а значит одним списком. Только на удалении: пока разделитель
+      // на месте, склеивать нечего (см. mergeAdjacentLists).
+      if (mergeAdjacentLists(contentEl)) recordHistory();
+    }
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
     // так что dir у неё наследуется и без нас — а вот вставленному тексту его
@@ -3579,41 +3588,212 @@ function getCurrentList(editorEl) {
   return list && editorEl.contains(list) ? list : null;
 }
 
-function isInsideChecklist(editorEl) {
-  const list = getCurrentList(editorEl);
-  return !!list && !!list.closest("ul.checklist");
+// Вид списка под кареткой — им подсвечиваются кнопки тулбара. Раньше подсветку
+// давал queryCommandState("insertUnorderedList"), а он не различает вид: внутри
+// чек-листа загорались обе кнопки, и «точка» выглядела включённой.
+function currentListKind(editorEl) {
+  return listKind(getCurrentList(editorEl));
 }
 
-// Кнопка ☑ работает ровно как кнопка маркированного списка: строка становится
-// пунктом с квадратиком, повторное нажатие возвращает обычный текст. Сам
-// квадратик — CSS-маркер (::before) на <li>, а не элемент в тексте: любой узел
-// внутри contenteditable браузер копирует при Enter и таскает вокруг него
-// каретку, из-за чего текст оказывался перед галочкой.
-function applyChecklist(editorEl) {
-  const list = getCurrentList(editorEl);
+// --- Списки ---------------------------------------------------------------
+// Три вида списка живут в разметке, а не в отдельном поле: «точка» — голый <ul>,
+// нумерованный — <ol>, to-do — <ul class="checklist"> (квадратик рисует CSS-маркер
+// ::before на <li>, а не узел в тексте: любой узел внутри contenteditable браузер
+// копирует при Enter и таскает вокруг него каретку, из-за чего текст оказывался
+// перед галочкой).
+//
+// Всё, что ниже, написано вместо document.execCommand("insertUnorderedList").
+// Причина та же, по которой отступ строки уехал на data-indent (см. LINE_SELECTOR):
+// команда браузера сама решает, к какому списку рядом присоединиться, и «рядом»
+// для неё — предыдущая ВИДИМАЯ позиция, а не предыдущий сосед по разметке. Пустые
+// строки-разделители она перешагивает, а вид списка не различает вовсе — новый
+// пункт попадал в чужой <ul> и получал чужие квадратики.
+const LIST_KINDS = {
+  bullet: { tag: "UL", checklist: false },
+  ordered: { tag: "OL", checklist: false },
+  checklist: { tag: "UL", checklist: true },
+};
 
-  // Снятие: пункт перестаёт быть пунктом, а список остаётся чек-листом. Разрез
-  // списка надвое браузер делает сам и обеим половинам оставляет и пометку, и
-  // отметки «выполнено». Раньше пометка снималась со всего списка разом, до
-  // команды: соседние строки превращались в точки, а их галочки стирались.
-  if (list && list.closest("ul.checklist")) {
-    document.execCommand("insertUnorderedList");
-    return;
+// Вид списка — по разметке. Чек-лист узнаём через closest, а не по собственному
+// классу: вложенный <ul> внутри чек-листа рисуется квадратиками по CSS
+// (ul.checklist ul в editor.css), значит и считаться обязан чек-листом — иначе
+// разметка разойдётся с картинкой.
+function listKind(list) {
+  if (!list) return null;
+  if (list.tagName === "OL") return "ordered";
+  return list.closest("ul.checklist") ? "checklist" : "bullet";
+}
+
+function createList(kind) {
+  const spec = LIST_KINDS[kind];
+  const list = document.createElement(spec.tag);
+  if (spec.checklist) list.classList.add("checklist");
+  return list;
+}
+
+// Список того же вида, стоящий вплотную — только с таким и сливаемся. Проверка
+// именно на непосредственного соседа: между двумя списками может лежать пустая
+// строка, и тогда это два РАЗНЫХ списка, сколько бы одинаковыми они ни выглядели.
+function adjacentList(el, side, kind) {
+  const neighbour = side === "before" ? el.previousElementSibling : el.nextElementSibling;
+  return neighbour && listKind(neighbour) === kind ? neighbour : null;
+}
+
+/**
+ * Единственная точка входа для всех трёх кнопок списка. Каретка внутри списка
+ * того же вида — список снимается, другого вида — меняется вид, вне списка —
+ * строки заворачиваются в пункты.
+ *
+ * Каретку держим сами: содержимое строк переезжает в <li> узлами, поэтому снимок
+ * узлом (saveCaret) возвращает её ровно туда, где она стояла, — в том числе на
+ * пустой строке, где символьного смещения не существует.
+ */
+function toggleList(editorEl, kind) {
+  const caret = saveCaret();
+  const selected = getSelectedListItems(editorEl);
+
+  if (selected.length) {
+    // Выделение могло растянуться на два разных списка — работаем с тем, где
+    // началось: у соседнего свой вид и свои соседи, ему нужен свой разрез.
+    const list = selected[0].parentElement;
+    const items = selected.filter((li) => li.parentElement === list);
+    if (listKind(list) === kind) unwrapListItems(list, items);
+    else convertListItems(list, items, kind);
+  } else {
+    const lines = getSelectedLines(editorEl);
+    if (!lines.length) return;
+    wrapLinesInList(lines, kind);
   }
 
-  // Внутри обычного маркированного списка: пометка живёт на <ul>, поэтому
-  // «сделать to-do только эту строку» — это вынести её в собственный список.
-  if (list && list.tagName === "UL") {
-    const items = getSelectedListItems(editorEl).filter((li) => li.parentElement === list);
-    const own = splitOutItems(list, items);
-    if (own) own.classList.add("checklist");
-    return;
+  restoreCaret(caret);
+}
+
+// Строки → пункты списка. Содержимое строки ПЕРЕНОСИТСЯ в <li>, а не копируется:
+// узел под кареткой остаётся тем же самым, поэтому позиция ввода не съезжает.
+function wrapLinesInList(lines, kind) {
+  const first = lines[0];
+  const last = lines[lines.length - 1];
+
+  // Дописываемся в соседний список только если он стоит вплотную и он нашего
+  // вида. Всё прочее — включая пустую строку-разделитель — заводит свой список.
+  const before = adjacentList(first, "before", kind);
+  const list = before || createList(kind);
+  if (!before) first.before(list);
+
+  lines.forEach((line) => {
+    const li = document.createElement("li");
+    // Направление ставит applyLineDirection, а вот явно выбранное кнопкой
+    // (dir="rtl"/"ltr") принадлежит самой строке и обязано переехать с ней.
+    if (line.hasAttribute("dir") && line.dir !== "auto") li.dir = line.dir;
+    while (line.firstChild) li.appendChild(line.firstChild);
+    list.appendChild(li);
+    // Якорь рисунка указывает на прямого потомка листа (см. anchorLineOf), а им
+    // после обёртки стал список — иначе рисунок потерял бы привязку.
+    if (line.dataset.anchor && !list.dataset.anchor) list.dataset.anchor = line.dataset.anchor;
+    line.remove();
+  });
+
+  // Список ниже, вплотную и нашего вида — это продолжение того же списка.
+  const after = adjacentList(list, "after", kind);
+  if (after) mergeListInto(list, after);
+  return list;
+}
+
+// Пункты → обычные строки. Список разрезается: что шло выше, остаётся в исходном,
+// что ниже — уезжает в такую же копию следом. Отметки «выполнено» у соседей при
+// этом не трогаются, потому что переносятся узлы, а не разметка текстом.
+function unwrapListItems(list, items) {
+  const following = [];
+  for (let next = items[items.length - 1].nextElementSibling; next; next = next.nextElementSibling) {
+    following.push(next);
   }
 
-  // Списка нет вовсе (или он нумерованный) — создаём маркированный и помечаем.
-  document.execCommand("insertUnorderedList");
-  const target = getCurrentList(editorEl);
-  if (target) target.classList.add("checklist");
+  const lines = items.map((li) => {
+    const line = document.createElement("div");
+    if (li.hasAttribute("dir") && li.dir !== "auto") line.dir = li.dir;
+    while (li.firstChild) line.appendChild(li.firstChild);
+    fillEmptyLine(line);
+    return line;
+  });
+
+  let anchor = list;
+  lines.forEach((line) => {
+    anchor.after(line);
+    anchor = line;
+  });
+  // Якорь рисунка живёт на одном блоке: список перестал быть тем блоком, где
+  // стоит текст, — отдаём его первой получившейся строке.
+  if (list.dataset.anchor && lines.length) {
+    lines[0].dataset.anchor = list.dataset.anchor;
+    delete list.dataset.anchor;
+  }
+
+  if (following.length) {
+    const tail = cloneEmptyList(list);
+    following.forEach((li) => tail.appendChild(li));
+    anchor.after(tail);
+  }
+  items.forEach((li) => li.remove());
+  if (!list.children.length) list.remove();
+}
+
+// Смена вида: пункты выносятся в собственный список нужного вида, соседи сверху и
+// снизу остаются каждый в своём — со своим видом и своими галочками.
+function convertListItems(list, items, kind) {
+  const own = splitOutItems(list, items);
+  if (!own) return;
+
+  // Тег не меняется (☑ ⇄ • — оба <ul>) — обходимся классом. Меняется (⇄ 1.) —
+  // контейнер пересобираем и переносим пункты, узлы при этом те же.
+  let target = own;
+  if (own.tagName !== LIST_KINDS[kind].tag) {
+    target = createList(kind);
+    while (own.firstChild) target.appendChild(own.firstChild);
+    own.replaceWith(target);
+  } else {
+    target.classList.toggle("checklist", LIST_KINDS[kind].checklist);
+  }
+
+  // Сменив вид, пункт мог оказаться вплотную к списку, которому теперь ровня.
+  const before = adjacentList(target, "before", kind);
+  if (before) {
+    mergeListInto(before, target);
+    target = before;
+  }
+  const after = adjacentList(target, "after", kind);
+  if (after) mergeListInto(target, after);
+}
+
+// Переливает пункты из source в target и убирает опустевший список. Именно
+// переносом узлов: галочки (класс is-done) и вложенность переезжают сами.
+function mergeListInto(target, source) {
+  while (source.firstChild) target.appendChild(source.firstChild);
+  source.remove();
+}
+
+/**
+ * Два списка одного вида, вставшие вплотную, — это один список. Такими соседями
+ * они становятся ровно в одном случае: пользователь удалил строку, которая их
+ * разделяла. Пока разделитель на месте, списки остаются разными, сколько бы
+ * одинаково они ни выглядели.
+ *
+ * Возвращает true, если что-то слилось, — вызывающий код по этому признаку
+ * решает, записывать ли снимок истории.
+ */
+function mergeAdjacentLists(editorEl) {
+  let merged = false;
+  editorEl.querySelectorAll(".rte-page").forEach((page) => {
+    [...page.querySelectorAll("ul,ol")].forEach((list) => {
+      if (!list.isConnected) return; // уже влит в предыдущего соседа
+      let next = adjacentList(list, "after", listKind(list));
+      while (next) {
+        mergeListInto(list, next);
+        merged = true;
+        next = adjacentList(list, "after", listKind(list));
+      }
+    });
+  });
+  return merged;
 }
 
 // Выносит подряд идущие пункты в собственный список того же вида. Соседи остаются
