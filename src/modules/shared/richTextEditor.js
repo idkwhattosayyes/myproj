@@ -2802,10 +2802,21 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         await def.command(contentEl);
         // Кнопки списка — главный источник слипшихся строк, но правим разметку
         // после любой команды: проход дешёвый, а на ровной разметке он ничего не
-        // делает. Каретку снимаем заранее — перенос узлов сбивает выделение,
-        // порядок текста при этом не меняется, поэтому смещение остаётся верным.
-        const caret = getCaretOffset();
-        if (normalizeLines(contentEl)) setCaretOffset(caret);
+        // делает. Каретку снимаем заранее — перенос узлов сбивает выделение.
+        //
+        // Снимков два, и это не перестраховка. Узловой (saveCaret) точен, пока
+        // узел под кареткой жив: normalizeLines строки не пересобирает, а
+        // перекладывает, поэтому обычно так и есть. Но splitLineAtBreaks режет
+        // строку по переносам, и узел может уехать в новую половину — тогда
+        // остаётся символьное смещение. Само оно ненадёжно: на пустой строке
+        // текстового узла нет, и позиция там неотличима от конца предыдущей
+        // строки — ровно из-за этого каретка и уезжала выше (см. saveCaret).
+        const caretNode = saveCaret();
+        const caretOffset = getCaretOffset();
+        if (normalizeLines(contentEl)) {
+          if (caretNode && caretNode.node.isConnected) restoreCaret(caretNode);
+          else setCaretOffset(caretOffset);
+        }
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();
