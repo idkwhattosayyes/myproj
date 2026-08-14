@@ -3116,15 +3116,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       const items = getSelectedListItems(contentEl);
       if (!items.length) return;
       // Перенос узлов сбивает выделение — снимаем позицию каретки заранее.
-      // Порядок текста от вложенности не меняется, поэтому смещение остаётся
-      // верным и каретка встаёт ровно туда, где была.
-      const caret = getCaretOffset();
+      // Снимок именно узловой (saveCaret), а не символьный: пункт переезжает
+      // целиком, поэтому узел под кареткой остаётся тем же самым. Символьное
+      // смещение здесь врало на пустом пункте — текстового узла в нём нет,
+      // счёт до каретки не доходил, и она возвращалась строкой выше.
+      const caret = saveCaret();
       let moved = false;
       items.forEach((li) => {
         if (event.shiftKey ? outdentListItem(li) : indentListItem(li)) moved = true;
       });
       if (!moved) return; // первый пункт списка сдвигать некуда
-      setCaretOffset(caret);
+      restoreCaret(caret);
       // Ctrl+Z: MutationObserver истории ловит childList, но снимок пишется с
       // задержкой — фиксируем сразу, как и в ветке обычных строк.
       recordHistory();
@@ -3364,6 +3366,38 @@ function restoreRange(range) {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+/**
+ * Снимок каретки узлом и смещением в нём — для правок, которые ПЕРЕНОСЯТ узлы
+ * целиком (вложенность пункта, обёртка строки в список). Узел переезд переживает,
+ * поэтому каретка возвращается ровно туда, где стояла.
+ *
+ * Плоский объект, а не Range: живой диапазон по спецификации DOM выталкивается
+ * на позицию родителя, как только его узел вынули из этого родителя, — именно
+ * поэтому перестановка пунктов и сбивает выделение.
+ *
+ * И тем более не символьное смещение (getCaretOffset): в пустой строке нет
+ * текстового узла вовсе, каретка стоит на самом <li>, и в символах её позиция
+ * неотличима от конца предыдущей строки. Из-за этого Tab на пустом пункте
+ * уводил каретку строкой выше.
+ */
+function saveCaret() {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  return { node: range.startContainer, offset: range.startOffset };
+}
+
+function restoreCaret(saved) {
+  if (!saved || !saved.node.isConnected) return;
+  const range = document.createRange();
+  // Смещение упираем в текущий размер узла: сам узел переезд переживает, а вот
+  // его содержимое между снимком и возвратом измениться могло.
+  const limit = saved.node.nodeType === Node.TEXT_NODE ? saved.node.textContent.length : saved.node.childNodes.length;
+  range.setStart(saved.node, Math.min(saved.offset, limit));
+  range.collapse(true);
+  restoreRange(range);
 }
 
 function clamp(value, min, max) {
