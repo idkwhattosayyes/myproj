@@ -824,11 +824,21 @@ function renderFolders(container, config, state) {
   });
 }
 
+// Название удаляемого прямо в вопросе: промахнуться мышкой по соседней строке
+// легко, а из безличного «Переместить в Корзину?» не видно, что именно уедет.
+// Плейсхолдеров у t() нет, подставляем вручную — то же соглашение, что у
+// search.moreMatches в searchBar.js. Экранировать не надо: openConfirm кладёт
+// текст через textContent, а не в innerHTML.
+function confirmDelete(key, name) {
+  return openConfirm({ message: t(key).replace("{name}", name || t("panel.untitled")) });
+}
+
 // confirm=true — спросить подтверждение (удаление непустой папки через ПКМ);
 // confirm=false — мгновенное удаление пустой папки по крестику.
 async function deleteFolderFlow(folderId, container, config, state, confirm) {
   if (confirm) {
-    const ok = await openConfirm({ message: t("panel.deleteFolderConfirm") });
+    const folder = state.folders.find((f) => f.id === folderId);
+    const ok = await confirmDelete("panel.deleteFolderConfirm", folder?.name);
     if (!ok) return;
   }
   await itemsService.moveFolderToTrash(config.section, folderId);
@@ -1121,7 +1131,8 @@ function renderList(container, config, state) {
 
 async function deleteItemFlow(itemId, container, config, state, confirm) {
   if (confirm) {
-    const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
+    const item = state.items.find((i) => i.id === itemId);
+    const ok = await confirmDelete("panel.deleteItemConfirm", item?.title);
     if (!ok) return;
   }
   await itemsService.moveItemToTrash(itemId);
@@ -1395,7 +1406,9 @@ function renderDetail(container, config, state) {
   });
 
   detailEl.querySelector('[data-action="delete-item"]').addEventListener("click", async () => {
-    const ok = await openConfirm({ message: t("panel.deleteItemConfirm") });
+    // Заголовок берём из поля, а не из item.title: правка сохраняется с задержкой
+    // (scheduleSave), и у только что переименованной заметки item.title отстаёт.
+    const ok = await confirmDelete("panel.deleteItemConfirm", titleInput.value);
     if (!ok) return;
     clearTimeout(saveTimer);
     await itemsService.moveItemToTrash(item.id);
