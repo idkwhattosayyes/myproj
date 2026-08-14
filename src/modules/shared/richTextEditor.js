@@ -2899,6 +2899,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // на месте, склеивать нечего (см. mergeAdjacentLists).
       if (mergeAdjacentLists(contentEl)) recordHistory();
     }
+    // Выход из списка по Enter — та же чистка, что и после удаления. Отметка
+    // «выполнено» рисуется CSS (line-through и серый цвет на li.is-done), а
+    // Chrome переносит на новую строку не разметку, а ВИД: строка после
+    // отмеченного пункта получала <font><strike> и печаталась зачёркнутой.
+    // Строка с текстом сюда не попадает — clearEmptiedBlock трогает только
+    // пустые.
+    if (event.inputType === "insertParagraph") clearEmptiedBlock();
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
     // так что dir у неё наследуется и без нас — а вот вставленному тексту его
