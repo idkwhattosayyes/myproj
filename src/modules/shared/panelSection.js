@@ -186,7 +186,36 @@ function applySearchTarget(state) {
   state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex };
 }
 
+/**
+ * Прокрутка обеих панелей, снятая перед перерисовкой. Перерисовка идёт через
+ * innerHTML, а он обнуляет scrollTop: содержимое схлопывается, браузер зажимает
+ * прокрутку в 0, и вернуть её потом уже некому. Тот же приём применён в
+ * calendarView.js (renderEventsPanel) и searchBar.js («Ещё совпадений»).
+ *
+ * Ключ — data-role, а не сам элемент: полный render() пересоздаёт панели, и
+ * возвращать позицию приходится уже другим узлам.
+ */
+function panelScrollTops(container) {
+  const tops = new Map();
+  container.querySelectorAll(".panel-body").forEach((el) => tops.set(el.dataset.role, el.scrollTop));
+  return tops;
+}
+
+function applyPanelScrollTops(container, tops) {
+  container.querySelectorAll(".panel-body").forEach((el) => {
+    const top = tops.get(el.dataset.role);
+    if (top != null) el.scrollTop = top;
+  });
+}
+
 function render(container, config, state) {
+  // Любая правка через ПКМ — избранное, закрепить, переименовать, удалить —
+  // заканчивается здесь, и без снятой заранее позиции длинный список каждый раз
+  // прыгал в начало. Свежесмонтированному разделу возвращать нечего: роутер
+  // вычистил #app-view, старых панелей в DOM нет и карта выйдет пустой, так что
+  // отдельный признак «первый это рендер или нет» не нужен.
+  const scrollTops = panelScrollTops(container);
+
   // Свёрнутый список заметок не исчезает: пока панель папок развёрнута, он
   // складывается в неё горизонтальной вкладкой.
   //
@@ -236,6 +265,9 @@ function render(container, config, state) {
   renderList(container, config, state);
   renderDetail(container, config, state);
   wireHeaderActions(container, config, state);
+  // После renderDetail: он пересоздаёт редактор и может увести окно к концу
+  // текста (scrollIntoView), а панели должны встать на место уже поверх этого.
+  applyPanelScrollTops(container, scrollTops);
 }
 
 function wireHeaderActions(container, config, state) {
@@ -594,6 +626,9 @@ function renderFolderRow(folder, state, depth, parentContext, chain) {
 
 function renderFolders(container, config, state) {
   const bodyEl = container.querySelector('[data-role="folder-body"]');
+  // Панель перерисовывают и в обход render() — например при клике по папке.
+  // Там узел остаётся прежним, но innerHTML всё равно сбрасывает прокрутку.
+  const scrollTop = bodyEl.scrollTop;
 
   const trashCount = countTrash(state);
 
@@ -616,6 +651,7 @@ function renderFolders(container, config, state) {
         .join("")}
     </ul>
   `;
+  bodyEl.scrollTop = scrollTop;
 
   // Пришли из поиска: показываем, какая именно папка нашлась. Метка одноразовая.
   if (state.flashFolderId) {
@@ -934,9 +970,13 @@ function renderTrashList(bodyEl, titleEl, container, config, state) {
 function renderList(container, config, state) {
   const bodyEl = container.querySelector('[data-role="list-body"]');
   const titleEl = container.querySelector('[data-role="list-title"]');
+  // Список перерисовывают и в обход render(): перестановка мышью, клик по папке
+  // и — на КАЖДЫЙ введённый символ — сохранение заголовка открытой заметки.
+  const scrollTop = bodyEl.scrollTop;
 
   if (state.selectedFolderId === "trash") {
     renderTrashList(bodyEl, titleEl, container, config, state);
+    bodyEl.scrollTop = scrollTop;
     return;
   }
 
@@ -975,6 +1015,7 @@ function renderList(container, config, state) {
       ${isEmpty ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
     </ul>
   `;
+  bodyEl.scrollTop = scrollTop;
 
   bodyEl.querySelectorAll("[data-item-id]").forEach((el) => {
     const itemId = el.dataset.itemId;
