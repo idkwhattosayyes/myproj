@@ -908,6 +908,11 @@ function applyLineDirection(editorEl) {
 function normalizeLines(editorEl) {
   let changed = false;
   editorEl.querySelectorAll(".rte-page").forEach((page) => {
+    // Порядок важен: сперва разбираем вложенные друг в друга блоки, и только
+    // потом собираем «бездомное» — иначе wrapLooseContent завернул бы всплывшие
+    // пункты в строку и получилось бы ровно то, от чего лечим.
+    if (flattenNestedLines(page)) changed = true;
+    if (rescueOrphanItems(page)) changed = true;
     if (wrapLooseContent(page)) changed = true;
     [...page.children].filter(isTextLine).forEach((line) => {
       if (splitLineAtBreaks(line)) changed = true;
@@ -916,6 +921,115 @@ function normalizeLines(editorEl) {
   // Появление атрибута не сдвигает ни одного символа, поэтому в changed не идёт:
   // иначе каретка восстанавливалась бы после каждой команды без всякой нужды.
   applyLineDirection(editorEl);
+  return changed;
+}
+
+// Блоки, которым не место внутри строки: они сами — строки листа либо содержимое
+// списка. Служебные слои (.rte-photo-handles и прочее с префиксом rte-) не в
+// счёт, их положение осмысленно; фото и рисунки тоже не трогаем — они живут
+// внутри текста намеренно.
+const NESTED_BLOCK_SELECTOR = "h1,h2,h3,p,div,ul,ol,li";
+
+function isNestedBlock(node) {
+  return (
+    node.nodeType === Node.ELEMENT_NODE
+    && node.matches(NESTED_BLOCK_SELECTOR)
+    && !node.className.startsWith("rte-")
+  );
+}
+
+/**
+ * Строки листа не вкладываются друг в друга. Отступ, выравнивание и якорь
+ * рисунка принадлежат БЛОКУ, поэтому блок, внутри которого лежит ещё один,
+ * тянет чужие строки за собой: Tab на одной из них сдвигал их все, а список,
+ * попавший внутрь строки, забирал её отступ себе.
+ *
+ * Такую разметку оставляли и снятие списка (до правки), и старый
+ * execCommand("insertUnorderedList"), который клал <ul> внутрь строки. Поэтому
+ * разбор нужен не только на будущее, но и для уже сохранённых заметок — он
+ * идёт при каждом открытии (normalizeLines вызывается на старте редактора).
+ *
+ * Разворачиваем по порядку: вложенный блок поднимается на уровень листа, а
+ * куски текста между такими блоками становятся самостоятельными строками того
+ * же вида, что и исходная.
+ */
+function flattenNestedLines(page) {
+  let changed = false;
+  [...page.children].forEach((line) => {
+    if (!isTextLine(line) || ![...line.children].some(isNestedBlock)) return;
+    changed = true;
+
+    let anchor = line;
+    let first = null;
+    let inline = [];
+
+    function place(node) {
+      anchor.after(node);
+      anchor = node;
+      if (!first) first = node;
+    }
+
+    function flushInline() {
+      // Пустышка из одних пробелов — это разделитель разметки, а не строка.
+      const meaningful = inline.some(
+        (node) => node.nodeType !== Node.TEXT_NODE || node.textContent.trim() !== "",
+      );
+      if (!meaningful) {
+        inline = [];
+        return;
+      }
+      const part = line.cloneNode(false);
+      delete part.dataset.anchor;
+      inline.forEach((node) => part.appendChild(node));
+      inline = [];
+      place(part);
+    }
+
+    [...line.childNodes].forEach((node) => {
+      if (isNestedBlock(node)) {
+        flushInline();
+        place(node);
+        return;
+      }
+      inline.push(node);
+    });
+    flushInline();
+
+    // Якорь рисунка указывал на эту строку — передаём первому куску, иначе
+    // рисунок потеряет привязку и уедет (см. syncAnchors).
+    if (line.dataset.anchor && first) first.dataset.anchor = line.dataset.anchor;
+    line.remove();
+  });
+  return changed;
+}
+
+/**
+ * Пункт списка, оставшийся без списка, — след той же поломки: сам по себе <li>
+ * вне <ul>/<ol> не значит ничего, маркер ему рисовать неоткуда. Подряд идущие
+ * собираем обратно в один список.
+ *
+ * Вид угадываем по отметке «выполнено»: она бывает только в чек-листе. Без неё
+ * считаем маркированным — это то, чем список выглядит по умолчанию.
+ */
+function rescueOrphanItems(page) {
+  let changed = false;
+  let group = [];
+
+  function flush() {
+    if (!group.length) return;
+    const kind = group.some((li) => li.classList.contains("is-done")) ? "checklist" : "bullet";
+    const list = createList(kind);
+    group[0].before(list);
+    group.forEach((li) => list.appendChild(li));
+    group = [];
+    changed = true;
+  }
+
+  [...page.children].forEach((node) => {
+    if (node.tagName === "LI") group.push(node);
+    else flush();
+  });
+  flush();
   return changed;
 }
 
@@ -3750,42 +3864,68 @@ function wrapLinesInList(lines, kind) {
   return list;
 }
 
-// Пункты → обычные строки. Список разрезается: что шло выше, остаётся в исходном,
-// что ниже — уезжает в такую же копию следом. Отметки «выполнено» у соседей при
-// этом не трогаются, потому что переносятся узлы, а не разметка текстом.
+/**
+ * Пункты → обычные строки. Список разрезается: что шло выше, остаётся в исходном,
+ * что ниже — уезжает в такую же копию следом. Отметки «выполнено» у соседей при
+ * этом не трогаются, потому что переносятся узлы, а не разметка текстом.
+ *
+ * Вложенный пункт сперва поднимается на верхний уровень. Иначе получившаяся
+ * строка осталась бы лежать ВНУТРИ чужого пункта, а строка внутри строки — это
+ * общий на двоих блок: отступ принадлежит блоку, и Tab на одной из таких строк
+ * двигал их все разом (замер: data-indent уезжал на внешний блок, вместе с ним
+ * съезжали три строки). Порядок чтения при подъёме не рвётся — outdentListItem
+ * уносит с собой то, что шло ниже. Обходим пункты с конца: каждый встаёт сразу
+ * за родительским, и при обратном порядке они ложатся в исходной
+ * последовательности.
+ */
 function unwrapListItems(list, items) {
+  [...items].reverse().forEach((li) => {
+    while (outdentListItem(li)); // до верхнего уровня своего списка
+  });
+  const topList = items[0].parentElement;
+
   const following = [];
   for (let next = items[items.length - 1].nextElementSibling; next; next = next.nextElementSibling) {
     following.push(next);
   }
 
   const lines = items.map((li) => {
+    // Подсписок пункта в строку НЕ затягиваем: список внутри обычной строки —
+    // та же беда, что и строка внутри строки. Он остаётся списком и встанет
+    // отдельным блоком следом, сохранив свои пункты и их отступ.
+    const nested = [...li.children].filter((child) => child.matches("ul,ol"));
+    nested.forEach((sub) => sub.remove());
+
     const line = document.createElement("div");
     if (li.hasAttribute("dir") && li.dir !== "auto") line.dir = li.dir;
     while (li.firstChild) line.appendChild(li.firstChild);
     fillEmptyLine(line);
-    return line;
+    return { line, nested };
   });
 
-  let anchor = list;
-  lines.forEach((line) => {
+  let anchor = topList;
+  lines.forEach(({ line, nested }) => {
     anchor.after(line);
     anchor = line;
+    nested.forEach((sub) => {
+      anchor.after(sub);
+      anchor = sub;
+    });
   });
   // Якорь рисунка живёт на одном блоке: список перестал быть тем блоком, где
   // стоит текст, — отдаём его первой получившейся строке.
-  if (list.dataset.anchor && lines.length) {
-    lines[0].dataset.anchor = list.dataset.anchor;
-    delete list.dataset.anchor;
+  if (topList.dataset.anchor && lines.length) {
+    lines[0].line.dataset.anchor = topList.dataset.anchor;
+    delete topList.dataset.anchor;
   }
 
   if (following.length) {
-    const tail = cloneEmptyList(list);
+    const tail = cloneEmptyList(topList);
     following.forEach((li) => tail.appendChild(li));
     anchor.after(tail);
   }
   items.forEach((li) => li.remove());
-  if (!list.children.length) list.remove();
+  if (!topList.children.length) topList.remove();
 }
 
 // Смена вида: пункты выносятся в собственный список нужного вида, соседи сверху и
