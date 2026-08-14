@@ -208,6 +208,37 @@ function applyPanelScrollTops(container, tops) {
   });
 }
 
+/**
+ * Что показано справа. Прокрутку СТРАНИЦЫ возвращаем только если после
+ * перерисовки там осталось то же самое: открыли другую заметку — её текст обязан
+ * показаться с начала, а не с чужой позиции.
+ */
+function detailKey(state) {
+  const trash = state.selectedTrash ? `${state.selectedTrash.kind}:${state.selectedTrash.id}` : "";
+  return `${state.selectedItemId || ""}|${trash}`;
+}
+
+/**
+ * Возврат прокрутки окна после перерисовки раздела.
+ *
+ * Панель детали своего скролла не имеет — прокручивается само окно. Пока
+ * container.innerHTML пуст, высота документа схлопывается, и браузер зажимает
+ * прокрутку страницы в 0. Наш код при этом не двигает окно вообще: замер
+ * владельца показал переход 1476 → 0 без единого вызова scrollTo или
+ * scrollIntoView в стеке.
+ *
+ * Второй заход через requestAnimationFrame обязателен: высота на момент возврата
+ * может быть ещё не окончательной (лист пересчитывает свой масштаб через
+ * --page-fit), а scrollTo по слишком короткому документу молча зажимается.
+ */
+function restorePageScroll(y) {
+  if (window.scrollY === y) return;
+  window.scrollTo(window.scrollX, y);
+  requestAnimationFrame(() => {
+    if (window.scrollY !== y) window.scrollTo(window.scrollX, y);
+  });
+}
+
 function render(container, config, state) {
   // Любая правка через ПКМ — избранное, закрепить, переименовать, удалить —
   // заканчивается здесь, и без снятой заранее позиции длинный список каждый раз
@@ -215,6 +246,13 @@ function render(container, config, state) {
   // вычистил #app-view, старых панелей в DOM нет и карта выйдет пустой, так что
   // отдельный признак «первый это рендер или нет» не нужен.
   const scrollTops = panelScrollTops(container);
+  const pageScrollY = window.scrollY;
+  // Та же заметка останется открытой — значит место, где читали, надо сохранить.
+  const sameDetail = state.renderedDetailKey === detailKey(state);
+  // renderDetail в двух случаях уводит окно НАМЕРЕННО: к найденному из поиска и в
+  // конец текста у заметки с openAtEnd. Там возвращать прежнюю позицию нельзя —
+  // она отменила бы прыжок. Флаг одноразовый, как pendingMatch рядом с ним.
+  state.detailScrolled = false;
 
   // Свёрнутый список заметок не исчезает: пока панель папок развёрнута, он
   // складывается в неё горизонтальной вкладкой.
@@ -268,6 +306,8 @@ function render(container, config, state) {
   // После renderDetail: он пересоздаёт редактор и может увести окно к концу
   // текста (scrollIntoView), а панели должны встать на место уже поверх этого.
   applyPanelScrollTops(container, scrollTops);
+  state.renderedDetailKey = detailKey(state);
+  if (sameDetail && !state.detailScrolled) restorePageScroll(pageScrollY);
 }
 
 function wireHeaderActions(container, config, state) {
@@ -1424,12 +1464,14 @@ function renderDetail(container, config, state) {
   if (state.pendingMatch) {
     editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoIndex);
     state.pendingMatch = null;
+    state.detailScrolled = true;
   } else if (item.openAtEnd) {
     // Прокручивается само окно (внутреннего скролл-контейнера у редактора нет),
     // поэтому показываем нижний край текста. Только после refreshLayout: до него
     // высоты страниц ещё не посчитаны и прыжок пришёлся бы не туда. Переход из
     // поиска важнее — там прыгаем к найденному, а не в конец.
     contentEl.scrollIntoView({ block: "end" });
+    state.detailScrolled = true;
   }
 
   const titleInput = detailEl.querySelector('[data-role="title-input"]');
