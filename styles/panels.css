@@ -439,6 +439,12 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
   padding: 0.3rem;
   min-width: 170px;
+  /* Страховка на низкое окно: если меню не влезает даже развёрнутым вверх, оно
+     прижимается к верху экрана (см. placeMenu) и прокручивается внутри себя —
+     недостижимых пунктов не остаётся. Запас 16px — те же 8px зазора с двух
+     сторон, которыми placeMenu отступает от краёв. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .context-menu-item {
