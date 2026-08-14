@@ -3167,6 +3167,39 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     onChange(serializeEditor(contentEl));
   });
 
+  /**
+   * Enter на ПУСТОМ вложенном пункте — выход ровно на один уровень, как
+   * Shift+Tab, и только для этой строки.
+   *
+   * Пустой пункт для браузера значит «список кончился», и закрыть его он
+   * пытается честно, но грубо: вынимает весь подсписок из его <li> и кладёт
+   * прямо во внешний <ul>. Такой вложенности в разметке не бывает (внутри
+   * списка живут только <li>), и соседний пункт, которого никто не трогал,
+   * теряет отступ вместе с уехавшей обёрткой — замер: пункт съезжал влево на
+   * 22px, ширину поля своего бывшего родителя.
+   *
+   * Верхний уровень оставляем браузеру: там выход из списка он делает верно —
+   * пункт становится обычной строкой, а список при этом делится надвое.
+   */
+  contentEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    const selection = window.getSelection();
+    if (!selection.rangeCount || !selection.getRangeAt(0).collapsed) return;
+    const li = getCaretBlock(contentEl);
+    if (!li || li.tagName !== "LI" || !isLineEmpty(li)) return;
+
+    // Каретку снимаем узлом: пункт переезжает целиком, а символьного смещения
+    // в пустой строке не существует (см. saveCaret).
+    const caret = saveCaret();
+    if (!outdentListItem(li)) return; // уже верхний уровень — не наше дело
+    event.preventDefault();
+    restoreCaret(caret);
+    // Перенос узлов идёт мимо MutationObserver истории не полностью, но снимок
+    // пишется с задержкой — фиксируем сразу, как в обработчике Tab.
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  });
+
   // Backspace на пустой строке с отступом снимает сначала отступ и только
   // следующим нажатием удаляет саму строку. Иначе поставленный Tab снять было
   // нечем: строка с отступом тянула его за собой и на все новые строки после
