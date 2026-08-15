@@ -610,6 +610,37 @@ function colorCarrier(editorEl, node, styleProp) {
   return null;
 }
 
+/**
+ * Цвет букв и заливка в точке каретки — то, чем прямо сейчас идёт печать.
+ *
+ * Заливку находит colorCarrier: hiliteColor кладёт её в <span style>. А вот
+ * foreColor при выключенном styleWithCSS пишет <font color="…"> — АТРИБУТОМ, и
+ * по el.style.color такой носитель не найти, поэтому цвет букв ищем отдельно.
+ * style.color тоже принимаем: он приходит со вставкой из буфера.
+ *
+ * Читаем именно инлайновую разметку, а не computed-стиль: серый цвет
+ * отмеченного пункта to-do задан правилом CSS (li.is-done), и computed вернул
+ * бы его наравне с выбранным пользователем. Такой цвет переносить на новую
+ * строку нельзя — он не выбор пользователя, а вид отметки.
+ */
+function caretColors(editorEl, node) {
+  const carrier = colorCarrier(editorEl, node, "backgroundColor");
+  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  let color = "";
+  while (el && editorEl.contains(el) && !el.classList.contains("rte-page")) {
+    if (el.style && el.style.color) {
+      color = el.style.color;
+      break;
+    }
+    if (el.tagName === "FONT" && el.getAttribute("color")) {
+      color = el.getAttribute("color");
+      break;
+    }
+    el = el.parentElement;
+  }
+  return { color, background: carrier ? carrier.style.backgroundColor : "" };
+}
+
 // Тумблер цвета при СХЛОПНУТОЙ каретке. Нативный execCommand в этом случае не
 // разрывает залитый span и не выводит каретку наружу — печать продолжается с
 // заливкой, пока не кликнешь мышью в другое место. Поэтому здесь та же механика,
@@ -3026,6 +3057,47 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     placeCaretAfter(caretHost, 0);
   }
 
+  // Цвет и заливка, снятые перед разрывом строки. Одноразовое значение, как
+  // pendingMatch у панели: применили на новой строке — обнулили.
+  let pendingLineColors = null;
+
+  // Снимаем ДО разрыва, а не после. К моменту input новая строка уже создана, и
+  // разметку, которую Chrome на неё скопировал, тут же сносит clearEmptiedBlock —
+  // спрашивать было бы уже не у кого. Здесь же каретка ещё стоит в старой строке,
+  // где оформление на месте.
+  contentEl.addEventListener("beforeinput", (event) => {
+    if (event.inputType !== "insertParagraph") return;
+    const selection = window.getSelection();
+    pendingLineColors = selection.rangeCount ? caretColors(contentEl, selection.getRangeAt(0).startContainer) : null;
+  });
+
+  /**
+   * Возвращает на новую пустую строку цвет и заливку, которыми печатали до Enter:
+   * clearEmptiedBlock только что снёс с неё всю разметку вместе с ними, и печать
+   * продолжилась бы обычным текстом.
+   *
+   * Пустой span с якорем внутри — тот же приём, что у enterInlineFormat и
+   * toggleColorAtCaret: каретка внутри тега, дальнейший ввод сразу оформляется.
+   * stripEditingLeftovers такую обёртку намеренно оставляет при сохранении.
+   *
+   * Строку с текстом не трогаем: там разметку перенёс сам Chrome и она цела —
+   * работаем только по пустой, то есть ровно по той, которую зачистили.
+   */
+  function restoreLineColors() {
+    const colors = pendingLineColors;
+    pendingLineColors = null;
+    if (!colors || (!colors.color && !colors.background)) return;
+    const block = getCaretBlock(contentEl);
+    if (!block || !isLineEmpty(block)) return;
+
+    const wrapper = document.createElement("span");
+    if (colors.color) wrapper.style.color = colors.color;
+    if (colors.background) wrapper.style.backgroundColor = colors.background;
+    wrapper.appendChild(document.createTextNode(CARET_ANCHOR));
+    block.replaceChildren(wrapper, document.createElement("br"));
+    placeCaretAfter(wrapper.firstChild, wrapper.firstChild.length);
+  }
+
   contentEl.addEventListener("input", (event) => {
     // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
     if (event.inputType && event.inputType.startsWith("delete")) {
@@ -3046,6 +3118,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // И новый пункт to-do не рождается выполненным: сам класс отметки Chrome
       // тоже копирует вместе со строкой (см. clearDoneOnEmptyItems).
       clearDoneOnEmptyItems(contentEl);
+      // Строго после зачистки: она сносит со строки всё подряд, а цвет с заливкой
+      // пережить Enter обязаны — иначе продолжать писать тем же цветом нельзя.
+      restoreLineColors();
     }
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
