@@ -921,7 +921,18 @@ function normalizeLines(editorEl) {
   // Появление атрибута не сдвигает ни одного символа, поэтому в changed не идёт:
   // иначе каретка восстанавливалась бы после каждой команды без всякой нужды.
   applyLineDirection(editorEl);
+  clearDoneOnEmptyItems(editorEl);
   return changed;
+}
+
+// Отметка «выполнено» на ПУСТОМ пункте смысла не имеет — выполнять там нечего.
+// Отметка живёт классом на <li>, а Chrome по Enter клонирует строку вместе с
+// классами: новая, ещё пустая задача появлялась уже отмеченной и зачёркнутой.
+// Снятие класса ни одного символа не двигает, поэтому в changed тоже не идёт.
+function clearDoneOnEmptyItems(editorEl) {
+  editorEl.querySelectorAll("li.is-done").forEach((li) => {
+    if (isLineEmpty(li)) li.classList.remove("is-done");
+  });
 }
 
 // Блоки, которым не место внутри строки: они сами — строки листа либо содержимое
@@ -3030,7 +3041,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // отмеченного пункта получала <font><strike> и печаталась зачёркнутой.
     // Строка с текстом сюда не попадает — clearEmptiedBlock трогает только
     // пустые.
-    if (event.inputType === "insertParagraph") clearEmptiedBlock();
+    if (event.inputType === "insertParagraph") {
+      clearEmptiedBlock();
+      // И новый пункт to-do не рождается выполненным: сам класс отметки Chrome
+      // тоже копирует вместе со строкой (см. clearDoneOnEmptyItems).
+      clearDoneOnEmptyItems(contentEl);
+    }
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
     // так что dir у неё наследуется и без нас — а вот вставленному тексту его
