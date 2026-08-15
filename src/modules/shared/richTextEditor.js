@@ -1554,10 +1554,37 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     sel.addRange(range);
   }
 
+  /**
+   * Каретка на момент, когда правка ТОЛЬКО НАЧАЛАСЬ. Снимается в beforeinput —
+   * там разметка ещё дописьменная, и смещение не сдвинуто тем, что сейчас
+   * вставят. Живёт до ближайшего записанного снимка, который её и забирает.
+   */
+  let pendingCaretBefore = null;
+
+  /**
+   * Снимок помнит ДВА положения каретки, и это не прихоть.
+   *
+   * caret — где каретка оказалась, когда снимок записан (конец правки).
+   * caretBefore — где она была, когда правка началась.
+   *
+   * Отмена возвращает содержимое ПРЕДЫДУЩЕГО снимка, и брать каретку оттуда
+   * нельзя: предыдущий снимок помнит место, где работали шагом раньше, а щелчок
+   * мышью между правками снимка не создаёт (наблюдатель следит за содержимым, не
+   * за выделением). Отсюда и жалоба: правка на 4-й строке, Ctrl+Z — и каретка на
+   * 2-й, где печатали до этого.
+   *
+   * Имя caret оставлено прежним намеренно: история хранится в заметке между
+   * сессиями (historyStore в panelSection), и переименование обнулило бы каретку
+   * во всех уже сохранённых снимках.
+   */
   function recordHistory() {
     clearTimeout(historyTimer);
-    const snapshot = { html: serializeEditor(contentEl), caret: getCaretOffset() };
+    const caret = getCaretOffset();
+    const snapshot = { html: serializeEditor(contentEl), caret, caretBefore: pendingCaretBefore === null ? caret : pendingCaretBefore };
     if (history[historyIndex] && snapshot.html === history[historyIndex].html) return;
+    // Обнуляем только когда снимок правда записан: если правка не изменила
+    // разметку, начало следующей — всё ещё то самое место.
+    pendingCaretBefore = null;
     // Обрезаем «хвост» повтора: после новой правки вперёд идти уже некуда.
     history = history.slice(0, historyIndex + 1);
     history.push(snapshot);
@@ -1588,7 +1615,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     characterData: true,
   });
 
-  function restoreSnapshot(entry) {
+  function restoreSnapshot(entry, caretOffset) {
     isRestoring = true;
     // Прокрутка живёт на уровне окна (панель детали своего скролла не имеет).
     // Пересборка страниц схлопывает высоту и сбрасывает scroll к началу —
@@ -1600,8 +1627,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     upgradeLegacyChecklists(contentEl);
     upgradeLegacyIndents(contentEl);
     activePageEl = getPages()[0] || null;
-    // Курсор возвращаем туда, где он был при записи снимка, а не в начало.
-    setCaretOffset(entry.caret);
+    // Курсор — туда, где выполнялось отменяемое (или повторяемое) действие, а не
+    // в начало. Куда именно, решают undo/redo: у снимка два положения каретки.
+    setCaretOffset(caretOffset === undefined ? entry.caret : caretOffset);
     onChange(entry.html);
     refreshPages();
     refreshToolbarState();
@@ -1612,18 +1640,29 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     isRestoring = false;
   }
 
+  // Снимки старых заметок записаны, когда поле было одно. Для них начало правки
+  // неизвестно — берём то единственное, что есть.
+  function caretBeforeOf(entry) {
+    return entry.caretBefore === undefined ? entry.caret : entry.caretBefore;
+  }
+
   function undo() {
     recordHistory(); // зафиксировать несохранённый ввод перед шагом назад
     if (historyIndex <= 0) return;
+    // Содержимое берём из предыдущего снимка, а каретку — из ОТМЕНЯЕМОГО: место,
+    // где начиналось действие, которое мы сейчас откатываем.
+    const undone = history[historyIndex];
     historyIndex--;
-    restoreSnapshot(history[historyIndex]);
+    restoreSnapshot(history[historyIndex], caretBeforeOf(undone));
     notifyHistoryChange();
   }
 
   function redo() {
     if (historyIndex >= history.length - 1) return;
     historyIndex++;
-    restoreSnapshot(history[historyIndex]);
+    // Повтор возвращает действие целиком, поэтому и каретка встаёт туда, где она
+    // оказалась по его завершении.
+    restoreSnapshot(history[historyIndex], history[historyIndex].caret);
     notifyHistoryChange();
   }
   // ---------------------------------------------------------------------
@@ -3066,6 +3105,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // спрашивать было бы уже не у кого. Здесь же каретка ещё стоит в старой строке,
   // где оформление на месте.
   contentEl.addEventListener("beforeinput", (event) => {
+    // Начало правки для истории — на первое событие серии: дальше символы уже
+    // сдвинут смещение, а нужна точка, с которой правка стартовала. Забирает его
+    // ближайший записанный снимок (см. recordHistory).
+    if (pendingCaretBefore === null) pendingCaretBefore = getCaretOffset();
+
     if (event.inputType !== "insertParagraph") return;
     const selection = window.getSelection();
     pendingLineColors = selection.rangeCount ? caretColors(contentEl, selection.getRangeAt(0).startContainer) : null;
