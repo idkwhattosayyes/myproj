@@ -9,7 +9,9 @@ import { openLinkPicker } from "../../search/searchBar.js";
 import { escapeAttr } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
-import { createBlockSync, pageLines, getBlockTagIds } from "./blockTags.js";
+import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock } from "./blockTags.js";
+import { openAnchoredMenu } from "./anchoredMenu.js";
+import { openBlockTagEditor } from "./blockTagEditor.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   TEXT_COLORS,
@@ -193,6 +195,11 @@ function getButtonDefs() {
     // allowInternalLinks в createRichTextEditor), обрабатывается отдельно в
     // buildToolbarButton (isInternalLink), по той же схеме, что и isLink.
     internalLink: { label: "📄", title: t("editor.setInternalLink"), isInternalLink: true },
+    // Тег блока — не команда форматирования: открывает Add/Create вместо
+    // прямого применения, обрабатывается отдельно в buildToolbarButton (isTag).
+    // В основной тулбар не попадает — только в мини-панель на выделении, см.
+    // selectionButtons в showSelectionToolbar.
+    tag: { label: "#", title: t("editor.tag"), isTag: true },
     // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
     // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
     // доступ к сохранённому диапазону и serializeEditor.
@@ -1333,6 +1340,79 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Границы блоков (data-block-start/end) не хранятся в заметке как источник
   // истины — досчитываем их сразу, до первой отрисовки.
   syncBlocks();
+  // Тот же приём, что ensureAnchorId у фото: счётчик id в замыкании редактора.
+  const ensureBlockId = ensureBlockIdFactory(contentEl);
+
+  /**
+   * Привязывает тег к строкам lines. Если среди них уже есть блок — расширяет
+   * его на всё новое выделение (сузить блок может только явный роспуск, не
+   * повторная привязка тега). Если выделение зацепило сразу ДВА разных
+   * существующих блока — решение принято заранее, ТЗ такой случай не
+   * описывает: они сливаются в один, id берёт самый верхний блок. Новых
+   * строк без блока вовсе — заводится новый id.
+   */
+  function attachTagToLines(lines, tag) {
+    const page = lines[0].closest(".rte-page");
+    const existingIds = [...new Set(lines.map((line) => line.dataset.blockId).filter(Boolean))];
+
+    let blockId;
+    let targetLines;
+    let tagIds;
+    if (!existingIds.length) {
+      blockId = ensureBlockId();
+      targetLines = lines;
+      tagIds = [tag.id];
+    } else {
+      blockId = existingIds[0]; // порядок existingIds = порядок строк в lines, значит первый — самый верхний
+      const merged = new Set(lines);
+      const priorTagIds = new Set();
+      existingIds.forEach((id) => {
+        getBlockLines(page, id).forEach((line) => {
+          merged.add(line);
+          getBlockTagIds(line).forEach((tagId) => priorTagIds.add(tagId));
+        });
+      });
+      priorTagIds.add(tag.id);
+      targetLines = [...merged];
+      tagIds = [...priorTagIds];
+    }
+
+    assignBlock(targetLines, blockId, tagIds);
+    syncBlocks();
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  }
+
+  function openTagAddMenu(x, y, lines, onApplied) {
+    const items = [...tagRegistry.values()].map((tag) => ({
+      label: tag.name,
+      onClick: () => {
+        attachTagToLines(lines, tag);
+        focusActivePage();
+        onApplied();
+      },
+    }));
+    openAnchoredMenu(x, y, items);
+  }
+
+  async function openTagCreateEditor(lines, onApplied) {
+    // Генерируем id заранее — форма создания показывает его с первого кадра
+    // (ТЗ п.3), а не только после сохранения.
+    const id = crypto.randomUUID();
+    await openBlockTagEditor({
+      mode: "create",
+      id,
+      onSubmit: async ({ name, color }) => {
+        const result = await blockTagsService.createTag({ id, name, color });
+        if (result.error === "taken") return { ok: false, message: t("editor.tagNameTaken") };
+        tagRegistry.set(result.tag.id, result.tag);
+        attachTagToLines(lines, result.tag);
+        return { ok: true };
+      },
+    });
+    focusActivePage();
+    onApplied();
+  }
 
   // Новая страница появляется только по явному действию — текст сам по себе на
   // следующую страницу не перетекает.
@@ -3065,6 +3145,18 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           onApplied();
         }
       });
+    } else if (def.isTag) {
+      // Строки берём сейчас — к моменту клика в Add/Create фокус уйдёт из
+      // редактора, и выделение схлопнется.
+      btn.addEventListener("click", () => {
+        const lines = getSelectedLines(contentEl);
+        if (!lines.length) return;
+        const rect = btn.getBoundingClientRect();
+        openAnchoredMenu(rect.left, rect.bottom, [
+          { label: t("editor.tagAdd"), onClick: () => openTagAddMenu(rect.left, rect.bottom, lines, onApplied) },
+          { label: t("editor.tagCreate"), onClick: () => openTagCreateEditor(lines, onApplied) },
+        ]);
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -3297,7 +3389,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     closeSelectionToolbar();
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
-    const selectionButtons = ["bold", "underline", "strikethrough", "textColor", "highlight", "link"];
+    const selectionButtons = ["bold", "underline", "strikethrough", "textColor", "highlight", "link", "tag"];
     if (allowInternalLinks) selectionButtons.push("internalLink");
     // Перенос на следующую страницу — только здесь и только в постраничном режиме.
     // В toolbarButtons/basicToolbarButtons этот ключ не значится вовсе, поэтому в

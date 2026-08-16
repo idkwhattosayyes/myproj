@@ -381,6 +381,45 @@ button {
   color: #1f2328;
 }
 
+/* Окно создания/редактирования тега блока (см. blockTagEditor.js) — имя и
+   цвет в одной строке, id только для чтения ниже, ошибка "уже занято" —
+   под полем имени, а не всплывающим алертом (её нужно видеть рядом с тем,
+   что правишь). */
+.block-tag-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.block-tag-editor-row .modal-input {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.block-tag-editor-color {
+  flex-shrink: 0;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: none;
+}
+
+.block-tag-editor-id {
+  margin: 0 0 0.9rem;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.block-tag-editor-error {
+  margin: -0.4rem 0 0.9rem;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
 
 /* Окно выбора для экспорта/импорта: дерево «папки → заметки» с галочками слева
    и превью заметки справа. Размер средний — шире обычной модалки, но не на весь
