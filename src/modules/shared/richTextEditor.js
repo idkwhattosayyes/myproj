@@ -8,6 +8,8 @@ import { openLinkEditor } from "./linkEditor.js";
 import { openLinkPicker } from "../../search/searchBar.js";
 import { escapeAttr } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
+import * as blockTagsService from "../../services/blockTagsService.js";
+import { createBlockSync, pageLines, getBlockTagIds } from "./blockTags.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   TEXT_COLORS,
@@ -309,7 +311,7 @@ function serializeEditor(editorEl) {
       // выделения фото (.rte-photo-handles) и класс подсветки выделения — тоже
       // временный UI, не часть содержимого заметки.
       const clone = page.cloneNode(true);
-      clone.querySelectorAll(".rte-interim, .rte-photo-handles").forEach((node) => node.remove());
+      clone.querySelectorAll(".rte-interim, .rte-photo-handles, .rte-block-dots").forEach((node) => node.remove());
       clone.querySelectorAll(".rte-photo.is-selected").forEach((el) => el.classList.remove("is-selected"));
       stripEditingLeftovers(clone);
       return `<div class="rte-page">${clone.innerHTML}</div>`;
@@ -966,6 +968,40 @@ function clearDoneOnEmptyItems(editorEl) {
   });
 }
 
+// Полоску рисует CSS по data-block-start/end (см. editor.css) — здесь только
+// проставляется цвет первого тега блока (--block-tag-color, читает его сам
+// псевдоэлемент) и собираются точки для тегов сверх первого: их число и цвет
+// динамические, чистым CSS не нарисовать. tagRegistry — Map id → {name,color},
+// снятая с blockTagsService при открытии редактора (см. refreshTagRegistry).
+function renderBlockVisuals(editorEl, tagRegistry) {
+  editorEl.querySelectorAll(".rte-page").forEach((page) => {
+    // Точки — под снос каждый раз: их немного, пересобрать дешевле, чем
+    // сверять поштучно, кто добавился, а кто пропал.
+    page.querySelectorAll(":scope > .rte-block-dots").forEach((el) => el.remove());
+    pageLines(page).forEach((line) => {
+      const ids = getBlockTagIds(line);
+      if (!ids.length) {
+        line.style.removeProperty("--block-tag-color");
+        return;
+      }
+      const first = tagRegistry.get(ids[0]);
+      line.style.setProperty("--block-tag-color", first ? first.color : "transparent");
+      if (line.dataset.blockStart !== "true" || ids.length < 2) return;
+      const dots = document.createElement("div");
+      dots.className = "rte-block-dots";
+      dots.contentEditable = "false";
+      dots.style.top = `${line.offsetTop}px`;
+      ids.slice(1).forEach((id) => {
+        const dot = document.createElement("span");
+        const tag = tagRegistry.get(id);
+        dot.style.backgroundColor = tag ? tag.color : "transparent";
+        dots.appendChild(dot);
+      });
+      page.appendChild(dots);
+    });
+  });
+}
+
 // Блоки, которым не место внутри строки: они сами — строки листа либо содержимое
 // списка. Служебные слои (.rte-photo-handles и прочее с префиксом rte-) не в
 // счёт, их положение осмысленно; фото и рисунки тоже не трогаем — они живут
@@ -1272,6 +1308,31 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Слипшиеся строки уже разошлись по сохранённым заметкам — чиним при открытии,
   // отдельной миграции для этого не нужно.
   normalizeLines(contentEl);
+  // createBlockSync запоминает уже имеющиеся строки как "старые" — это должно
+  // случиться один раз, сразу после normalizeLines и до первого реального
+  // редактирования, иначе разграничение "новое/старое" будет отсчитываться не
+  // от того момента.
+  const syncBlockGeometry = createBlockSync(contentEl);
+  // Реестр тегов заметке не принадлежит (он общий, app:blockTags) — снимаем
+  // копию при открытии, дальше держим в памяти и обновляем сами при
+  // создании/редактировании тега (см. openTagAddCreateMenu). Первая отрисовка
+  // идёт без цветов (реестр ещё не загружен), а как только промис разрешится —
+  // перекрашивается уже с настоящими.
+  let tagRegistry = new Map();
+  function refreshTagRegistry() {
+    return blockTagsService.listTags().then((tags) => {
+      tagRegistry = new Map(tags.map((tag) => [tag.id, tag]));
+      syncBlocks();
+    });
+  }
+  refreshTagRegistry();
+  function syncBlocks() {
+    syncBlockGeometry();
+    renderBlockVisuals(contentEl, tagRegistry);
+  }
+  // Границы блоков (data-block-start/end) не хранятся в заметке как источник
+  // истины — досчитываем их сразу, до первой отрисовки.
+  syncBlocks();
 
   // Новая страница появляется только по явному действию — текст сам по себе на
   // следующую страницу не перетекает.
@@ -1349,6 +1410,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Якорь привязывает рисунок к строке ЕГО страницы — уехав на другую, строка
     // утащила бы за собой чужую привязку. Тем же приёмом, что в splitLineAtBreaks.
     moved.querySelectorAll("[data-anchor]").forEach((el) => delete el.dataset.anchor);
+    // Блок физически ограничен одной страницей: кусок, уехавший на другую,
+    // становится обычным текстом, а то, что осталось на исходной странице,
+    // просто пересчитает границы (см. syncBlocks в refreshPages).
+    moved.querySelectorAll("[data-block-id]").forEach((el) => {
+      delete el.dataset.blockId;
+      delete el.dataset.tagIds;
+      delete el.dataset.blockStart;
+      delete el.dataset.blockEnd;
+    });
     // В начало, а не в конец: текст пришёл выше по документу, и порядок чтения
     // так и сохраняется.
     nextPage.insertBefore(moved, nextPage.firstChild);
@@ -1407,6 +1477,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // В самом конце: рисунки и фото сдвигаются вслед за своими строками, а
     // строки к этому моменту уже на своих окончательных местах.
     syncAnchors();
+    // refreshPages зовётся практически из всех мест, где меняется содержимое
+    // страниц (ввод, кнопки списка, undo/redo, перенос между страницами) —
+    // удобнее пересчитывать границы блоков здесь одним местом, чем на каждом
+    // вызывающем месте по отдельности.
+    syncBlocks();
   }
 
   function createPageDeleteButton(page) {
@@ -3012,6 +3087,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           if (caretNode && caretNode.node.isConnected) restoreCaret(caretNode);
           else setCaretOffset(caretOffset);
         }
+        // Эта ветка не проходит через refreshPages (списки/выравнивание границы
+        // страниц не трогают) — границы блоков пересчитываем отдельно, вдруг
+        // команда что-то слила или разделила прямо на границе блока.
+        syncBlocks();
         focusActivePage();
         onChange(serializeEditor(contentEl));
         refreshToolbarState();

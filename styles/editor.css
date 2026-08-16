@@ -701,6 +701,49 @@ button.rte-link-preview-row:hover {
   background: #f3f4f6;
 }
 
+/* Блок текста, помеченный тегом (см. blockTags.js в modules/shared) — тонкая
+   полупрозрачная полоска над первой и под последней строкой блока. Полоска —
+   псевдоэлемент самой строки, а не отдельный узел: data-block-start/end и
+   переменная --block-tag-color (её ставит JS в renderBlockVisuals) — этого
+   достаточно, лишний DOM на каждый блок ни к чему. */
+.rte-page > [data-block-start],
+.rte-page > [data-block-end] {
+  position: relative;
+}
+.rte-page > [data-block-start]::before,
+.rte-page > [data-block-end]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--block-tag-color, transparent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.rte-page > [data-block-start]::before { top: -3px; }
+.rte-page > [data-block-end]::after { bottom: -3px; }
+
+/* Точки — теги блока сверх первого (тот красит саму полоску). Количество и
+   цвет динамические, чистым CSS не нарисовать — настоящие узлы, но вне текста:
+   contenteditable="false" бережёт их от выделения мышью, тот же приём, что у
+   .rte-photo-handles. Сидят в поле страницы (в постраничном режиме это
+   отступ 76px, см. .rte-content.is-paged .rte-page) — на строку блока не
+   заходят и с текстом не смешиваются. */
+.rte-block-dots {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  gap: 3px;
+  pointer-events: none;
+}
+.rte-block-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
 .rte-add-page {
   display: block;
   margin: 0 auto 0.5rem;
