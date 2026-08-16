@@ -3617,6 +3617,27 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         },
       });
     }
+    // Роспуск блока — ПКМ на пустом месте внутри его границ (выделение уже
+    // отфильтровано веткой showSelectionToolbar выше, значит сюда попадает
+    // именно "пустое место", ТЗ п.16). Строку под курсором ищем так же, как
+    // getCaretLine, но от event.target, а не от текущего выделения — при ПКМ
+    // без выделения каретка могла остаться совсем в другом месте.
+    if (page) {
+      let line = event.target instanceof Element ? event.target : null;
+      while (line && line.parentElement !== page) line = line.parentElement;
+      const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
+      if (blockId) {
+        items.push({
+          label: t("editor.tagDissolve"),
+          onClick: () => {
+            setBlockTagIds(page, blockId, []);
+            syncBlocks();
+            recordHistory();
+            onChange(serializeEditor(contentEl));
+          },
+        });
+      }
+    }
     if (!items.length) return;
     event.preventDefault();
     showContextMenu(event.clientX, event.clientY, items);
