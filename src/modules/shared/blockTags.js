@@ -20,8 +20,12 @@
 // при правке одного проверяй и другой.
 const LINE_SELECTOR = "h1,h2,h3,p,div";
 
+// Служебные слои (точки-индикаторы, панель тегов) — тоже <div> среди прямых
+// потомков листа, но это не текст: тот же признак, что у isTextLine в
+// richTextEditor.js — класс с префиксом rte-. Без этого исключения они
+// засоряли бы индексное соседство в propagateBlockMembership.
 export function pageLines(page) {
-  return [...page.children].filter((el) => el.matches(LINE_SELECTOR));
+  return [...page.children].filter((el) => el.matches(LINE_SELECTOR) && !el.className.startsWith("rte-"));
 }
 
 export function getBlockTagIds(line) {

@@ -9,7 +9,7 @@ import { openLinkPicker } from "../../search/searchBar.js";
 import { escapeAttr } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
-import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock } from "./blockTags.js";
+import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock, setBlockTagIds } from "./blockTags.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
@@ -318,7 +318,7 @@ function serializeEditor(editorEl) {
       // выделения фото (.rte-photo-handles) и класс подсветки выделения — тоже
       // временный UI, не часть содержимого заметки.
       const clone = page.cloneNode(true);
-      clone.querySelectorAll(".rte-interim, .rte-photo-handles, .rte-block-dots").forEach((node) => node.remove());
+      clone.querySelectorAll(".rte-interim, .rte-photo-handles, .rte-block-dots, .rte-block-panel").forEach((node) => node.remove());
       clone.querySelectorAll(".rte-photo.is-selected").forEach((el) => el.classList.remove("is-selected"));
       stripEditingLeftovers(clone);
       return `<div class="rte-page">${clone.innerHTML}</div>`;
@@ -1383,7 +1383,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     onChange(serializeEditor(contentEl));
   }
 
-  function openTagAddMenu(x, y, lines, onApplied) {
+  function openTagAddMenu(x, y, lines, onApplied = () => {}) {
     const items = [...tagRegistry.values()].map((tag) => ({
       label: tag.name,
       onClick: () => {
@@ -1395,7 +1395,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     openAnchoredMenu(x, y, items);
   }
 
-  async function openTagCreateEditor(lines, onApplied) {
+  async function openTagCreateEditor(lines, onApplied = () => {}) {
     // Генерируем id заранее — форма создания показывает его с первого кадра
     // (ТЗ п.3), а не только после сохранения.
     const id = crypto.randomUUID();
@@ -1413,6 +1413,177 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     focusActivePage();
     onApplied();
   }
+
+  // Общая точка входа для "#" на выделении и для "Add tag" внутри всплывающего
+  // меню тегов блока (ТЗ п.12: "та же менюшка... та же механика").
+  function openTagAddCreateMenu(x, y, lines, onApplied = () => {}) {
+    openAnchoredMenu(x, y, [
+      { label: t("editor.tagAdd"), onClick: () => openTagAddMenu(x, y, lines, onApplied) },
+      { label: t("editor.tagCreate"), onClick: () => openTagCreateEditor(lines, onApplied) },
+    ]);
+  }
+
+  // --- Всплывающее меню тегов блока: наведение/клик на полоску (ТЗ п.10-14) ---
+  let blockTagsPanelEl = null;
+  let unregisterBlockTagsPanelLayer = null;
+  let blockTagsHoverTimer = null;
+  const BLOCK_EDGE_BAND_PX = 6;
+  const BLOCK_TAGS_HOVER_DELAY = 1000;
+
+  function closeBlockTagsPanel() {
+    clearTimeout(blockTagsHoverTimer);
+    if (!blockTagsPanelEl) return;
+    blockTagsPanelEl.remove();
+    blockTagsPanelEl = null;
+    document.removeEventListener("mousedown", onBlockTagsPanelOutside, true);
+    if (unregisterBlockTagsPanelLayer) {
+      unregisterBlockTagsPanelLayer();
+      unregisterBlockTagsPanelLayer = null;
+    }
+  }
+
+  function onBlockTagsPanelOutside(event) {
+    // "Простым кликом на текстовое поле" (ТЗ п.13) закрывается сама собой:
+    // mousedown где угодно вне панели попадает сюда, отдельной ветки под клик
+    // по тексту заводить не нужно.
+    if (blockTagsPanelEl && !blockTagsPanelEl.contains(event.target)) closeBlockTagsPanel();
+  }
+
+  // Полоска — псевдоэлемент строки, у неё нет своего hit-теста: строку на
+  // грани блока ищем сравнением координаты курсора с getBoundingClientRect
+  // каждой граничной строки листа — тот же приём, что у клика по квадратику
+  // чек-листа (см. CHECKLIST_MARKER_WIDTH ниже).
+  function blockEdgeLineAt(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const page = target ? target.closest(".rte-page") : null;
+    if (!page) return null;
+    for (const line of pageLines(page)) {
+      if (line.dataset.blockStart === "true" && Math.abs(event.clientY - line.getBoundingClientRect().top) <= BLOCK_EDGE_BAND_PX) {
+        return line;
+      }
+      if (line.dataset.blockEnd === "true" && Math.abs(event.clientY - line.getBoundingClientRect().bottom) <= BLOCK_EDGE_BAND_PX) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  function showBlockTagsPanel(line) {
+    closeBlockTagsPanel();
+    const page = line.closest(".rte-page");
+    const blockId = line.dataset.blockId;
+    const blockLines = getBlockLines(page, blockId);
+    const topLine = blockLines.find((l) => l.dataset.blockStart === "true") || blockLines[0];
+    const tagIds = getBlockTagIds(topLine);
+    if (!tagIds.length) return;
+
+    const panel = document.createElement("div");
+    panel.className = "rte-block-panel";
+    panel.dataset.blockId = blockId;
+    // Не редактируемая и не выделяемая мышью область текста (ТЗ п.14) — тот же
+    // приём, что у .rte-photo-handles, плюс mousedown-guard, как у кнопок тулбара.
+    panel.contentEditable = "false";
+    panel.addEventListener("mousedown", (event) => event.preventDefault());
+
+    tagIds.forEach((tagId) => {
+      const tag = tagRegistry.get(tagId);
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "rte-block-panel-tag";
+      row.style.setProperty("--tag-color", tag ? tag.color : "transparent");
+      row.textContent = tag ? tag.name : "?";
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        openBlockTagContextMenu(event.clientX, event.clientY, page, blockId, tagId);
+      });
+      panel.appendChild(row);
+    });
+
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "rte-block-panel-add";
+    addRow.textContent = `+ ${t("editor.tagAddItem")}`;
+    addRow.addEventListener("click", () => {
+      const rect = addRow.getBoundingClientRect();
+      closeBlockTagsPanel();
+      openTagAddCreateMenu(rect.left, rect.bottom, blockLines);
+    });
+    panel.appendChild(addRow);
+
+    page.appendChild(panel);
+    panel.style.top = `${clamp(topLine.offsetTop, 0, Math.max(0, page.offsetHeight - panel.offsetHeight))}px`;
+
+    document.addEventListener("mousedown", onBlockTagsPanelOutside, true);
+    unregisterBlockTagsPanelLayer = pushLayer(closeBlockTagsPanel);
+    blockTagsPanelEl = panel;
+  }
+
+  function openBlockTagContextMenu(x, y, page, blockId, tagId) {
+    const tag = tagRegistry.get(tagId);
+    openAnchoredMenu(x, y, [
+      {
+        label: t("editor.tagEditItem"),
+        onClick: async () => {
+          if (!tag) return;
+          await openBlockTagEditor({
+            mode: "edit",
+            id: tag.id,
+            name: tag.name,
+            color: tag.color,
+            onSubmit: async ({ name, color }) => {
+              const result = await blockTagsService.updateTag(tag.id, { name, color });
+              if (result.error === "taken") return { ok: false, message: t("editor.tagNameTaken") };
+              tagRegistry.set(result.tag.id, result.tag);
+              // Правка глобальна: реестр один, ссылки только по id — перекрашивает
+              // сразу все блоки этой заметки, использующие тег, без единой правки
+              // в самом content.
+              syncBlocks();
+              return { ok: true };
+            },
+          });
+          closeBlockTagsPanel();
+          focusActivePage();
+        },
+      },
+      {
+        label: t("editor.tagDeleteItem"),
+        onClick: () => {
+          const lines = getBlockLines(page, blockId);
+          const remaining = getBlockTagIds(lines[0]).filter((id) => id !== tagId);
+          setBlockTagIds(page, blockId, remaining); // пустой список сам распускает блок (ТЗ п.17)
+          syncBlocks();
+          recordHistory();
+          onChange(serializeEditor(contentEl));
+          closeBlockTagsPanel();
+        },
+      },
+      {
+        label: t("editor.tagAddItem"),
+        onClick: () => {
+          const lines = getBlockLines(page, blockId);
+          closeBlockTagsPanel();
+          openTagAddCreateMenu(x, y, lines);
+        },
+      },
+    ]);
+  }
+
+  contentEl.addEventListener("mousemove", (event) => {
+    const line = blockEdgeLineAt(event);
+    clearTimeout(blockTagsHoverTimer);
+    if (!line) return;
+    if (blockTagsPanelEl && blockTagsPanelEl.dataset.blockId === line.dataset.blockId) return;
+    blockTagsHoverTimer = setTimeout(() => showBlockTagsPanel(line), BLOCK_TAGS_HOVER_DELAY);
+  });
+  contentEl.addEventListener("mouseleave", () => clearTimeout(blockTagsHoverTimer));
+  // Клик по полоске — открывает сразу, без ожидания (ТЗ п.11).
+  contentEl.addEventListener("click", (event) => {
+    const line = blockEdgeLineAt(event);
+    if (!line) return;
+    clearTimeout(blockTagsHoverTimer);
+    showBlockTagsPanel(line);
+  });
+  // ---------------------------------------------------------------------
 
   // Новая страница появляется только по явному действию — текст сам по себе на
   // следующую страницу не перетекает.
@@ -3152,10 +3323,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         const lines = getSelectedLines(contentEl);
         if (!lines.length) return;
         const rect = btn.getBoundingClientRect();
-        openAnchoredMenu(rect.left, rect.bottom, [
-          { label: t("editor.tagAdd"), onClick: () => openTagAddMenu(rect.left, rect.bottom, lines, onApplied) },
-          { label: t("editor.tagCreate"), onClick: () => openTagCreateEditor(lines, onApplied) },
-        ]);
+        openTagAddCreateMenu(rect.left, rect.bottom, lines, onApplied);
       });
     } else {
       btn.addEventListener("click", async () => {
