@@ -61,3 +61,18 @@ export function createCalendarTagModel({ name = "", color = "#33507e" }) {
     color,
   };
 }
+
+// id — необязательный параметр (единственная модель, которой он нужен снаружи):
+// форма создания тега блока показывает read-only ID ещё до сохранения, поэтому
+// id генерируется при открытии формы, а не здесь неявно.
+// nameKey — имя в нижнем регистре, единственное поле для проверки на дубли:
+// теги регистронезависимы (#yes = #Yes), а показывается всегда первый вариант.
+export function createBlockTagModel({ name = "", color = "#33507e", id = generateId() }) {
+  const trimmed = name.trim();
+  return {
+    id,
+    name: trimmed,
+    nameKey: trimmed.toLowerCase(),
+    color,
+  };
+}

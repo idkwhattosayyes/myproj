@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   diaryEntries: "app:diaryEntries",
   calendarEntries: "app:calendarEntries",
   calendarTags: "app:calendarTags",
+  blockTags: "app:blockTags",
 };
 
 function readCollection(key) {
@@ -224,5 +225,27 @@ export const localStorageAdapter = {
   async deleteCalendarTag(id) {
     const tags = readCollection(STORAGE_KEYS.calendarTags).filter((tag) => tag.id !== id);
     writeCollection(STORAGE_KEYS.calendarTags, tags);
+  },
+
+  // Block tags — глобальный реестр тегов для блоков текста в заметках
+  // {id, name, nameKey, color}. Сами блоки хранят только id тега (в data-tag-ids
+  // строки внутри content заметки), поэтому редактирование тега здесь меняет
+  // его везде, где он используется, без единой правки в самих заметках.
+  async getBlockTags() {
+    return readCollection(STORAGE_KEYS.blockTags);
+  },
+  async createBlockTag(tag) {
+    const tags = readCollection(STORAGE_KEYS.blockTags);
+    tags.push(tag);
+    writeCollection(STORAGE_KEYS.blockTags, tags);
+    return tag;
+  },
+  async updateBlockTag(id, patch) {
+    const tags = readCollection(STORAGE_KEYS.blockTags);
+    const index = tags.findIndex((tag) => tag.id === id);
+    if (index === -1) return null;
+    tags[index] = { ...tags[index], ...patch };
+    writeCollection(STORAGE_KEYS.blockTags, tags);
+    return tags[index];
   },
 };
