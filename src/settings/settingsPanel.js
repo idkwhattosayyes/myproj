@@ -150,11 +150,13 @@ async function runExport() {
       const name = await openPrompt({ message: t("settings.exportFilenamePrompt"), defaultValue: "myproj-export" });
       if (!name || !name.trim()) return; // отмена — экспорт не происходит
       const filename = name.trim().endsWith(".json") ? name.trim() : `${name.trim()}.json`;
-      // Кружки главной и календарь в дереве выбора не участвуют: кружки берём те,
-      // что указывают на выгружаемые заметки, календарь — целиком.
-      const [calendarEntries, calendarTags] = await Promise.all([
+      // Кружки главной, календарь и теги блоков в дереве выбора не участвуют:
+      // кружки берём те, что указывают на выгружаемые заметки, календарь и
+      // реестр тегов блоков — целиком.
+      const [calendarEntries, calendarTags, blockTags] = await Promise.all([
         storage.getAllCalendarEntries(),
         storage.getCalendarTags(),
+        storage.getBlockTags(),
       ]);
       downloadJson(
         buildExportFrom({
@@ -162,6 +164,7 @@ async function runExport() {
           items: pickedItems,
           homeCircles: circlesForItems(getHomeCirclesState().circles, pickedItems),
           calendar: { entries: calendarEntries, tags: calendarTags },
+          blockTags,
         }),
         filename
       );
@@ -191,9 +194,9 @@ async function runImport() {
     items: data.items,
     onConfirm: async ({ folders, items }) => {
       if (!folders.length && !items.length) return;
-      // Дерево выбирает только папки и заметки — кружки и календарь берём из файла
-      // как есть. Кружок на невыбранную заметку importData отбросит сам.
-      await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar });
+      // Дерево выбирает только папки и заметки — кружки, календарь и теги блоков
+      // берём из файла как есть. Кружок на невыбранную заметку importData отбросит сам.
+      await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar, blockTags: data.blockTags });
       location.reload();
     },
   });

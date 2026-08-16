@@ -5,16 +5,19 @@ import { appendCircles } from "../modules/home/customCircles.js";
 // прямо в item.content (HTML), поэтому выгрузка моделей сохраняет жирность,
 // цвета, ссылки и вставленные фото как есть — импорт восстанавливает точь-в-точь.
 //
-// Версия 2 добавила к папкам и заметкам кружки главной и календарь. Файлы версии 1
+// Версия 2 добавила к папкам и заметкам кружки главной и календарь. Версия 3 —
+// глобальный реестр тегов блока (app:blockTags, сами блоки хранятся внутри
+// content каждой заметки, см. remapBlockTags). Файлы более старых версий
 // читаются по-прежнему: новых полей в них просто нет, и импорт их пропускает.
-const EXPORT_VERSION = 2;
+const EXPORT_VERSION = 3;
 
 /**
  * Экспорт из выбранного набора (дерево с галочками). Набор папок/заметок приходит
  * уже согласованным: дерево добавляет папки-владельцев выбранных заметок само.
- * Кружки и календарь собирает вызывающий код — здесь только сборка файла.
+ * Кружки, календарь и теги блоков собирает вызывающий код — здесь только сборка
+ * файла. blockTags — реестр целиком, как и calendar, в дереве выбора не участвует.
  */
-export function buildExportFrom({ folders, items, homeCircles = [], calendar = null }) {
+export function buildExportFrom({ folders, items, homeCircles = [], calendar = null, blockTags = [] }) {
   return {
     app: "myproj",
     version: EXPORT_VERSION,
@@ -24,6 +27,7 @@ export function buildExportFrom({ folders, items, homeCircles = [], calendar = n
     items,
     homeCircles,
     calendar,
+    blockTags,
   };
 }
 
@@ -99,6 +103,27 @@ function remapInternalLinks(content, itemIdMap) {
   return holder.innerHTML;
 }
 
+// Тег блока хранится не в самой заметке, а в общем реестре app:blockTags —
+// строка блока ссылается на него по id через data-tag-ids (JSON-массив, см.
+// blockTags.js). При импорте реестр получает новые id, значит и в content
+// заметки их нужно переписать — тот же приём, что remapInternalLinks, и по
+// той же причине не трогать заметки без единого блока вовсе.
+function remapBlockTags(content, blockTagIdMap) {
+  if (!content || !content.includes("data-tag-ids")) return content || "";
+  const holder = document.createElement("div");
+  holder.innerHTML = content;
+  holder.querySelectorAll("[data-tag-ids]").forEach((line) => {
+    let ids;
+    try {
+      ids = JSON.parse(line.dataset.tagIds);
+    } catch {
+      return;
+    }
+    line.dataset.tagIds = JSON.stringify(ids.map((id) => blockTagIdMap.get(id)).filter(Boolean));
+  });
+  return holder.innerHTML;
+}
+
 // Кружки главной: заметку и папку-контекст переводим на новые id, кружок на
 // невосстановленную заметку отбрасываем. Позицию переносим как есть — если
 // импортированный кружок сядет поверх существующего, раскладка главной разведёт
@@ -152,6 +177,12 @@ export async function importData(data) {
   // объявленную позже), а на момент создания все id уже должны быть известны.
   const folderIdMap = new Map((data.folders || []).map((folder) => [folder.id, crypto.randomUUID()]));
   const itemIdMap = new Map(data.items.map((item) => [item.id, crypto.randomUUID()]));
+  // Заранее, а не отложенно (как tagIdMap календаря) — нужна уже на шаге ремапа
+  // content ниже, а не после того, как все заметки записаны.
+  const blockTagIdMap = new Map((data.blockTags || []).map((tag) => [tag.id, crypto.randomUUID()]));
+  for (const tag of data.blockTags || []) {
+    await storage.createBlockTag({ ...tag, id: blockTagIdMap.get(tag.id) });
+  }
 
   for (const folder of data.folders || []) {
     // Вложенность папки живёт в parentFolderIds (папка может лежать сразу в
@@ -173,7 +204,7 @@ export async function importData(data) {
     await storage.createItem({
       ...item,
       id: itemIdMap.get(item.id),
-      content: remapInternalLinks(item.content, itemIdMap),
+      content: remapBlockTags(remapInternalLinks(item.content, itemIdMap), blockTagIdMap),
       folderIds,
       pinnedIn,
       createdAt: item.createdAt || now,
@@ -184,5 +215,11 @@ export async function importData(data) {
   const circles = importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
   const calendarEntries = await importCalendar(data.calendar);
 
-  return { folders: (data.folders || []).length, items: data.items.length, circles, calendarEntries };
+  return {
+    folders: (data.folders || []).length,
+    items: data.items.length,
+    circles,
+    calendarEntries,
+    blockTags: (data.blockTags || []).length,
+  };
 }
