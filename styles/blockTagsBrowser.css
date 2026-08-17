@@ -97,6 +97,11 @@
 }
 
 .block-browser-list {
+  /* flex:1 + min-height:0 — без него флекс-потомок с overflow:auto не
+     сжимается до доступной высоты (min-height:auto по умолчанию) и вместо
+     прокрутки раздувает/сжимает родителя вместе с текстом внутри карточек. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem;
   display: flex;
@@ -116,6 +121,12 @@
    .rte-page), полагаться на застывший в HTML --block-tag-color тоже не
    стоит — цвет сюда приходит из свежего реестра тегов (см. blockTagsBrowser.js). */
 .block-browser-card {
+  /* flex-shrink:0 — карточка сама тоже флекс-элемент .block-browser-list
+     (column). Без этого браузер по умолчанию сжимает (flex-shrink:1) все
+     карточки, чтобы уместить их без остатка, вместо того чтобы отдать лишнее
+     прокрутке списка — та же порода бага, что у min-height на самом списке,
+     просто на уровень ниже. */
+  flex-shrink: 0;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
