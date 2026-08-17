@@ -73,7 +73,7 @@ export function mountSearch({ onNavigate }) {
   barEl.className = "search-bar";
   barEl.innerHTML = `
     <div class="search-topline">
-      <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}">#tags</button>
+      <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}">#</button>
       <div class="search-field">
         <span class="search-icon">⌕</span>
         <input type="text" class="search-input" data-role="search-input">
