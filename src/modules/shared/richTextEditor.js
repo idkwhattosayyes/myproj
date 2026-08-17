@@ -3636,7 +3636,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (blockId) {
         items.push({
           label: t("editor.tagDissolve"),
-          onClick: () => {
+          onClick: async () => {
+            const ok = await openConfirm({ message: t("editor.tagDissolveConfirm") });
+            if (!ok) return;
             setBlockTagIds(page, blockId, []);
             syncBlocks();
             recordHistory();

@@ -187,6 +187,7 @@ export const translations = {
     "editor.tagDeleteItem": "Delete tag",
     "editor.tagAddItem": "Add tag",
     "editor.tagDissolve": "Dissolve block",
+    "editor.tagDissolveConfirm": "Dissolve this block? The tags will be removed and the text stays as it is.",
 
     "blockBrowser.count": "Blocks: {n}",
     "blockBrowser.empty": "No blocks match this filter",
@@ -388,6 +389,7 @@ export const translations = {
     "editor.tagDeleteItem": "Удалить тег",
     "editor.tagAddItem": "Добавить тег",
     "editor.tagDissolve": "Распустить блок",
+    "editor.tagDissolveConfirm": "Распустить этот блок? Теги будут сняты, текст останется как есть.",
 
     "blockBrowser.count": "Блоков: {n}",
     "blockBrowser.empty": "По этому набору тегов ничего не найдено",
@@ -589,6 +591,7 @@ export const translations = {
     "editor.tagDeleteItem": "מחיקת תג",
     "editor.tagAddItem": "הוספת תג",
     "editor.tagDissolve": "פירוק הבלוק",
+    "editor.tagDissolveConfirm": "לפרק את הבלוק הזה? התגים יוסרו והטקסט יישאר כפי שהוא.",
 
     "blockBrowser.count": "בלוקים: {n}",
     "blockBrowser.empty": "לא נמצאו בלוקים בסינון הזה",
