@@ -1344,6 +1344,72 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Тот же приём, что ensureAnchorId у фото: счётчик id в замыкании редактора.
   const ensureBlockId = ensureBlockIdFactory(contentEl);
 
+  // Строка — минимальная адресуемая единица блока (см. blockTags.js), поэтому
+  // для частичного выделения абзаца нужно физически разрезать первую/
+  // последнюю задетую строку по границе Range — тот же extractContents-приём,
+  // что splitOff ниже для инлайн-форматирования, но по границе диапазона,
+  // а не узла.
+  function splitLineAtRangeStart(line, container, offset) {
+    const probe = document.createRange();
+    probe.selectNodeContents(line);
+    probe.setEnd(container, offset);
+    if (probe.collapsed) return; // уже начинается ровно с выделения — резать нечего
+    const before = probe.extractContents();
+    const newLine = line.cloneNode(false);
+    delete newLine.dataset.anchor; // якорь рисунка — как в splitLineAtBreaks, копии не нужен
+    newLine.appendChild(before);
+    line.before(newLine);
+    fillEmptyLine(newLine);
+  }
+
+  function splitLineAtRangeEnd(line, container, offset) {
+    const probe = document.createRange();
+    probe.selectNodeContents(line);
+    probe.setStart(container, offset);
+    if (probe.collapsed) return; // уже кончается ровно на выделении
+    const after = probe.extractContents();
+    const newLine = line.cloneNode(false);
+    delete newLine.dataset.anchor;
+    newLine.appendChild(after);
+    line.after(newLine);
+    fillEmptyLine(newLine);
+  }
+
+  /**
+   * Строки для тегирования, если выделение накрывает абзац не целиком (ТЗ):
+   * первую/последнюю задетую строку разрезаем по границе выделения — средняя
+   * часть остаётся строкой для тега, исключённые куски "до"/"после" уезжают в
+   * новые нетегированные строки-соседи.
+   *
+   * Резать можно только строки БЕЗ своего data-block-id — уже тегированную
+   * строку кроить на "включённый"/"исключённый" куски нельзя: блок можно
+   * только расширить, никогда не сузить (см. attachTagToLines ниже). Для такой
+   * строки поведение остаётся прежним — целиком входит в объединение блоков.
+   *
+   * После разреза обязательно звать syncBlocks() ДО того, как среднюю часть
+   * затегируют: иначе новые нетегированные строки-соседи ещё не значатся в
+   * known (см. createBlockSync в blockTags.js — отличает только что
+   * появившуюся строку от давно существующей и намеренно нетегированной), и
+   * пропагация тут же затянет их обратно в блок вплотную к которому они
+   * оказались — ровно тот эффект, который эта функция должна убрать.
+   */
+  function splitSelectionIntoLines(editorEl) {
+    const range = getCurrentRange(editorEl);
+    if (!range || range.collapsed) return getSelectedLines(editorEl);
+
+    const lines = getSelectedLines(editorEl);
+    if (!lines.length) return lines;
+
+    const last = lines[lines.length - 1];
+    if (!last.dataset.blockId) splitLineAtRangeEnd(last, range.endContainer, range.endOffset);
+
+    const first = lines[0];
+    if (!first.dataset.blockId) splitLineAtRangeStart(first, range.startContainer, range.startOffset);
+
+    syncBlocks();
+    return getSelectedLines(editorEl);
+  }
+
   /**
    * Привязывает тег к строкам lines. Если среди них уже есть блок — расширяет
    * его на всё новое выделение (сузить блок может только явный роспуск, не
@@ -3327,7 +3393,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // Строки берём сейчас — к моменту клика в Add/Create фокус уйдёт из
       // редактора, и выделение схлопнется.
       btn.addEventListener("click", () => {
-        const lines = getSelectedLines(contentEl);
+        const lines = splitSelectionIntoLines(contentEl);
         if (!lines.length) return;
         const rect = btn.getBoundingClientRect();
         openTagAddCreateMenu(rect.left, rect.bottom, lines, onApplied);
