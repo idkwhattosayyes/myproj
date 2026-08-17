@@ -15,6 +15,12 @@ import { openBlockTagEditor } from "./blockTagEditor.js";
 import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
+  occurrenceRange,
+  showSearchHighlight,
+  showPhotoHighlight,
+  clearSearchHighlight,
+} from "../../utils/searchHighlight.js";
+import {
   TEXT_COLORS,
   HIGHLIGHT_COLORS,
   DRAW_COLOR_KEY,
@@ -4050,12 +4056,6 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   };
 }
 
-// Имя подсветки, под которым диапазон регистрируется в CSS.highlights;
-// цвет задан в styles/editor.css через ::highlight(search-hit).
-const SEARCH_HIGHLIGHT = "search-hit";
-const SEARCH_HIGHLIGHT_MS = 2500;
-let searchHighlightTimer = null;
-
 /**
  * Подсвечивает occurrence-е вхождение query в тексте заметки и прокручивает к
  * нему. Текст заметки при этом НЕ меняется: диапазон красит CSS Custom Highlight
@@ -4064,11 +4064,15 @@ let searchHighlightTimer = null;
  */
 function highlightMatch(contentEl, query, occurrence = 0, photoIndex) {
   clearSearchHighlight();
-  // Фото — не текстовый узел, findOccurrenceRange его не найдёт, нужен
-  // отдельный путь (см. highlightPhoto). photoIndex может быть 0, поэтому
-  // проверка именно на undefined/null, а не на falsy.
+  // Фото — не текстовый узел, occurrenceRange его не найдёт, нужен отдельный
+  // путь. photoIndex может быть 0, поэтому проверка именно на undefined/null,
+  // а не на falsy.
   if (photoIndex !== undefined && photoIndex !== null) {
-    highlightPhoto(contentEl, photoIndex);
+    // Тот же порядок img.rte-photo в документе, что и при индексации поиска
+    // (см. extractPhotos в utils/dom.js) — не завязан на data-name, поэтому
+    // находит и фото без названия.
+    const img = contentEl.querySelectorAll("img.rte-photo")[photoIndex];
+    if (img) showPhotoHighlight(img);
     return;
   }
   const range = findOccurrenceRange(contentEl, query, occurrence);
@@ -4076,37 +4080,7 @@ function highlightMatch(contentEl, query, occurrence = 0, photoIndex) {
 
   const target = range.startContainer.parentElement;
   if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
-
-  if (typeof Highlight === "undefined" || !CSS.highlights) {
-    // Старый браузер без Custom Highlight API — показываем найденное обычным
-    // выделением. Оно тоже ничего не вставляет в текст.
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return;
-  }
-
-  CSS.highlights.set(SEARCH_HIGHLIGHT, new Highlight(range));
-  searchHighlightTimer = setTimeout(clearSearchHighlight, SEARCH_HIGHLIGHT_MS);
-}
-
-function clearSearchHighlight() {
-  clearTimeout(searchHighlightTimer);
-  if (CSS.highlights) CSS.highlights.delete(SEARCH_HIGHLIGHT);
-  document.querySelectorAll(".rte-photo.is-search-hit").forEach((el) => el.classList.remove("is-search-hit"));
-}
-
-// CSS Custom Highlight API красит только текстовые Range — для <img> нужен
-// отдельный путь: находим сам узел по data-name и мигаем классом с обводкой.
-function highlightPhoto(contentEl, photoIndex) {
-  // Тот же порядок img.rte-photo в документе, что и при индексации поиска
-  // (см. extractPhotos в utils/dom.js) — не завязан на data-name, поэтому
-  // находит и фото без названия.
-  const img = contentEl.querySelectorAll("img.rte-photo")[photoIndex];
-  if (!img) return;
-  img.scrollIntoView({ block: "center", behavior: "smooth" });
-  img.classList.add("is-search-hit");
-  searchHighlightTimer = setTimeout(() => img.classList.remove("is-search-hit"), SEARCH_HIGHLIGHT_MS);
+  showSearchHighlight(range);
 }
 
 /**
@@ -4132,60 +4106,16 @@ function highlightBlock(contentEl, blockId) {
   range.setStart(lines[0], 0);
   const last = lines[lines.length - 1];
   range.setEnd(last, last.childNodes.length);
-
-  if (typeof Highlight === "undefined" || !CSS.highlights) {
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return;
-  }
-  CSS.highlights.set(SEARCH_HIGHLIGHT, new Highlight(range));
-  searchHighlightTimer = setTimeout(clearSearchHighlight, SEARCH_HIGHLIGHT_MS);
+  showSearchHighlight(range);
 }
 
 /**
- * Ищет вхождение по всем текстовым узлам страниц подряд, поэтому находит и то,
- * что разорвано форматированием (жирное слово внутри предложения). Считаем
- * именно порядковый номер вхождения — по нему список результатов и различает
- * несколько совпадений в одной заметке.
+ * Вхождение в тексте заметки. Склейка страниц идёт БЕЗ разделителя — так же
+ * собран поисковый индекс заметки (htmlToText в utils/dom.js), поэтому
+ * порядковые номера вхождений совпадают с теми, что показал список результатов.
  */
 function findOccurrenceRange(contentEl, query, occurrence) {
-  const needle = (query || "").toLowerCase();
-  if (!needle) return null;
-
-  const nodes = [];
-  let text = "";
-  contentEl.querySelectorAll(".rte-page").forEach((page) => {
-    const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      nodes.push({ node, start: text.length });
-      text += node.textContent;
-    }
-  });
-
-  const haystack = text.toLowerCase();
-  let from = haystack.indexOf(needle);
-  for (let i = 0; i < occurrence && from !== -1; i++) {
-    from = haystack.indexOf(needle, from + needle.length);
-  }
-  if (from === -1) return null;
-
-  const range = document.createRange();
-  const startPoint = pointAt(nodes, from);
-  const endPoint = pointAt(nodes, from + needle.length);
-  if (!startPoint || !endPoint) return null;
-  range.setStart(startPoint.node, startPoint.offset);
-  range.setEnd(endPoint.node, endPoint.offset);
-  return range;
-}
-
-// Позиция в склеенном тексте → узел и смещение внутри него.
-function pointAt(nodes, position) {
-  for (const entry of nodes) {
-    const length = entry.node.textContent.length;
-    if (position <= entry.start + length) return { node: entry.node, offset: position - entry.start };
-  }
-  return null;
+  return occurrenceRange([...contentEl.querySelectorAll(".rte-page")], query, occurrence, "");
 }
 
 // Prompt — асинхронная модалка, за время её открытия редактор теряет фокус
