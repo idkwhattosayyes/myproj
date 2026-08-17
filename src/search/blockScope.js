@@ -6,7 +6,11 @@
  * напрямую: searchBar.js уже импортирует blockTagsBrowser.js, и обратный
  * импорт замкнул бы их в цикл.
  *
- * @typedef {{getBlocks: () => object[], scrollToBlock: (itemId: string, blockId: string) => void}} BlockSearchSource
+ * @typedef {{
+ *   getBlocks: () => object[],
+ *   scrollToBlock: (itemId: string, blockId: string, query?: string, occurrence?: number) => void,
+ *   close: () => void,
+ * }} BlockSearchSource
  */
 let source = null;
 const listeners = new Set();

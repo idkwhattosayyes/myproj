@@ -344,8 +344,10 @@ async function runSearch() {
     visibleByGroup.clear();
     renderResults();
     // Само появление совпадения должно подвести список к нему, не дожидаясь
-    // клика по результату.
-    if (groups.length) blockSource.scrollToBlock(groups[0].id, groups[0].blockId);
+    // клика по результату. Берём первую БЛОЧНУЮ группу: выше могут стоять
+    // группы-названия заметок, к ним в меню прокручивать нечего.
+    const firstBlock = groups.find((group) => group.kind === "block");
+    if (firstBlock) blockSource.scrollToBlock(firstBlock.id, firstBlock.blockId, query, 0);
     return;
   }
 
@@ -491,7 +493,9 @@ function openRow(rowIndex) {
   // (для этого у карточки есть двойной клик), ни трогать pendingTarget не надо.
   if (group.kind === "block") {
     const blockSource = getBlockSearchSource();
-    if (blockSource) blockSource.scrollToBlock(group.id, group.blockId);
+    // matchIndex — номер вхождения: ведём к самому слову, а не к карточке.
+    // У строки-заголовка группы он 0, то есть она ведёт к первому вхождению.
+    if (blockSource) blockSource.scrollToBlock(group.id, group.blockId, group.query, row.matchIndex);
     return;
   }
 

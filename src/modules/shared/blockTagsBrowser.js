@@ -5,6 +5,7 @@ import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import { setBlockSearchSource } from "../../search/blockScope.js";
+import { occurrenceRange, showSearchHighlight, clearSearchHighlight } from "../../utils/searchHighlight.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
 
 const SORT_KEY = "app:blockBrowserSort";
@@ -82,6 +83,7 @@ export function openBlockTagsBrowser(tagIds) {
     overlay.removeEventListener("click", onClick);
     unregisterLayer();
     overlay.remove();
+    clearSearchHighlight(); // диапазон жил в карточке, а её больше нет в документе
     setBlockSearchSource(null);
     closeCurrentBrowser = null;
   }
@@ -91,7 +93,9 @@ export function openBlockTagsBrowser(tagIds) {
   // getBlocks читает sorted (а не blocks): искать надо среди того, что реально
   // на экране и в том же порядке — sorted переприсваивается в renderList,
   // поэтому именно функция, а не снимок массива.
-  setBlockSearchSource({ getBlocks: () => sorted, scrollToBlock });
+  // close — чтобы строка поиска могла закрыть меню, уходя в найденную по
+  // названию заметку (см. ветку blockNote в openRow).
+  setBlockSearchSource({ getBlocks: () => sorted, scrollToBlock, close });
 
   sortEl.addEventListener("change", () => {
     sortMode = sortEl.value;
@@ -162,6 +166,9 @@ export function openBlockTagsBrowser(tagIds) {
 
   function renderList() {
     countEl.textContent = t("blockBrowser.count").replace("{n}", blocks.length);
+    // Список пересобирается через innerHTML — подсвеченный диапазон указывал бы
+    // на узлы, которых в документе уже нет.
+    clearSearchHighlight();
     sorted = sortBlocks();
     if (!sorted.length) {
       listEl.innerHTML = `<p class="block-browser-empty">${t("blockBrowser.empty")}</p>`;
@@ -206,15 +213,34 @@ export function openBlockTagsBrowser(tagIds) {
   }
 
   /**
-   * Прокрутить список к нужной карточке и мигнуть ею — переход по результату
-   * поиска "в разделе" (см. searchBar.js). Ключ — пара itemId + blockId:
-   * blockId уникален только внутри своей заметки.
+   * Переход по результату поиска "в разделе" (см. searchBar.js). Ключ карточки —
+   * пара itemId + blockId: blockId уникален только внутри своей заметки.
+   *
+   * Если задан query, ведём к самому НАЙДЕННОМУ СЛОВУ и красим его; карточку в
+   * этом случае не мигаем — маркером служит подсветка. Если слова нет (или его
+   * не нашли), остаётся прежнее поведение: карточка по центру и вспышка.
    */
-  function scrollToBlock(itemId, blockId) {
+  function scrollToBlock(itemId, blockId, query, occurrence = 0) {
     const card = listEl.querySelector(
       `.block-browser-card[data-item-id="${itemId}"][data-block-id="${blockId}"]`
     );
     if (!card) return;
+    clearSearchHighlight();
+
+    const body = card.querySelector('[data-role="body"]');
+    // Разделитель — ПРОБЕЛ: ровно так собран block.text (blockTags.js), по
+    // которому считались номера вхождений. В самой карточке строки идут
+    // вплотную, и склей их здесь без разделителя — номера разъедутся.
+    // Внешний .trim() у block.text воспроизводить не нужно: он срезает только
+    // пробелы, а вхождение непробельного запроса в них попасть не может.
+    const range = body && query ? occurrenceRange([...body.children], query, occurrence, " ") : null;
+    if (range) {
+      const target = range.startContainer.parentElement;
+      if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+      showSearchHighlight(range);
+      return;
+    }
+
     card.scrollIntoView({ block: "center", behavior: "smooth" });
     // Метка одноразовая (тот же приём, что у flashFolderId в panelSection.js):
     // снимаем её со всех карточек, иначе отыгравшие классы копились бы по
