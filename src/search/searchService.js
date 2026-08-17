@@ -49,6 +49,12 @@ async function searchItems(query) {
   ]);
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const groups = [];
+  // Заметки копим в двух ведрах: совпало НАЗВАНИЕ или только текст. Сортировки
+  // тут раньше не было вовсе, и заметка с совпавшим названием стояла там, где
+  // она лежит в списке — то есть могла оказаться под чужими совпадениями по
+  // тексту, а при частом слове и вовсе не влезть в MAX_GROUPS (ТЗ раунд 5 п.2).
+  const titleGroups = [];
+  const bodyGroups = [];
 
   folders.forEach((folder) => {
     if (!findMatches(folder.name, query, 1).matches.length) return;
@@ -93,7 +99,9 @@ async function searchItems(query) {
       .filter(Boolean);
     if (!inTitle.matches.length && !inText.matches.length && !photoMatches.length) return;
 
-    groups.push({
+    // Группу не раздваиваем: заметка, у которой совпало и название, и текст,
+    // остаётся одной группой со своими сниппетами — просто встаёт наверх.
+    (inTitle.matches.length ? titleGroups : bodyGroups).push({
       kind: "item",
       id: item.id,
       section: item.section,
@@ -107,7 +115,11 @@ async function searchItems(query) {
     });
   });
 
-  return groups;
+  // Сначала совпавшие имена (папки и названия заметок), потом текст. Тот же
+  // приём, что в searchOpenBlocks (searchBar.js): совпадение по имени шире по
+  // смыслу, чем вхождение где-то в теле. Побочно это спасает названия от
+  // MAX_GROUPS — обрезается теперь самое слабое, а не то, что важнее всего.
+  return [...groups, ...titleGroups, ...bodyGroups];
 }
 
 async function searchCalendar(query) {
