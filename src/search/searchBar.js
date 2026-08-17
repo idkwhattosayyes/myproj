@@ -3,6 +3,8 @@ import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { search } from "./searchService.js";
 import { setPendingTarget } from "./searchTarget.js";
+import { openBlockTagsBrowser } from "../modules/shared/blockTagsBrowser.js";
+import * as blockTagsService from "../services/blockTagsService.js";
 
 /**
  * Полоска поиска в верхней части экрана. Живёт вне маршрутов и монтируется один
@@ -34,6 +36,18 @@ let activeRow = 0;
 let searchTimer = null;
 let unregisterLayer = null;
 let onNavigateCallback = null;
+
+// Режим тегов: ввод "#" в строку поиска показывает чипы тегов вместо обычных
+// результатов (см. renderTagSuggestions). selectedViaPlus — теги, набранные
+// через "+" на чипах-предложениях (ТЗ п.9: несколько тегов + Enter — открывает
+// браузер сразу со всеми). allTags — кэш реестра на сессию тег-режима, чтобы
+// не дёргать сервис на каждую напечатанную букву после "#".
+let selectedViaPlus = [];
+let allTags = null;
+
+function hasHashToken(value) {
+  return value.includes("#");
+}
 
 // Сколько совпадений внутри одной группы показано сейчас. Ключ — индекс группы,
 // значение — сколько строк раскрыто. Клик по «Ещё совпадений» добавляет по
@@ -70,9 +84,13 @@ export function mountSearch({ onNavigate }) {
   scopeBtn = barEl.querySelector('[data-role="search-scope"]');
   resultsEl = barEl.querySelector('[data-role="search-results"]');
 
-  inputEl.addEventListener("input", () => scheduleSearch());
+  inputEl.addEventListener("input", () => {
+    if (hasHashToken(inputEl.value)) renderTagSuggestions();
+    else scheduleSearch();
+  });
   inputEl.addEventListener("focus", () => {
-    if (inputEl.value.trim() && !groups.length) scheduleSearch();
+    if (hasHashToken(inputEl.value)) renderTagSuggestions();
+    else if (inputEl.value.trim() && !groups.length) scheduleSearch();
   });
   inputEl.addEventListener("keydown", onInputKeydown);
   scopeBtn.addEventListener("click", () => {
@@ -89,6 +107,20 @@ function onInputKeydown(event) {
   if (event.key === "Tab" && !event.shiftKey) {
     event.preventDefault();
     toggleScope();
+    return;
+  }
+  // Несколько тегов набраны через "+" (см. renderTagSuggestions) — Enter
+  // открывает браузер сразу со всеми, независимо от текущего незавершённого
+  // "#..."-токена. Проверяем раньше общего "!rows.length return": в тег-режиме
+  // rows пуст (это не обычные результаты), и без этой ветки Enter молча
+  // проглатывался бы тем гвардом.
+  if (event.key === "Enter" && selectedViaPlus.length) {
+    event.preventDefault();
+    const tagIds = selectedViaPlus.map((tag) => tag.id);
+    closeResults();
+    selectedViaPlus = [];
+    inputEl.value = "";
+    openBlockTagsBrowser(tagIds);
     return;
   }
   if (!rows.length) return;
@@ -149,6 +181,80 @@ function currentScopeKey() {
 function scheduleSearch() {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(runSearch, INPUT_DELAY);
+}
+
+// Ввод "#" переключает выпадашку с обычных результатов на чипы тегов (ТЗ п.8).
+// Активный токен — то, что идёт после ПОСЛЕДНЕГО "#" в поле; предыдущие
+// куски (если "#" было несколько без "+") текстом не считаются, единственный
+// способ набрать несколько тегов — кнопка "+" на чипе-предложении (см. ниже).
+async function renderTagSuggestions() {
+  // Первой строкой: иначе ранее запланированный runSearch() от ввода ДО "#"
+  // сработает позже и перезапишет resultsEl.innerHTML обратно обычными
+  // результатами поверх уже нарисованных чипов — гонка, которую иначе трудно
+  // поймать глазами (проявляется только при быстром наборе).
+  clearTimeout(searchTimer);
+  groups = [];
+  rows = [];
+  activeRow = 0;
+
+  if (!allTags) allTags = await blockTagsService.listTags();
+
+  const token = inputEl.value.slice(inputEl.value.lastIndexOf("#") + 1).trim().toLowerCase();
+  const suggestions = allTags.filter(
+    (tag) => tag.nameKey.includes(token) && !selectedViaPlus.some((t) => t.id === tag.id)
+  );
+
+  const selectedRow = selectedViaPlus
+    .map(
+      (tag) => `
+    <span class="search-tag-chip search-tag-chip--selected" style="--tag-color:${tag.color}" data-tag-id="${tag.id}">
+      #${escapeHtml(tag.name)}
+      <button type="button" class="search-tag-chip-remove" data-tag-id="${tag.id}" title="${t("blockBrowser.removeFilter")}">✕</button>
+    </span>`
+    )
+    .join("");
+  const suggestedRow = suggestions
+    .map(
+      (tag) => `
+    <span class="search-tag-chip" style="--tag-color:${tag.color}" data-tag-id="${tag.id}">
+      <button type="button" class="search-tag-chip-name" data-tag-id="${tag.id}">#${escapeHtml(tag.name)}</button>
+      <button type="button" class="search-tag-chip-plus" data-tag-id="${tag.id}" title="${t("blockBrowser.addFilter")}">+</button>
+    </span>`
+    )
+    .join("");
+
+  resultsEl.innerHTML = `<div class="search-tag-row">${selectedRow}${suggestedRow}</div>`;
+
+  resultsEl.querySelectorAll(".search-tag-chip-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedViaPlus = selectedViaPlus.filter((tag) => tag.id !== btn.dataset.tagId);
+      renderTagSuggestions();
+    });
+  });
+  resultsEl.querySelectorAll(".search-tag-chip-plus").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      // Не даём клику по "+" всплыть до самого чипа — иначе сработал бы ещё и
+      // переход в браузер, который вешается на chip-name отдельно.
+      event.stopPropagation();
+      const tag = allTags.find((t) => t.id === btn.dataset.tagId);
+      if (tag) selectedViaPlus.push(tag);
+      // Обрезаем ДО "#" включительно — режим остаётся активным, поле готово
+      // принимать имя следующего тега сразу после того же "#".
+      inputEl.value = inputEl.value.slice(0, inputEl.value.lastIndexOf("#") + 1);
+      renderTagSuggestions();
+    });
+  });
+  resultsEl.querySelectorAll(".search-tag-chip-name").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tagIds = [...selectedViaPlus.map((t) => t.id), btn.dataset.tagId];
+      closeResults();
+      selectedViaPlus = [];
+      inputEl.value = "";
+      openBlockTagsBrowser(tagIds);
+    });
+  });
+
+  openResults();
 }
 
 async function runSearch() {
@@ -289,6 +395,7 @@ function openResults() {
 function closeResults() {
   groups = [];
   rows = [];
+  selectedViaPlus = [];
   // Закрытие поиска сбрасывает раскрытие групп — при следующем открытии список свёрнут.
   visibleByGroup.clear();
   if (resultsEl.hidden) return;

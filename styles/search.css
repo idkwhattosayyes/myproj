@@ -159,6 +159,71 @@
 
 .search-results[hidden] { display: none; }
 
+/* Режим тегов: ввод "#" заменяет обычные результаты рядом чипов (ТЗ п.8) —
+   верхняя строка "выбранные через +" (если есть), затем предложения. Форма —
+   пилюля, как у .search-field/.search-scope в этом же файле ("прямоугольник
+   со скруглением как у строки поиска" из ТЗ технически и есть эта форма);
+   отличие от .tag-chip календаря — не в форме, а в цвете: обводка и текст
+   в цвете тега на белом фоне, а не белый чип с кружком-индикатором — так тег
+   узнаётся издалека, а мелких цветных точек в плотном ряду не приходится
+   разглядывать. */
+.search-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.3rem;
+}
+
+.search-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.7rem;
+  border: 1.5px solid var(--tag-color, #9ca3af);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.search-tag-chip-name {
+  border: none;
+  background: none;
+  color: var(--tag-color, #374151);
+  font: inherit;
+  font-weight: inherit;
+  padding: 0;
+}
+
+.search-tag-chip-plus {
+  width: 1.3rem;
+  height: 1.3rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--tag-color, #9ca3af);
+  color: #ffffff;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.search-tag-chip--selected {
+  color: var(--tag-color, #374151);
+  padding-right: 0.5rem;
+}
+
+.search-tag-chip-remove {
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 0.75em;
+  padding: 0;
+}
+
+.search-tag-chip-remove:hover {
+  opacity: 1;
+}
+
 .search-group + .search-group {
   margin-top: 0.2rem;
   padding-top: 0.2rem;
