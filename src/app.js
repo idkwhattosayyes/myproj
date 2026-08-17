@@ -6,7 +6,7 @@ import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { setNavigateHandler } from "./search/searchTarget.js";
 import { watchUiScale } from "./utils/uiScale.js";
-import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels } from "./search/searchBar.js";
+import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels, focusSearch } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
 
@@ -66,6 +66,18 @@ window.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   event.preventDefault();
   onEscape();
+});
+
+// Ctrl+F — наш поиск, а не браузерный: нативный ищет только по тому, что сейчас
+// нарисовано, а заметки лежат в хранилище, и на экране их нет. Обработчик на
+// window, потому что сочетание должно работать и когда каретка внутри заметки:
+// contenteditable для "f" ничего не перехватывает (см. keydown в
+// richTextEditor.js — он гасит только Ctrl+Z/Ctrl+Y).
+window.addEventListener("keydown", (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
+  // preventDefault только если поиск действительно взял фокус — иначе оставляем
+  // пользователю хотя бы браузерный поиск, а не глушим клавиши впустую.
+  if (focusSearch()) event.preventDefault();
 });
 
 window.addEventListener("hashchange", renderRoute);

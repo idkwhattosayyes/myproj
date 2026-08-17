@@ -201,6 +201,20 @@ export function refreshSearchScope(route) {
   renderLabels();
 }
 
+/**
+ * Отдать фокус полоске поиска — под Ctrl+F (см. app.js). Возвращает признак
+ * «взял на себя»: пока идёт выбор цели для внутренней ссылки поле занято этим
+ * режимом, и перехватывать сочетание незачем — пусть работает браузерный поиск.
+ * @returns {boolean}
+ */
+export function focusSearch() {
+  if (!inputEl || pickerActive) return false;
+  inputEl.focus();
+  // Повторный Ctrl+F заменяет прежний запрос набором, а не дописывает к нему.
+  inputEl.select();
+  return true;
+}
+
 /** Смена языка перерисовывает разделы; подписи полоски обновляем вместе с ними. */
 export function renderLabels() {
   if (!barEl) return;
