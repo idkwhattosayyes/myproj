@@ -376,11 +376,38 @@ async function runSearch() {
  * @param {ReturnType<typeof getBlockSearchSource>} source
  */
 function searchOpenBlocks(query, source) {
-  const groups = [];
-  source.getBlocks().forEach((block) => {
+  const blocks = source.getBlocks();
+  const needle = query.toLowerCase();
+
+  // Совпадение по НАЗВАНИЮ заметки. Ищется отдельно от текста блоков: в самом
+  // тексте названия нет, поэтому иначе набранное название не находилось вовсе.
+  // Одна группа на заметку, а не на каждый её блок — у заметки их в меню обычно
+  // несколько. Форма как у папки (matches: []): совпало имя, и оно уже видно в
+  // заголовке группы, отрисовка такую группу уже умеет.
+  const noteGroups = [];
+  const seenNotes = new Set();
+  blocks.forEach((block) => {
+    if (seenNotes.has(block.itemId)) return;
+    seenNotes.add(block.itemId);
+    if (!(block.itemTitle || "").toLowerCase().includes(needle)) return;
+    noteGroups.push({
+      kind: "blockNote",
+      id: block.itemId,
+      blockId: block.blockId,
+      section: "notes",
+      title: block.itemTitle,
+      subtitle: "",
+      query,
+      matches: [],
+      moreCount: 0,
+    });
+  });
+
+  const blockGroups = [];
+  blocks.forEach((block) => {
     const found = findMatches(block.text, query, MATCH_FETCH_CAP);
     if (!found.matches.length) return;
-    groups.push({
+    blockGroups.push({
       kind: "block",
       id: block.itemId,
       blockId: block.blockId,
@@ -392,7 +419,9 @@ function searchOpenBlocks(query, source) {
       moreCount: found.total - found.matches.length,
     });
   });
-  return groups;
+
+  // Названия выше: совпадение по названию шире по смыслу, чем внутри одного блока.
+  return [...noteGroups, ...blockGroups];
 }
 
 // Сколько совпадений группы показываем сейчас (с учётом раскрытия и того, что
@@ -499,6 +528,22 @@ function openRow(rowIndex) {
     return;
   }
 
+  // Нашли заметку по названию — уходим в неё, с начала. Пустой query означает,
+  // что highlightMatch ничего не ищет и не прокручивает, а detailScrolled в
+  // panelSection.js подавляет восстановление прежней прокрутки: заметка
+  // открывается сверху. Поле ввода чистим ДО закрытия меню — иначе подписчик
+  // onBlockSearchSource увидит непустой ввод и откроет выпадашку обычного
+  // поиска поверх только что открытой заметки.
+  if (group.kind === "blockNote") {
+    const blockSource = getBlockSearchSource();
+    inputEl.value = "";
+    closeResults();
+    if (blockSource) blockSource.close();
+    setPendingTarget({ kind: "item", id: group.id, query: "", matchIndex: 0 });
+    onNavigateCallback("notes");
+    return;
+  }
+
   setPendingTarget({
     kind: group.kind,
     id: group.id,
@@ -592,5 +637,8 @@ function kindLabel(kind) {
   if (kind === "folder") return t("search.kindFolder");
   if (kind === "calendar") return t("search.kindEvent");
   if (kind === "block") return t("search.kindBlock");
+  // Совпало название заметки, а не текст блока — бейдж тот же, что у обычного
+  // результата-заметки: по смыслу это она и есть.
+  if (kind === "blockNote") return t("search.kindNote");
   return t("search.kindNote");
 }
