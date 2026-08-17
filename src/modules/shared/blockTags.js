@@ -165,3 +165,34 @@ export function ensureBlockIdFactory(editorEl) {
     return `b${next++}`;
   };
 }
+
+// Вытаскивает из сохранённого HTML заметки все блоки, у которых есть ВСЕ
+// перечисленные теги (AND) — для полноэкранного браузера тегов, работающего
+// поверх заметок, а не поверх живого редактора. Парсинг через временный div —
+// тот же приём, что remapInternalLinks/remapBlockTags в settings/dataTransfer.js.
+// text считаем сразу (не только html) — он же пригодится для подсчёта слов и
+// символов блока, незачем перепарсивать HTML заново ради этого.
+export function extractTaggedBlocks(content, requiredTagIds) {
+  if (!content || !requiredTagIds.length) return [];
+  const holder = document.createElement("div");
+  holder.innerHTML = content;
+  const results = [];
+  holder.querySelectorAll(".rte-page").forEach((page) => {
+    const seen = new Set();
+    pageLines(page).forEach((line) => {
+      const blockId = line.dataset.blockId;
+      if (!blockId || seen.has(blockId)) return;
+      seen.add(blockId);
+      const tagIds = getBlockTagIds(line);
+      if (!requiredTagIds.every((id) => tagIds.includes(id))) return;
+      const lines = getBlockLines(page, blockId);
+      results.push({
+        blockId,
+        tagIds,
+        html: lines.map((l) => l.outerHTML).join(""),
+        text: lines.map((l) => l.textContent).join(" ").trim(),
+      });
+    });
+  });
+  return results;
+}
