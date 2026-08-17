@@ -3879,6 +3879,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     refreshLayout: refreshPages,
     // Переход по результату поиска: прокрутить к нужному вхождению и мигнуть им.
     highlightMatch: (query, occurrence, photoName) => highlightMatch(contentEl, query, occurrence, photoName),
+    // Переход по блоку (из полноэкранного браузера тегов) — по id, не по тексту.
+    highlightBlock: (blockId) => highlightBlock(contentEl, blockId),
     // Переход из поля названия в текст: каретка встаёт в начало первой страницы.
     focusContent: () => {
       const first = getPages()[0];
@@ -3952,6 +3954,40 @@ function highlightPhoto(contentEl, photoIndex) {
   img.scrollIntoView({ block: "center", behavior: "smooth" });
   img.classList.add("is-search-hit");
   searchHighlightTimer = setTimeout(() => img.classList.remove("is-search-hit"), SEARCH_HIGHLIGHT_MS);
+}
+
+/**
+ * Переход по блоку (из полноэкранного браузера тегов) — в отличие от
+ * highlightMatch, ищет не текст, а конкретный data-block-id: надёжнее текстового
+ * совпадения (тексту ничего не мешает повториться в заметке дважды) и не требует
+ * подбирать query/occurrence. Блок не пересекает страницы (гарантировано
+ * геометрией в blockTags.js), поэтому первая страница, где getBlockLines вернул
+ * непустой массив, и есть искомая — дальше можно не смотреть.
+ */
+function highlightBlock(contentEl, blockId) {
+  clearSearchHighlight();
+  let lines = [];
+  for (const page of contentEl.querySelectorAll(".rte-page")) {
+    lines = getBlockLines(page, blockId);
+    if (lines.length) break;
+  }
+  if (!lines.length) return;
+
+  lines[0].scrollIntoView({ block: "center", behavior: "smooth" });
+
+  const range = document.createRange();
+  range.setStart(lines[0], 0);
+  const last = lines[lines.length - 1];
+  range.setEnd(last, last.childNodes.length);
+
+  if (typeof Highlight === "undefined" || !CSS.highlights) {
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+  CSS.highlights.set(SEARCH_HIGHLIGHT, new Highlight(range));
+  searchHighlightTimer = setTimeout(clearSearchHighlight, SEARCH_HIGHLIGHT_MS);
 }
 
 /**

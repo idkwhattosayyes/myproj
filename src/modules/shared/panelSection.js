@@ -183,7 +183,7 @@ function applySearchTarget(state) {
   const folderIsValid = PSEUDO_FOLDER_IDS.includes(target.folderId) || state.folders.some((f) => f.id === target.folderId);
   state.selectedFolderId = folderIsValid ? target.folderId : "all";
   state.selectedItemId = target.id;
-  state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex };
+  state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex, blockId: target.blockId };
 }
 
 /**
@@ -1462,7 +1462,10 @@ function renderDetail(container, config, state) {
   // Пришли из поиска — прокручиваем к найденному и мигаем им. Цель одноразовая:
   // следующая перерисовка (правка, переключение папки) прыгать уже не должна.
   if (state.pendingMatch) {
-    editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoIndex);
+    // Переход по блоку (браузер тегов) — по id, надёжнее текстового совпадения;
+    // остальные переходы (обычный поиск) — как раньше, по query/occurrence.
+    if (state.pendingMatch.blockId) editor.highlightBlock(state.pendingMatch.blockId);
+    else editor.highlightMatch(state.pendingMatch.query, state.pendingMatch.index, state.pendingMatch.photoIndex);
     state.pendingMatch = null;
     state.detailScrolled = true;
   } else if (item.openAtEnd) {
