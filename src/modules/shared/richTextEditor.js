@@ -1571,7 +1571,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // "Простым кликом на текстовое поле" (ТЗ п.13) закрывается сама собой:
     // mousedown где угодно вне панели попадает сюда, отдельной ветки под клик
     // по тексту заводить не нужно.
-    if (blockTagsPanelEl && !blockTagsPanelEl.contains(event.target)) closeBlockTagsPanel();
+    if (!blockTagsPanelEl || blockTagsPanelEl.contains(event.target)) return;
+    // Меню Add/Create и модалка создания тега открыты ИЗ панели и лежат поверх
+    // неё — это её продолжение, а не "сторонняя область". Они висят в
+    // document.body, то есть вне панели, поэтому без этой проверки первый же
+    // mousedown в меню схлопывал бы панель под ним, и после Add показывать
+    // добавленный тег было бы уже негде (ТЗ раунд 3 п.3).
+    if (event.target instanceof Element && event.target.closest(".context-menu, .modal-overlay")) return;
+    closeBlockTagsPanel();
   }
 
   // Полоска — псевдоэлемент строки, у неё нет своего hit-теста: строку на
@@ -1641,8 +1648,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     addRow.textContent = `+ ${t("editor.tagAddItem")}`;
     addRow.addEventListener("click", () => {
       const rect = addRow.getBoundingClientRect();
-      closeBlockTagsPanel();
-      openTagAddCreateMenu(rect.left, rect.bottom, blockLines);
+      // Панель НЕ закрываем: после добавления тега она должна остаться открытой
+      // и показать новый тег (ТЗ раунд 3 п.3). Своего частичного обновления у
+      // панели нет — повторный showBlockTagsPanel и есть refresh, он сам
+      // начинается с закрытия предыдущей.
+      openTagAddCreateMenu(rect.left, rect.bottom, blockLines, () => showBlockTagsPanel(line));
     });
     panel.appendChild(addRow);
 
