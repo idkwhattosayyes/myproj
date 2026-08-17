@@ -1567,6 +1567,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       });
       row.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+        // Без этого событие всплывает до contentEl — там свой contextmenu-
+        // обработчик находит тот же blockId (panel — тоже <div>, LINE_SELECTOR
+        // его пропускает) и тут же перекрывает это меню своим ("Dissolve
+        // block"/режим страницы).
+        event.stopPropagation();
         openBlockTagContextMenu(event.clientX, event.clientY, page, blockId, tagId);
       });
       panel.appendChild(row);

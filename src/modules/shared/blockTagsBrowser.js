@@ -268,6 +268,9 @@ export function openBlockTagsBrowser(tagIds) {
               return { ok: true };
             },
           });
+          // Панель держит имя/цвет тега, снятые в момент открытия — после
+          // правки они устаревают, закрываем как и в редакторе.
+          if (closeCardPanel) closeCardPanel();
         },
       },
       {
@@ -275,11 +278,16 @@ export function openBlockTagsBrowser(tagIds) {
         onClick: async () => {
           await blockTagsService.removeTagFromBlock(block.itemId, block.blockId, tagId);
           reload(); // если тег был в активном фильтре — блок сам выпадет из списка
+          // Иначе панель продолжает показывать уже удалённый тег в списке.
+          if (closeCardPanel) closeCardPanel();
         },
       },
       {
         label: t("editor.tagAddItem"),
-        onClick: () => openBlockAddCreateMenu(x, y, block),
+        onClick: () => {
+          if (closeCardPanel) closeCardPanel();
+          openBlockAddCreateMenu(x, y, block);
+        },
       },
     ]);
   }
