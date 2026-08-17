@@ -13,6 +13,32 @@
   overflow: hidden;
 }
 
+/* В отличие от обычной модалки окно не по центру, а с отступом сверху: там
+   стоит строка поиска, и накрывать её нельзя — ею ищут по показанным здесь
+   блокам (см. .search-bar.is-over-browser в search.css). */
+.block-browser-overlay {
+  align-items: flex-start;
+  padding-top: 3.6rem;
+}
+
+.block-browser-overlay .block-browser {
+  max-height: calc(100vh - 5rem);
+}
+
+/* Вспышка на карточке, к которой прокрутились из поиска. Общий .is-search-flash
+   (search.css) заливает фон жёлтым — на карточку во весь экран это слишком
+   тяжело, поэтому обводкой, как у .rte-photo.is-search-hit в editor.css.
+   Селектор из двух классов перебивает общее правило специфичностью. */
+.block-browser-card.is-search-flash {
+  animation: block-browser-flash 2.2s ease-out;
+  background: transparent;
+}
+
+@keyframes block-browser-flash {
+  0%, 45% { box-shadow: 0 0 0 3px #ffd43b; }
+  100% { box-shadow: 0 0 0 0 rgba(255, 212, 59, 0); }
+}
+
 .block-browser-header {
   display: flex;
   align-items: flex-start;

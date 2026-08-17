@@ -20,6 +20,15 @@
   width: min(34rem, calc(100% - 8rem));
 }
 
+/* Пока открыто полноэкранное меню блоков, полоска обязана лежать ПОВЕРХ его
+   оверлея (.modal-overlay, z-index 1000) — иначе меню её накрывает и искать по
+   показанным блокам нечем. Класс ставит сама полоска, когда меню сообщает об
+   открытии (см. onBlockSearchSource в searchBar.js). Тот же приём и та же
+   причина, что у .block-browser-tags-panel в blockTagsBrowser.css. */
+.search-bar.is-over-browser {
+  z-index: 1001;
+}
+
 /* Верхняя строка: поле поиска и отдельная круглая кнопка быстрой заметки рядом. */
 .search-topline {
   display: flex;

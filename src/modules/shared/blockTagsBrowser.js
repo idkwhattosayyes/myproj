@@ -4,6 +4,7 @@ import { escapeHtml, clamp } from "../../utils/dom.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
+import { setBlockSearchSource } from "../../search/blockScope.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
 
 const SORT_KEY = "app:blockBrowserSort";
@@ -35,7 +36,10 @@ export function openBlockTagsBrowser(tagIds) {
   let closeCardPanel = null;
 
   const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
+  // Своя вторая метка рядом с .modal-overlay: затемнение и z-index берём как у
+  // обычной модалки, а раскладку меняем — окно сдвинуто вниз, чтобы не
+  // накрывать строку поиска (см. blockTagsBrowser.css и ТЗ раунд 3 п.6).
+  overlay.className = "modal-overlay block-browser-overlay";
   overlay.innerHTML = `
     <div class="block-browser">
       <div class="block-browser-header">
@@ -78,9 +82,16 @@ export function openBlockTagsBrowser(tagIds) {
     overlay.removeEventListener("click", onClick);
     unregisterLayer();
     overlay.remove();
+    setBlockSearchSource(null);
     closeCurrentBrowser = null;
   }
   closeCurrentBrowser = close;
+
+  // Пока меню открыто, поиск "в разделе" ищет по показанным здесь блокам.
+  // getBlocks читает sorted (а не blocks): искать надо среди того, что реально
+  // на экране и в том же порядке — sorted переприсваивается в renderList,
+  // поэтому именно функция, а не снимок массива.
+  setBlockSearchSource({ getBlocks: () => sorted, scrollToBlock });
 
   sortEl.addEventListener("change", () => {
     sortMode = sortEl.value;
@@ -162,7 +173,7 @@ export function openBlockTagsBrowser(tagIds) {
         const words = block.text ? block.text.split(/\s+/).length : 0;
         const chars = block.text.length;
         return `
-        <div class="block-browser-card" style="--tag-color:${tag ? tag.color : "transparent"}">
+        <div class="block-browser-card" data-item-id="${block.itemId}" data-block-id="${block.blockId}" style="--tag-color:${tag ? tag.color : "transparent"}">
           <div class="block-browser-card-strip block-browser-card-strip--top" data-role="strip" data-index="${index}"></div>
           <div class="block-browser-card-head">
             <span class="block-browser-card-title">
@@ -192,6 +203,26 @@ export function openBlockTagsBrowser(tagIds) {
         getNavigateHandler()("notes");
       });
     });
+  }
+
+  /**
+   * Прокрутить список к нужной карточке и мигнуть ею — переход по результату
+   * поиска "в разделе" (см. searchBar.js). Ключ — пара itemId + blockId:
+   * blockId уникален только внутри своей заметки.
+   */
+  function scrollToBlock(itemId, blockId) {
+    const card = listEl.querySelector(
+      `.block-browser-card[data-item-id="${itemId}"][data-block-id="${blockId}"]`
+    );
+    if (!card) return;
+    card.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Метка одноразовая (тот же приём, что у flashFolderId в panelSection.js):
+    // снимаем её со всех карточек, иначе отыгравшие классы копились бы по
+    // списку. Заодно это и перезапуск анимации — без снятия класса и
+    // принудительного пересчёта повторная вспышка на той же карточке не идёт.
+    listEl.querySelectorAll(".is-search-flash").forEach((el) => el.classList.remove("is-search-flash"));
+    void card.offsetWidth;
+    card.classList.add("is-search-flash");
   }
 
   // --- Панель тегов карточки (та же, что в редакторе) ----------------------

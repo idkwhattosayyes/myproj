@@ -7,7 +7,7 @@ import { htmlToText, extractPhotos } from "../utils/dom.js";
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
 // кликабельной подписью "Ещё совпадений: N" — она догружает их из этого запаса.
 // Потолок нужен, чтобы запрос вроде одной буквы не собрал тысячи вхождений.
-const MATCH_FETCH_CAP = 200;
+export const MATCH_FETCH_CAP = 200;
 // Сколько символов текста показывать вокруг найденного.
 const SNIPPET_PADDING = 40;
 // Предел на весь список — защита от запроса вроде одной буквы "а".
@@ -144,8 +144,12 @@ async function searchCalendar(query) {
  * Находит вхождения запроса в тексте и режет вокруг каждого кусочек для показа.
  * index — порядковый номер вхождения в тексте: по нему потом ищем это же место
  * в самой заметке, чтобы перейти именно к нему, а не к первому попавшемуся.
+ *
+ * Экспортируется ради поиска по блокам открытого меню тегов (searchBar.js):
+ * сниппеты там обязаны выглядеть так же, как у обычных результатов, поэтому
+ * нарезка переиспользуется, а не дублируется.
  */
-function findMatches(text, query, limit) {
+export function findMatches(text, query, limit) {
   const haystack = (text || "").toLowerCase();
   const needle = query.toLowerCase();
   const matches = [];

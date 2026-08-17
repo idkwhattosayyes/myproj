@@ -1,7 +1,8 @@
 import { t } from "../i18n/i18n.js";
 import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
-import { search } from "./searchService.js";
+import { search, findMatches, MATCH_FETCH_CAP } from "./searchService.js";
+import { getBlockSearchSource, onBlockSearchSource } from "./blockScope.js";
 import { setPendingTarget } from "./searchTarget.js";
 import { openBlockTagsBrowser, LAST_FILTER_KEY } from "../modules/shared/blockTagsBrowser.js";
 import * as blockTagsService from "../services/blockTagsService.js";
@@ -22,6 +23,9 @@ let pickedEl = null;
 // На главной локального поиска нет: искать там больше негде.
 let scope = "global";
 let currentRoute = "home";
+// Охват до открытия меню блоков: оно забирает "local" себе, при закрытии
+// возвращаем прежний, чтобы обычный поиск вёл себя как до открытия.
+let scopeBeforeBrowser = null;
 
 // Режим выбора цели для внутренней ссылки (см. openLinkPicker) — та же полоска
 // поиска, но клик по результату не переходит к нему, а возвращает выбор вызывающему
@@ -113,6 +117,24 @@ export function mountSearch({ onNavigate }) {
     inputEl.focus();
   });
 
+  // Меню блоков открылось/закрылось. Пока оно открыто, полоска обязана лежать
+  // ПОВЕРХ его оверлея (иначе искать по показанным блокам нечем), а охват
+  // переключается на "в разделе" — то есть на эти самые блоки. При закрытии
+  // возвращаем охват, каким он был до открытия.
+  onBlockSearchSource((source) => {
+    barEl.classList.toggle("is-over-browser", !!source);
+    if (source) {
+      scopeBeforeBrowser = scope;
+      scope = "local";
+    } else {
+      scope = scopeBeforeBrowser ?? scope;
+      scopeBeforeBrowser = null;
+    }
+    renderLabels();
+    if (inputEl.value.trim() && !hasHashToken(inputEl.value)) scheduleSearch();
+    else if (!source) closeResults();
+  });
+
   renderLabels();
 }
 
@@ -155,7 +177,10 @@ function onInputKeydown(event) {
 }
 
 function toggleScope() {
-  if (currentRoute === "home" || pickerActive) return; // на главной переключать не на что, в режиме выбора — незачем
+  // На главной переключать не на что, в режиме выбора — незачем. Исключение —
+  // открытое меню блоков: там "в разделе" значит "по показанным блокам", и это
+  // осмысленно на любом маршруте, включая главную.
+  if ((currentRoute === "home" && !getBlockSearchSource()) || pickerActive) return;
   scope = scope === "global" ? "local" : "global";
   renderLabels();
   scheduleSearch();
@@ -170,7 +195,9 @@ function toggleScope() {
 export function refreshSearchScope(route) {
   if (pickerActive) finishPicker(null);
   currentRoute = route;
-  scope = route === "home" ? "global" : "local";
+  // Пока открыто меню блоков, охват принадлежит ему, а не маршруту: перерисовка
+  // раздела под оверлеем не должна сбрасывать поиск по показанным блокам.
+  if (!getBlockSearchSource()) scope = route === "home" ? "global" : "local";
   renderLabels();
 }
 
@@ -180,7 +207,7 @@ export function renderLabels() {
   inputEl.placeholder = pickerActive ? t("search.pickNotePlaceholder") : t("search.placeholder");
   scopeBtn.textContent = scope === "global" ? t("search.scopeGlobal") : t("search.scopeLocal");
   scopeBtn.title = t("search.scopeHint");
-  scopeBtn.disabled = currentRoute === "home" || pickerActive;
+  scopeBtn.disabled = (currentRoute === "home" && !getBlockSearchSource()) || pickerActive;
 }
 
 // Какие данные перебирать: "all" — всё, "items" — папки и заметки,
@@ -308,6 +335,20 @@ async function runSearch() {
     closeResults();
     return;
   }
+  const blockSource = getBlockSearchSource();
+  // Открыто меню блоков и охват "в разделе" — ищем среди показанных в нём
+  // блоков, а не по заметкам (ТЗ раунд 3 п.6). Синхронно: блоки уже в памяти.
+  if (blockSource && scope === "local" && !pickerActive) {
+    groups = searchOpenBlocks(query, blockSource);
+    activeRow = 0;
+    visibleByGroup.clear();
+    renderResults();
+    // Само появление совпадения должно подвести список к нему, не дожидаясь
+    // клика по результату.
+    if (groups.length) blockSource.scrollToBlock(groups[0].id, groups[0].blockId);
+    return;
+  }
+
   groups = await search(query, currentScopeKey());
   if (pickerActive) {
     // Папка — не цель для ссылки; фото-совпадения не годятся в matchIndex
@@ -321,6 +362,35 @@ async function runSearch() {
   // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
   visibleByGroup.clear();
   renderResults();
+}
+
+/**
+ * Результаты по блокам открытого меню тегов, в той же форме, что отдаёт
+ * searchService.search — тогда renderResults/openRow работают с ними как с
+ * обычными группами, без второй ветки отрисовки. Отличия ровно два: kind
+ * "block" (свой бейдж) и дополнительное поле blockId, по которому openRow
+ * понимает, что переходить надо прокруткой внутри меню, а не навигацией.
+ * Заголовок группы — название заметки, в которой лежит блок (ТЗ).
+ * @param {ReturnType<typeof getBlockSearchSource>} source
+ */
+function searchOpenBlocks(query, source) {
+  const groups = [];
+  source.getBlocks().forEach((block) => {
+    const found = findMatches(block.text, query, MATCH_FETCH_CAP);
+    if (!found.matches.length) return;
+    groups.push({
+      kind: "block",
+      id: block.itemId,
+      blockId: block.blockId,
+      section: "notes",
+      title: block.itemTitle,
+      subtitle: "",
+      query,
+      matches: found.matches,
+      moreCount: found.total - found.matches.length,
+    });
+  });
+  return groups;
 }
 
 // Сколько совпадений группы показываем сейчас (с учётом раскрытия и того, что
@@ -416,6 +486,15 @@ function openRow(rowIndex) {
     return;
   }
 
+  // Блок из открытого меню — перемещение ВНУТРИ него: прокручиваем список к
+  // карточке и остаёмся на месте. Ни закрывать меню, ни уходить в заметку
+  // (для этого у карточки есть двойной клик), ни трогать pendingTarget не надо.
+  if (group.kind === "block") {
+    const blockSource = getBlockSearchSource();
+    if (blockSource) blockSource.scrollToBlock(group.id, group.blockId);
+    return;
+  }
+
   setPendingTarget({
     kind: group.kind,
     id: group.id,
@@ -508,5 +587,6 @@ function finishPicker(result) {
 function kindLabel(kind) {
   if (kind === "folder") return t("search.kindFolder");
   if (kind === "calendar") return t("search.kindEvent");
+  if (kind === "block") return t("search.kindBlock");
   return t("search.kindNote");
 }
