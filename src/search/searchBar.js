@@ -18,6 +18,9 @@ let scopeBtn = null;
 let resultsEl = null;
 // Контейнер выбранных тегов внутри самой строки поиска (см. renderPickedTags).
 let pickedEl = null;
+// Куда вернуть каретку, если поиск, открытый по Ctrl+F, закроют по Esc
+// (см. rememberFocusTarget/returnFocusFromSearch).
+let focusReturn = null;
 
 // "global" — по всему приложению, "local" — по разделу, в котором находимся.
 // На главной локального поиска нет: искать там больше негде.
@@ -112,6 +115,11 @@ export function mountSearch({ onNavigate }) {
     else if (inputEl.value.trim() && !groups.length) scheduleSearch();
   });
   inputEl.addEventListener("keydown", onInputKeydown);
+  // Ушли из поля не по Esc (клик мимо, Tab, переход по результату) — значит
+  // пользователь сам выбрал, где быть дальше, и тянуть фокус назад нельзя.
+  inputEl.addEventListener("blur", () => {
+    focusReturn = null;
+  });
   scopeBtn.addEventListener("click", () => {
     toggleScope();
     inputEl.focus();
@@ -209,9 +217,66 @@ export function refreshSearchScope(route) {
  */
 export function focusSearch() {
   if (!inputEl || pickerActive) return false;
+  rememberFocusTarget();
   inputEl.focus();
   // Повторный Ctrl+F заменяет прежний запрос набором, а не дописывает к нему.
   inputEl.select();
+  return true;
+}
+
+/**
+ * Куда вернуть каретку, если поиск закроют по Esc, ничего не найдя. Снимаем
+ * ДО того, как поле поиска забрало фокус.
+ *
+ * Позицию храним узлом и смещением, а не сквозным номером символа: узел
+ * переживает перерисовку, а счётчик символов сбивается от любой правки рядом
+ * (та же причина, что у saveCaret в richTextEditor.js).
+ */
+function rememberFocusTarget() {
+  focusReturn = null;
+  const el = document.activeElement;
+  if (!el || el === inputEl || el === document.body) return;
+
+  if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+    focusReturn = { el, start: el.selectionStart, end: el.selectionEnd };
+    return;
+  }
+  if (el.isContentEditable) {
+    const selection = window.getSelection();
+    const range = selection.rangeCount ? selection.getRangeAt(0) : null;
+    focusReturn = range ? { el, node: range.startContainer, offset: range.startOffset } : { el };
+  }
+}
+
+/**
+ * Esc в поле поиска: вернуть каретку туда, откуда её забрал Ctrl+F.
+ * @returns {boolean} взяли ли Esc на себя (иначе вызывающий код просто снимет фокус)
+ */
+export function returnFocusFromSearch() {
+  const target = focusReturn;
+  focusReturn = null;
+  // Только из самого поля поиска: Esc в названии заметки или в поле календаря
+  // к этому механизму отношения не имеет.
+  if (!target || !inputEl || document.activeElement !== inputEl) return false;
+  if (!target.el.isConnected) return false;
+
+  target.el.focus();
+  if (target.start !== undefined) {
+    target.el.setSelectionRange(target.start, target.end);
+    return true;
+  }
+  if (!target.node || !target.node.isConnected) return true; // поле вернули, точное место потеряно
+
+  // Смещение упираем в текущий размер узла: сам узел переезд переживает, а его
+  // содержимое между снимком и возвратом измениться могло.
+  const limit =
+    target.node.nodeType === Node.TEXT_NODE ? target.node.textContent.length : target.node.childNodes.length;
+  const range = document.createRange();
+  range.setStart(target.node, Math.min(target.offset, limit));
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
   return true;
 }
 

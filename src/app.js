@@ -6,7 +6,13 @@ import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { setNavigateHandler } from "./search/searchTarget.js";
 import { watchUiScale } from "./utils/uiScale.js";
-import { mountSearch, refreshSearchScope, renderLabels as renderSearchLabels, focusSearch } from "./search/searchBar.js";
+import {
+  mountSearch,
+  refreshSearchScope,
+  renderLabels as renderSearchLabels,
+  focusSearch,
+  returnFocusFromSearch,
+} from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
 
@@ -50,6 +56,10 @@ function onEscape() {
   if (closeTopLayer()) return;
 
   if (isEditingField(document.activeElement)) {
+    // Ctrl+F забрал фокус из текста — Esc возвращает его туда же, а не просто
+    // снимает: пользователь передумал искать и хочет продолжить печатать с того
+    // же места.
+    if (returnFocusFromSearch()) return;
     document.activeElement.blur();
     return;
   }
