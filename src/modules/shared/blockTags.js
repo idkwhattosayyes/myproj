@@ -173,7 +173,9 @@ export function ensureBlockIdFactory(editorEl) {
 // text считаем сразу (не только html) — он же пригодится для подсчёта слов и
 // символов блока, незачем перепарсивать HTML заново ради этого.
 export function extractTaggedBlocks(content, requiredTagIds) {
-  if (!content || !requiredTagIds.length) return [];
+  // requiredTagIds.every(...) на пустом массиве истинно само по себе —
+  // пустой фильтр корректно означает "все блоки", отдельная проверка не нужна.
+  if (!content) return [];
   const holder = document.createElement("div");
   holder.innerHTML = content;
   const results = [];

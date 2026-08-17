@@ -40,7 +40,6 @@ export async function updateTag(id, { name, color }) {
 // удалённых (см. localStorageAdapter.getItems), лишний фильтр не нужен.
 // Порядок и сортировка — забота вызывающего UI, не сервиса.
 export async function findBlocks(tagIds) {
-  if (!tagIds.length) return [];
   const items = await itemsService.listItems("notes");
   const results = [];
   items.forEach((item) => {
