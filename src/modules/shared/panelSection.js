@@ -1427,22 +1427,30 @@ function renderDetail(container, config, state) {
     // меню — иначе поверх его меню открывалось бы второе. У строк списка слева
     // своё меню, расширенная опция туда намеренно не попадает.
     getExtraMenuItems: config.pageModeInContextMenu
-      ? () => [
-          {
-            label: editor.getPageMode() === "paged" ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
-            onClick: () => editor.togglePageMode(),
-          },
-          {
-            // Длинную заметку, которую всё время дописывают снизу, удобно открывать
-            // сразу в конце. Настройка живёт в самой заметке (как pageMode), поэтому
-            // у каждой она своя и переживает экспорт/импорт.
-            label: item.openAtEnd ? t("editor.openAtTop") : t("editor.openAtEnd"),
-            onClick: () => {
-              item.openAtEnd = !item.openAtEnd;
-              scheduleSave({ openAtEnd: item.openAtEnd });
+      ? () => {
+          // Оба пункта — расширенные инструменты, как и кнопки с
+          // data-toolbar-extra: показываем их только когда тулбар развёрнут
+          // кнопкой "+". Свёрнутость самого тулбара стрелкой на это не влияет —
+          // классы is-expanded и is-collapsed независимы (см.
+          // createToolbarToggle/createToolbarExpandToggle в richTextEditor.js).
+          if (!editor.toolbarEl.classList.contains("is-expanded")) return [];
+          return [
+            {
+              label: editor.getPageMode() === "paged" ? t("editor.pageModeFlow") : t("editor.pageModePaged"),
+              onClick: () => editor.togglePageMode(),
             },
-          },
-        ]
+            {
+              // Длинную заметку, которую всё время дописывают снизу, удобно открывать
+              // сразу в конце. Настройка живёт в самой заметке (как pageMode), поэтому
+              // у каждой она своя и переживает экспорт/импорт.
+              label: item.openAtEnd ? t("editor.openAtTop") : t("editor.openAtEnd"),
+              onClick: () => {
+                item.openAtEnd = !item.openAtEnd;
+                scheduleSave({ openAtEnd: item.openAtEnd });
+              },
+            },
+          ];
+        }
       : null,
   });
   const { toolbarEl, contentEl } = editor;
