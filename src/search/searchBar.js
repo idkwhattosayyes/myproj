@@ -45,6 +45,9 @@ let onNavigateCallback = null;
 let selectedViaPlus = [];
 let allTags = null;
 
+// "Билет" последнего вызова renderTagSuggestions — см. комментарий внутри неё.
+let tagRenderToken = 0;
+
 function hasHashToken(value) {
   return value.includes("#");
 }
