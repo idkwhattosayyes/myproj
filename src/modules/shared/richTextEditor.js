@@ -303,7 +303,9 @@ const FORMATS = {
 // с фрагмента все, кроме выбранного.
 const HEADING_LEVELS = ["h1", "h2", "h3"];
 
-const EMPTY_WRAPPER_SELECTOR = "u,s,span.rte-h1,span.rte-h2,span.rte-h3,a.rte-link";
+// b/i/strong/em сюда входят наравне с u/s: перенос оформления на новую строку
+// по Enter создаёт пустые носители и для них тоже (см. restoreLineFormat).
+const EMPTY_WRAPPER_SELECTOR = "b,strong,i,em,u,s,span.rte-h1,span.rte-h2,span.rte-h3,a.rte-link";
 
 function createHeadingSpan(className) {
   const span = document.createElement("span");
@@ -352,7 +354,7 @@ function stripEditingLeftovers(page) {
   // Пустой — значит без единого узла внутри: <span><br></span> это пустая строка
   // с ждущим оформлением, а не мусор. Идём с конца, чтобы вложенные обёртки
   // (<u><s></s></u>) успели опустеть раньше, чем дойдёт очередь до внешней.
-  [...page.querySelectorAll("u,s,a.rte-link,span[style],span.rte-h1,span.rte-h2,span.rte-h3")]
+  [...page.querySelectorAll("b,strong,i,em,u,s,a.rte-link,span[style],span.rte-h1,span.rte-h2,span.rte-h3")]
     .reverse()
     .forEach((el) => {
       if (!el.childNodes.length) el.remove();
@@ -655,6 +657,29 @@ function caretColors(editorEl, node) {
     el = el.parentElement;
   }
   return { color, background: carrier ? carrier.style.backgroundColor : "" };
+}
+
+// Символьные тумблеры, которыми идёт печать в точке каретки, — по РАЗМЕТКЕ, а не
+// по queryCommandState. Причина та же, что у caretColors: у отмеченного пункта
+// to-do зачёркивание и серый заданы правилом CSS (li.is-done), а Chrome при
+// разрыве строки охотно превращает вычисленный вид в настоящие <font>/<strike>.
+// Поверив состоянию команды, мы бы своими руками перенесли на новую строку вид
+// отметки — ровно ту беду, от которой и стоит clearEmptiedBlock.
+//
+// Заголовки (span.rte-h*) и ссылки сюда намеренно не входят: первое — скорее
+// размер абзаца, чем тумблер символа, второе продолжать на новой строке незачем.
+function caretInlineFormats(editorEl, node) {
+  const tags = new Set();
+  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  while (el && editorEl.contains(el) && !el.classList.contains("rte-page")) {
+    const name = el.tagName;
+    if (name === "B" || name === "STRONG") tags.add("b");
+    else if (name === "I" || name === "EM") tags.add("i");
+    else if (name === "U") tags.add("u");
+    else if (name === "S" || name === "STRIKE" || name === "DEL") tags.add("s");
+    el = el.parentElement;
+  }
+  return [...tags];
 }
 
 // Тумблер цвета при СХЛОПНУТОЙ каретке. Нативный execCommand в этом случае не
@@ -3625,9 +3650,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     placeCaretAfter(caretHost, 0);
   }
 
-  // Цвет и заливка, снятые перед разрывом строки. Одноразовое значение, как
-  // pendingMatch у панели: применили на новой строке — обнулили.
-  let pendingLineColors = null;
+  // Оформление, снятое перед разрывом строки: цвет, заливка и символьные теги.
+  // Одноразовое значение, как pendingMatch у панели: применили на новой
+  // строке — обнулили.
+  let pendingLineFormat = null;
 
   // Снимаем ДО разрыва, а не после. К моменту input новая строка уже создана, и
   // разметку, которую Chrome на неё скопировал, тут же сносит clearEmptiedBlock —
@@ -3641,34 +3667,58 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
     if (event.inputType !== "insertParagraph") return;
     const selection = window.getSelection();
-    pendingLineColors = selection.rangeCount ? caretColors(contentEl, selection.getRangeAt(0).startContainer) : null;
+    if (!selection.rangeCount) {
+      pendingLineFormat = null;
+      return;
+    }
+    const start = selection.getRangeAt(0).startContainer;
+    pendingLineFormat = { ...caretColors(contentEl, start), tags: caretInlineFormats(contentEl, start) };
   });
 
   /**
-   * Возвращает на новую пустую строку цвет и заливку, которыми печатали до Enter:
-   * clearEmptiedBlock только что снёс с неё всю разметку вместе с ними, и печать
-   * продолжилась бы обычным текстом.
+   * Возвращает на новую пустую строку оформление, которым печатали до Enter:
+   * цвет, заливку и символьные тумблеры (B/I/U/S). clearEmptiedBlock только что
+   * снёс с неё всю разметку вместе с ними, и печать продолжилась бы обычным
+   * текстом.
    *
-   * Пустой span с якорем внутри — тот же приём, что у enterInlineFormat и
-   * toggleColorAtCaret: каретка внутри тега, дальнейший ввод сразу оформляется.
-   * stripEditingLeftovers такую обёртку намеренно оставляет при сохранении.
+   * Пустые теги с якорем внутри — тот же приём, что у enterInlineFormat и
+   * toggleColorAtCaret: каретка внутри всех обёрток сразу, дальнейший ввод
+   * оформляется без единого лишнего действия. Носители вкладываем друг в друга,
+   * якорь — в самый внутренний.
+   *
+   * Живёт это только в открытом редакторе: при сохранении stripEditingLeftovers
+   * снимает якорь, обёртка становится пустой и вычищается. Так же было и с
+   * цветом — оформление ждёт первого символа, а не переживает перезагрузку.
    *
    * Строку с текстом не трогаем: там разметку перенёс сам Chrome и она цела —
    * работаем только по пустой, то есть ровно по той, которую зачистили.
    */
-  function restoreLineColors() {
-    const colors = pendingLineColors;
-    pendingLineColors = null;
-    if (!colors || (!colors.color && !colors.background)) return;
+  function restoreLineFormat() {
+    const format = pendingLineFormat;
+    pendingLineFormat = null;
+    if (!format) return;
+    const { color, background, tags } = format;
+    if (!color && !background && !tags.length) return;
     const block = getCaretBlock(contentEl);
     if (!block || !isLineEmpty(block)) return;
 
-    const wrapper = document.createElement("span");
-    if (colors.color) wrapper.style.color = colors.color;
-    if (colors.background) wrapper.style.backgroundColor = colors.background;
-    wrapper.appendChild(document.createTextNode(CARET_ANCHOR));
-    block.replaceChildren(wrapper, document.createElement("br"));
-    placeCaretAfter(wrapper.firstChild, wrapper.firstChild.length);
+    const anchor = document.createTextNode(CARET_ANCHOR);
+    let carrier = anchor;
+    if (color || background) {
+      const span = document.createElement("span");
+      if (color) span.style.color = color;
+      if (background) span.style.backgroundColor = background;
+      span.appendChild(carrier);
+      carrier = span;
+    }
+    tags.forEach((tag) => {
+      const el = document.createElement(tag);
+      el.appendChild(carrier);
+      carrier = el;
+    });
+
+    block.replaceChildren(carrier, document.createElement("br"));
+    placeCaretAfter(anchor, anchor.length);
   }
 
   contentEl.addEventListener("input", (event) => {
@@ -3691,9 +3741,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // И новый пункт to-do не рождается выполненным: сам класс отметки Chrome
       // тоже копирует вместе со строкой (см. clearDoneOnEmptyItems).
       clearDoneOnEmptyItems(contentEl);
-      // Строго после зачистки: она сносит со строки всё подряд, а цвет с заливкой
-      // пережить Enter обязаны — иначе продолжать писать тем же цветом нельзя.
-      restoreLineColors();
+      // Строго после зачистки: она сносит со строки всё подряд, а оформление
+      // пережить Enter обязано — иначе продолжать писать тем же цветом и
+      // жирным/подчёркнутым нельзя.
+      restoreLineFormat();
     }
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
