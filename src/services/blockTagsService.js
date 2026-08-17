@@ -1,6 +1,6 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { createBlockTagModel } from "../data/models.js";
-import { extractTaggedBlocks } from "../modules/shared/blockTags.js";
+import { extractTaggedBlocks, getBlockLines, getBlockTagIds, setBlockTagIds } from "../modules/shared/blockTags.js";
 import * as itemsService from "./itemsService.js";
 
 const storage = getStorage();
@@ -49,4 +49,37 @@ export async function findBlocks(tagIds) {
     });
   });
   return results;
+}
+
+// Правка тегов блока БЕЗ открытого живого редактора этой заметки (полноэкранный
+// браузер тегов показывает блоки из чужих, не открытых заметок) — те же
+// примитивы blockTags.js, что использует richTextEditor.js, только страница не
+// живая, а detached-разобранная из сохранённого content. Тот же идиом парсинга,
+// что remapInternalLinks/remapBlockTags в settings/dataTransfer.js.
+async function mutateBlockTags(itemId, blockId, mutate) {
+  const item = await itemsService.getItem(itemId);
+  if (!item) return;
+  const holder = document.createElement("div");
+  holder.innerHTML = item.content;
+  for (const page of holder.querySelectorAll(".rte-page")) {
+    if (getBlockLines(page, blockId).length) {
+      mutate(page);
+      break;
+    }
+  }
+  await itemsService.updateItem(itemId, { content: holder.innerHTML });
+}
+
+export async function removeTagFromBlock(itemId, blockId, tagId) {
+  return mutateBlockTags(itemId, blockId, (page) => {
+    const current = getBlockTagIds(getBlockLines(page, blockId)[0]);
+    setBlockTagIds(page, blockId, current.filter((id) => id !== tagId)); // пустой список сам распускает блок
+  });
+}
+
+export async function addTagToBlock(itemId, blockId, tag) {
+  return mutateBlockTags(itemId, blockId, (page) => {
+    const current = getBlockTagIds(getBlockLines(page, blockId)[0]);
+    if (!current.includes(tag.id)) setBlockTagIds(page, blockId, [...current, tag.id]);
+  });
 }
