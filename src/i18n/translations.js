@@ -197,6 +197,7 @@ export const translations = {
     "blockBrowser.sortNoteOrder": "Note order",
     "blockBrowser.addFilter": "Add tag to filter",
     "blockBrowser.removeFilter": "Remove from filter",
+    "blockBrowser.openMenu": "Browse tagged blocks",
 
     "modal.yes": "Yes",
     "modal.cancel": "Cancel",
@@ -399,6 +400,7 @@ export const translations = {
     "blockBrowser.sortNoteOrder": "Как в списке заметок",
     "blockBrowser.addFilter": "Добавить тег в фильтр",
     "blockBrowser.removeFilter": "Убрать из фильтра",
+    "blockBrowser.openMenu": "Просмотр блоков по тегам",
 
     "modal.yes": "Да",
     "modal.cancel": "Отмена",
@@ -601,6 +603,7 @@ export const translations = {
     "blockBrowser.sortNoteOrder": "לפי סדר הפתקים",
     "blockBrowser.addFilter": "הוספת תג לסינון",
     "blockBrowser.removeFilter": "הסרה מהסינון",
+    "blockBrowser.openMenu": "עיון בבלוקים לפי תגים",
 
     "modal.yes": "כן",
     "modal.cancel": "ביטול",

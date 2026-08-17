@@ -7,6 +7,10 @@ import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.
 import * as blockTagsService from "../../services/blockTagsService.js";
 
 const SORT_KEY = "app:blockBrowserSort";
+// Последний набор тегов фильтра — переживает закрытие браузера тем же
+// способом, что и сортировка: кнопка "#tags" рядом с поиском (searchBar.js)
+// открывает браузер именно с этим набором, а не с пустым каждый раз заново.
+export const LAST_FILTER_KEY = "app:blockBrowserFilter";
 
 // Только одно окно браузера тегов одновременно — открыть новое поверх старого
 // (клик по тегу внутри уже открытого браузера) сначала закрывает прежнее, тот
@@ -95,6 +99,7 @@ export function openBlockTagsBrowser(tagIds) {
       tagRegistry = new Map(tags.map((tag) => [tag.id, tag]));
     }
     blocks = await blockTagsService.findBlocks(selectedTagIds);
+    localStorage.setItem(LAST_FILTER_KEY, JSON.stringify(selectedTagIds));
     renderFilter();
     renderList();
   }

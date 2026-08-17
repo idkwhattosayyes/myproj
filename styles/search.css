@@ -27,6 +27,30 @@
   gap: 0.5rem;
 }
 
+/* Кнопка полноэкранного меню тегов — слева от строки поиска, вплотную. Высота
+   не задана в px/rem: align-self: stretch подстраивает её под фактическую
+   вычисленную высоту .search-field (padding+border+font-size), не дублируя
+   эти значения здесь — они не разъедутся при будущей правке одного файла без
+   другого. */
+.search-tags-open {
+  align-self: stretch;
+  flex-shrink: 0;
+  padding: 0 0.7rem;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #33507e;
+  cursor: pointer;
+}
+
+.search-tags-open:hover {
+  background: #f3f4f6;
+  border-color: #33507e;
+}
+
 .search-field {
   flex: 1;
   display: flex;

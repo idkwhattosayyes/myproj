@@ -3,7 +3,7 @@ import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { search } from "./searchService.js";
 import { setPendingTarget } from "./searchTarget.js";
-import { openBlockTagsBrowser } from "../modules/shared/blockTagsBrowser.js";
+import { openBlockTagsBrowser, LAST_FILTER_KEY } from "../modules/shared/blockTagsBrowser.js";
 import * as blockTagsService from "../services/blockTagsService.js";
 
 /**
@@ -73,6 +73,7 @@ export function mountSearch({ onNavigate }) {
   barEl.className = "search-bar";
   barEl.innerHTML = `
     <div class="search-topline">
+      <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}">#tags</button>
       <div class="search-field">
         <span class="search-icon">⌕</span>
         <input type="text" class="search-input" data-role="search-input">
@@ -86,6 +87,13 @@ export function mountSearch({ onNavigate }) {
   inputEl = barEl.querySelector('[data-role="search-input"]');
   scopeBtn = barEl.querySelector('[data-role="search-scope"]');
   resultsEl = barEl.querySelector('[data-role="search-results"]');
+  const tagsOpenBtn = barEl.querySelector('[data-role="tags-open"]');
+  // Пустой фильтр — если ни разу не открывали или после Clear all (см. Step 6:
+  // extractTaggedBlocks на пустом requiredTagIds теперь и есть "все блоки").
+  tagsOpenBtn.addEventListener("click", () => {
+    const stored = JSON.parse(localStorage.getItem(LAST_FILTER_KEY) || "[]");
+    openBlockTagsBrowser(stored);
+  });
 
   inputEl.addEventListener("input", () => {
     if (hasHashToken(inputEl.value)) renderTagSuggestions();
