@@ -90,6 +90,13 @@ window.addEventListener("keydown", (event) => {
   if (focusSearch()) event.preventDefault();
 });
 
+// Нативное меню браузера в приложении не нужно нигде: где есть своё — открывается
+// своё, где своего нет — не должно появляться ничего. Фаза CAPTURE, а не bubble:
+// поле inline-переименования глушит всплытие своим обработчиком (panelSection.js),
+// и до слушателя на document событие иначе не дошло бы. preventDefault здесь гасит
+// только нативное меню и не мешает всплытию — свои меню открываются как раньше.
+document.addEventListener("contextmenu", (event) => event.preventDefault(), true);
+
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("DOMContentLoaded", () => {
   applyBorderSetting();
