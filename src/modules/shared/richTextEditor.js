@@ -1196,6 +1196,24 @@ function nextSplitBreak(line) {
   }) || null;
 }
 
+/**
+ * Есть ли в диапазоне хоть что-то значимое. Проверять надо ПО СОДЕРЖИМОМУ:
+ * range.collapsed сравнивает границы, а не текст, и на этом ловилась пустая
+ * строка перед новым блоком. selectNodeContents(line) ставит начало в
+ * (line, 0) — границу-ЭЛЕМЕНТ, а Chrome выражает край выделения у начала
+ * строки как (textNode, 0). Позиция та же, границы разные, поэтому collapsed
+ * ложен, хотя между ними ни одного символа — разрез всё равно выполнялся и
+ * порождал пустой "остаток", которому fillEmptyLine дописывал <br>.
+ *
+ * Тот же приём проверки, что в nextSplitBreak ниже: <br>/img/svg/table считаем
+ * содержимым (пустая строка, намеренно попавшая в выделение, — часть блока),
+ * а пробелы и NBSP — нет.
+ */
+function rangeHasContent(range) {
+  const content = range.cloneContents();
+  return content.textContent.trim() !== "" || !!content.querySelector("br,img,svg,table");
+}
+
 // Пустой строке нужен <br>: без него браузер схлопывает её высоту и поставить в
 // неё каретку нечем.
 function fillEmptyLine(line) {
@@ -1359,7 +1377,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const probe = document.createRange();
     probe.selectNodeContents(line);
     probe.setEnd(container, offset);
-    if (probe.collapsed) return; // уже начинается ровно с выделения — резать нечего
+    if (!rangeHasContent(probe)) return; // уже начинается ровно с выделения — резать нечего
     const before = probe.extractContents();
     const newLine = line.cloneNode(false);
     delete newLine.dataset.anchor; // якорь рисунка — как в splitLineAtBreaks, копии не нужен
@@ -1372,7 +1390,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const probe = document.createRange();
     probe.selectNodeContents(line);
     probe.setStart(container, offset);
-    if (probe.collapsed) return; // уже кончается ровно на выделении
+    if (!rangeHasContent(probe)) return; // уже кончается ровно на выделении
     const after = probe.extractContents();
     const newLine = line.cloneNode(false);
     delete newLine.dataset.anchor;
@@ -1387,7 +1405,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const probe = document.createRange();
     probe.selectNodeContents(line);
     probe.setEnd(container, offset);
-    return probe.collapsed;
+    return !rangeHasContent(probe);
   }
 
   // Симметрично: пуст ли остаток строки после границы выделения.
@@ -1395,7 +1413,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const probe = document.createRange();
     probe.selectNodeContents(line);
     probe.setStart(container, offset);
-    return probe.collapsed;
+    return !rangeHasContent(probe);
   }
 
   // Строка, которой принадлежит узел: поднимаемся до прямого потомка страницы —
@@ -1465,6 +1483,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const first = lines[firstIndex];
     if (!first.dataset.blockId) splitLineAtRangeStart(first, range.startContainer, range.startOffset);
 
+    // Отрезанные куски "до"/"после" — НОВЫЕ элементы, и для пропагации они
+    // выглядят как только что напечатанный текст: стоящий вплотную к чужому
+    // блоку остаток он бы втянул в тот блок (ТЗ ч.1 п.15 про соседство). Но
+    // пользователь этот текст как раз НЕ выделял. Объявляем остатки старыми до
+    // синхронизации — внутри syncBlocks пропагация идёт РАНЬШЕ, чем known
+    // пополняется, поэтому одного syncBlocks() здесь не хватает.
+    blockSync.remember();
     syncBlocks();
     // Возвращаем сами элементы, а не повторный getSelectedLines(): после
     // extractContents живое выделение уже не описывает нужные строки (его
