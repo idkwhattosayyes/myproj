@@ -15,6 +15,8 @@ let barEl = null;
 let inputEl = null;
 let scopeBtn = null;
 let resultsEl = null;
+// Контейнер выбранных тегов внутри самой строки поиска (см. renderPickedTags).
+let pickedEl = null;
 
 // "global" — по всему приложению, "local" — по разделу, в котором находимся.
 // На главной локального поиска нет: искать там больше негде.
@@ -76,6 +78,7 @@ export function mountSearch({ onNavigate }) {
       <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}">#</button>
       <div class="search-field">
         <span class="search-icon">⌕</span>
+        <span class="search-tag-picked" data-role="tag-picked"></span>
         <input type="text" class="search-input" data-role="search-input">
         <button type="button" class="search-scope" data-role="search-scope"></button>
       </div>
@@ -87,6 +90,7 @@ export function mountSearch({ onNavigate }) {
   inputEl = barEl.querySelector('[data-role="search-input"]');
   scopeBtn = barEl.querySelector('[data-role="search-scope"]');
   resultsEl = barEl.querySelector('[data-role="search-results"]');
+  pickedEl = barEl.querySelector('[data-role="tag-picked"]');
   const tagsOpenBtn = barEl.querySelector('[data-role="tags-open"]');
   // Пустой фильтр — если ни разу не открывали или после Clear all (см. Step 6:
   // extractTaggedBlocks на пустом requiredTagIds теперь и есть "все блоки").
@@ -130,6 +134,7 @@ function onInputKeydown(event) {
     const tagIds = selectedViaPlus.map((tag) => tag.id);
     closeResults();
     selectedViaPlus = [];
+    renderPickedTags();
     inputEl.value = "";
     openBlockTagsBrowser(tagIds);
     return;
@@ -225,15 +230,6 @@ async function renderTagSuggestions() {
     (tag) => tag.nameKey.includes(token) && !selectedViaPlus.some((t) => t.id === tag.id)
   );
 
-  const selectedRow = selectedViaPlus
-    .map(
-      (tag) => `
-    <span class="search-tag-chip search-tag-chip--selected" style="--tag-color:${tag.color}" data-tag-id="${tag.id}">
-      #${escapeHtml(tag.name)}
-      <button type="button" class="search-tag-chip-remove" data-tag-id="${tag.id}" title="${t("blockBrowser.removeFilter")}">✕</button>
-    </span>`
-    )
-    .join("");
   const suggestedRow = suggestions
     .map(
       (tag) => `
@@ -244,14 +240,9 @@ async function renderTagSuggestions() {
     )
     .join("");
 
-  resultsEl.innerHTML = `<div class="search-tag-row">${selectedRow}${suggestedRow}</div>`;
+  resultsEl.innerHTML = `<div class="search-tag-row">${suggestedRow}</div>`;
+  renderPickedTags();
 
-  resultsEl.querySelectorAll(".search-tag-chip-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedViaPlus = selectedViaPlus.filter((tag) => tag.id !== btn.dataset.tagId);
-      renderTagSuggestions();
-    });
-  });
   resultsEl.querySelectorAll(".search-tag-chip-plus").forEach((btn) => {
     btn.addEventListener("click", (event) => {
       // Не даём клику по "+" всплыть до самого чипа — иначе сработал бы ещё и
@@ -270,12 +261,45 @@ async function renderTagSuggestions() {
       const tagIds = [...selectedViaPlus.map((t) => t.id), btn.dataset.tagId];
       closeResults();
       selectedViaPlus = [];
+      renderPickedTags();
       inputEl.value = "";
       openBlockTagsBrowser(tagIds);
     });
   });
 
   openResults();
+}
+
+/**
+ * Выбранные через "+" теги живут в САМОЙ строке поиска, а не в выпадашке: тег,
+ * который уже взят в фильтр, из списка предложений исчезает (освобождая место
+ * остальным) и появляется чипом в поле. Убрать — крестиком на чипе, после чего
+ * он возвращается в предложения (фильтр в renderTagSuggestions делает это сам).
+ *
+ * Отдельная функция, а не часть renderTagSuggestions: чипы обязаны жить и когда
+ * выпадашка закрыта, поэтому у них своя точка отрисовки и свой контейнер.
+ */
+function renderPickedTags() {
+  if (!pickedEl) return;
+  pickedEl.innerHTML = selectedViaPlus
+    .map(
+      (tag) => `
+    <span class="search-tag-chip search-tag-chip--selected" style="--tag-color:${tag.color}" data-tag-id="${tag.id}">
+      #${escapeHtml(tag.name)}
+      <button type="button" class="search-tag-chip-remove" data-tag-id="${tag.id}" title="${t("blockBrowser.removeFilter")}">✕</button>
+    </span>`
+    )
+    .join("");
+
+  pickedEl.querySelectorAll(".search-tag-chip-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedViaPlus = selectedViaPlus.filter((tag) => tag.id !== btn.dataset.tagId);
+      // Выпадашка открыта — перерисовываем её тоже: снятый тег возвращается
+      // в предложения. Закрыта — хватит и обновления чипов в поле.
+      if (!resultsEl.hidden && hasHashToken(inputEl.value)) renderTagSuggestions();
+      else renderPickedTags();
+    });
+  });
 }
 
 async function runSearch() {
@@ -416,7 +440,10 @@ function openResults() {
 function closeResults() {
   groups = [];
   rows = [];
-  selectedViaPlus = [];
+  // selectedViaPlus здесь НЕ сбрасываем: выбранные теги теперь чипы в самой
+  // строке поиска, а не строка выпадашки, и закрытие списка их стирать не
+  // должно — убираются только крестиком (ТЗ раунд 3 п.5). Явные сбросы остались
+  // там, где выбор действительно израсходован: на переходе в браузер тегов.
   // Закрытие поиска сбрасывает раскрытие групп — при следующем открытии список свёрнут.
   visibleByGroup.clear();
   if (resultsEl.hidden) return;

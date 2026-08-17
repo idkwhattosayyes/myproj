@@ -198,6 +198,24 @@
   padding: 0.3rem;
 }
 
+/* Взятые в фильтр теги стоят в САМОЙ строке поиска, перед полем ввода (см.
+   renderPickedTags в searchBar.js). :empty гасит контейнер целиком — иначе
+   пустой span съедал бы gap: 0.5rem строки поиска и слева от текста
+   болтался бы лишний отступ. Чипы не сжимаются: сжимается поле ввода. */
+.search-tag-picked {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.search-tag-picked:empty {
+  display: none;
+}
+
+.search-tag-picked .search-tag-chip {
+  flex-shrink: 0;
+}
+
 .search-tag-chip {
   display: inline-flex;
   align-items: center;
