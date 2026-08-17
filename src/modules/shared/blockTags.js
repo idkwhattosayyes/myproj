@@ -89,9 +89,9 @@ function propagateBlockMembership(page, known) {
 
 // Заводится один раз на редактор (см. ensureAnchorId в richTextEditor.js —
 // тот же приём: счётчик/множество, живущее в замыкании, а не в атрибутах DOM).
-// Возвращает функцию синхронизации, которая помнит, какие строки уже видела:
-// это и есть граница между «только что появилось» и «давно существует и
-// намеренно без тега».
+// Возвращает sync (синхронизация геометрии) и remember (пометить всё текущее
+// как старое): множество known — это и есть граница между «только что
+// появилось» и «давно существует и намеренно без тега».
 export function createBlockSync(editorEl) {
   const known = new WeakSet();
 
@@ -105,13 +105,21 @@ export function createBlockSync(editorEl) {
   // досчитать границы существующих блоков.
   rememberAll();
 
-  return function syncBlockGeometry() {
+  function syncBlockGeometry() {
     editorEl.querySelectorAll(".rte-page").forEach((page) => {
       propagateBlockMembership(page, known);
       recomputeBlockEdges(page);
     });
     rememberAll();
-  };
+  }
+
+  // Пересборка страниц из HTML (undo/redo — см. restoreSnapshot) создаёт ВСЕ
+  // строки заново, и для known они разом становятся "новыми" — пропагация,
+  // у которой нет ни ограничения по расстоянию, ни остановки на пустой строке,
+  // растащила бы блок по всей странице. В восстановленном HTML data-block-id
+  // уже верные, угадывать нечего: перед такой синхронизацией нужно объявить
+  // всё текущее содержимое старым.
+  return { sync: syncBlockGeometry, remember: rememberAll };
 }
 
 // Снимает блок целиком со всех его строк на странице. Пустой tagIds в

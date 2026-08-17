@@ -1320,7 +1320,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // случиться один раз, сразу после normalizeLines и до первого реального
   // редактирования, иначе разграничение "новое/старое" будет отсчитываться не
   // от того момента.
-  const syncBlockGeometry = createBlockSync(contentEl);
+  const blockSync = createBlockSync(contentEl);
   // Реестр тегов заметке не принадлежит (он общий, app:blockTags) — снимаем
   // копию при открытии, дальше держим в памяти и обновляем сами при
   // создании/редактировании тега (см. openTagAddCreateMenu). Первая отрисовка
@@ -1335,7 +1335,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   }
   refreshTagRegistry();
   function syncBlocks() {
-    syncBlockGeometry();
+    blockSync.sync();
     renderBlockVisuals(contentEl, tagRegistry);
   }
   // Границы блоков (data-block-start/end) не хранятся в заметке как источник
@@ -1375,11 +1375,44 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     fillEmptyLine(newLine);
   }
 
+  // Попало ли в выделение хоть что-то из начала строки: probe от начала строки
+  // до границы выделения пуст — значит выделение начинается ровно со строки.
+  function nothingBefore(line, container, offset) {
+    const probe = document.createRange();
+    probe.selectNodeContents(line);
+    probe.setEnd(container, offset);
+    return probe.collapsed;
+  }
+
+  // Симметрично: пуст ли остаток строки после границы выделения.
+  function nothingAfter(line, container, offset) {
+    const probe = document.createRange();
+    probe.selectNodeContents(line);
+    probe.setStart(container, offset);
+    return probe.collapsed;
+  }
+
+  // Строка, которой принадлежит узел: поднимаемся до прямого потомка страницы —
+  // тот же подъём, что в обработчике contextmenu ниже.
+  function lineOfNode(node, page) {
+    let el = node.nodeType === 1 ? node : node.parentElement;
+    while (el && el.parentElement !== page) el = el.parentElement;
+    return el && el.matches(LINE_SELECTOR) ? el : null;
+  }
+
   /**
    * Строки для тегирования, если выделение накрывает абзац не целиком (ТЗ):
    * первую/последнюю задетую строку разрезаем по границе выделения — средняя
    * часть остаётся строкой для тега, исключённые куски "до"/"после" уезжают в
    * новые нетегированные строки-соседи.
+   *
+   * Строки НЕ берём из getSelectedLines: она отбирает по range.intersectsNode,
+   * а он истинен и для строки, которую выделение лишь КАСАЕТСЯ. При протяжке
+   * мышью и Shift+Down Chrome ставит конец выделения в offset 0 следующей
+   * строки — она попадала в блок, хотя ни одного её символа не выделено, а
+   * разрез вытаскивал всё её содержимое в новую строку и тегировал оставшуюся
+   * пустую. Поэтому границы считаем сами по startContainer/endContainer и
+   * отбрасываем строки, из которых в выделение не попало ничего.
    *
    * Резать можно только строки БЕЗ своего data-block-id — уже тегированную
    * строку кроить на "включённый"/"исключённый" куски нельзя: блок можно
@@ -1397,17 +1430,42 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const range = getCurrentRange(editorEl);
     if (!range || range.collapsed) return getSelectedLines(editorEl);
 
-    const lines = getSelectedLines(editorEl);
-    if (!lines.length) return lines;
+    const caretLine = getCaretLine(editorEl);
+    if (!caretLine) return [];
+    const page = caretLine.parentElement;
+    // Тот же фильтр, что в pageLines (blockTags.js): служебные div редактора
+    // (.rte-block-dots, .rte-block-panel) — не строки текста, в блок им нельзя.
+    const lines = [...page.children].filter(
+      (el) => el.matches(LINE_SELECTOR) && !el.className.startsWith("rte-")
+    );
 
-    const last = lines[lines.length - 1];
+    const startLine = lineOfNode(range.startContainer, page);
+    const endLine = lineOfNode(range.endContainer, page);
+    let firstIndex = lines.indexOf(startLine);
+    let lastIndex = lines.indexOf(endLine);
+    // Выделение вышло за пределы строк одной страницы — считать нечего,
+    // ведём себя как раньше.
+    if (firstIndex === -1 || lastIndex === -1 || lastIndex < firstIndex) return getSelectedLines(editorEl);
+
+    // Крайняя строка, из которой не выделено ни символа, блоку не принадлежит.
+    if (lastIndex > firstIndex && nothingBefore(lines[lastIndex], range.endContainer, range.endOffset)) lastIndex -= 1;
+    if (firstIndex < lastIndex && nothingAfter(lines[firstIndex], range.startContainer, range.startOffset)) firstIndex += 1;
+
+    // Конец режем раньше начала: иначе при выделении внутри одной строки
+    // extractContents сдвинет offset'ы, на которые опирается второй разрез.
+    const last = lines[lastIndex];
     if (!last.dataset.blockId) splitLineAtRangeEnd(last, range.endContainer, range.endOffset);
 
-    const first = lines[0];
+    const first = lines[firstIndex];
     if (!first.dataset.blockId) splitLineAtRangeStart(first, range.startContainer, range.startOffset);
 
     syncBlocks();
-    return getSelectedLines(editorEl);
+    // Возвращаем сами элементы, а не повторный getSelectedLines(): после
+    // extractContents живое выделение уже не описывает нужные строки (его
+    // граница остаётся в обрезанном узле), и перечитывать его нельзя. Сами
+    // элементы разрез не подменяет — отрезанные куски уезжают в НОВЫХ соседей,
+    // а эти держат ровно выделенное.
+    return lines.slice(firstIndex, lastIndex + 1);
   }
 
   /**
@@ -2035,6 +2093,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // в начало. Куда именно, решают undo/redo: у снимка два положения каретки.
     setCaretOffset(caretOffset === undefined ? entry.caret : caretOffset);
     onChange(entry.html);
+    // Строки только что созданы заново из HTML снимка — для блочной
+    // синхронизации они все "новые", и пропагация втянула бы в блок соседей
+    // до самого края страницы. Разметка блоков в снимке уже верная, так что
+    // объявляем всё содержимое старым ДО синхронизации внутри refreshPages.
+    blockSync.remember();
     refreshPages();
     refreshToolbarState();
     // Undo/redo — тоже нажатие клавиши (Ctrl+Z/Ctrl+Y или кнопки тулбара), но
