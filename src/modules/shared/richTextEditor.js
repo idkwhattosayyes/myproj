@@ -1631,7 +1631,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     return null;
   }
 
-  function showBlockTagsPanel(line) {
+  /**
+   * @param {Element} line любая строка блока — по ней определяются блок и теги
+   * @param {Element | null} anchorLine у какой строки показать панель. По
+   *   умолчанию у начала блока (панель висит на его верхней границе, откуда её
+   *   и открывают). Из контекстного меню передаётся строка под курсором: у
+   *   блока выше экрана верхняя граница за кадром, и панель уехала бы туда же.
+   */
+  function showBlockTagsPanel(line, anchorLine = null) {
     closeBlockTagsPanel();
     const page = line.closest(".rte-page");
     const blockId = line.dataset.blockId;
@@ -1683,12 +1690,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // и показать новый тег (ТЗ раунд 3 п.3). Своего частичного обновления у
       // панели нет — повторный showBlockTagsPanel и есть refresh, он сам
       // начинается с закрытия предыдущей.
-      openTagAddCreateMenu(rect.left, rect.bottom, blockLines, () => showBlockTagsPanel(line));
+      openTagAddCreateMenu(rect.left, rect.bottom, blockLines, () => showBlockTagsPanel(line, anchorLine));
     });
     panel.appendChild(addRow);
 
     page.appendChild(panel);
-    panel.style.top = `${clamp(topLine.offsetTop, 0, Math.max(0, page.offsetHeight - panel.offsetHeight))}px`;
+    const anchor = anchorLine || topLine;
+    panel.style.top = `${clamp(anchor.offsetTop, 0, Math.max(0, page.offsetHeight - panel.offsetHeight))}px`;
 
     document.addEventListener("mousedown", onBlockTagsPanelOutside, true);
     unregisterBlockTagsPanelLayer = pushLayer(closeBlockTagsPanel);
@@ -3809,6 +3817,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       while (line && line.parentElement !== page) line = line.parentElement;
       const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
       if (blockId) {
+        // Быстрый доступ к панели тегов: у большого блока полоска-граница может
+        // быть далеко за экраном, и кликать по ней неудобно (ТЗ раунд 5 п.5).
+        // Панель открываем у строки ПОД КУРСОРОМ, а не у начала блока — иначе
+        // она уехала бы туда же, за кадр. Выше роспуска: открывают часто,
+        // распускают редко.
+        items.push({
+          label: t("editor.tagPanelItem"),
+          onClick: () => showBlockTagsPanel(line, line),
+        });
         items.push({
           label: t("editor.tagDissolve"),
           onClick: async () => {

@@ -187,6 +187,7 @@ export const translations = {
     "editor.tagEditItem": "Edit tag",
     "editor.tagDeleteItem": "Delete tag",
     "editor.tagAddItem": "Add tag",
+    "editor.tagPanelItem": "Block tags",
     "editor.tagDissolve": "Dissolve block",
     "editor.tagDissolveConfirm": "Dissolve this block? The tags will be removed and the text stays as it is.",
 
@@ -391,6 +392,7 @@ export const translations = {
     "editor.tagEditItem": "Редактировать тег",
     "editor.tagDeleteItem": "Удалить тег",
     "editor.tagAddItem": "Добавить тег",
+    "editor.tagPanelItem": "Теги блока",
     "editor.tagDissolve": "Распустить блок",
     "editor.tagDissolveConfirm": "Распустить этот блок? Теги будут сняты, текст останется как есть.",
 
@@ -595,6 +597,7 @@ export const translations = {
     "editor.tagEditItem": "עריכת תג",
     "editor.tagDeleteItem": "מחיקת תג",
     "editor.tagAddItem": "הוספת תג",
+    "editor.tagPanelItem": "תגי הבלוק",
     "editor.tagDissolve": "פירוק הבלוק",
     "editor.tagDissolveConfirm": "לפרק את הבלוק הזה? התגים יוסרו והטקסט יישאר כפי שהוא.",
 
