@@ -197,7 +197,17 @@ async function renderTagSuggestions() {
   rows = [];
   activeRow = 0;
 
+  // При печати каждая буква после "#" зовёт эту функцию заново, а она async:
+  // на await ниже более ранний вызов может отдать управление и дорисоваться
+  // ПОСЛЕ более позднего — устаревшими чипами поверх актуальных (не
+  // гипотетически: allTags не всегда уже в кэше, await реально может
+  // растянуться на несколько кадров при первом "#" в сессии). tagRenderToken —
+  // "билет": вызов, переставший быть последним, узнаёт об этом сразу после
+  // await и не имеет права трогать DOM.
+  const myToken = ++tagRenderToken;
+
   if (!allTags) allTags = await blockTagsService.listTags();
+  if (myToken !== tagRenderToken) return;
 
   const token = inputEl.value.slice(inputEl.value.lastIndexOf("#") + 1).trim().toLowerCase();
   const suggestions = allTags.filter(
