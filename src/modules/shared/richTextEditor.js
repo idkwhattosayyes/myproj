@@ -270,6 +270,19 @@ const MAX_INDENT = 10;
 // HTML не попадает — см. serializeEditor.
 const CARET_ANCHOR = "\u200B";
 
+// \u041A\u043B\u0430\u0432\u0438\u0448\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u0432\u0438\u0433\u0430\u044E\u0442 \u043A\u0430\u0440\u0435\u0442\u043A\u0443, \u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043F\u0435\u0447\u0430\u0442\u0430\u044F: \u043F\u043E \u043D\u0438\u043C \u0437\u0430\u043A\u0440\u044B\u0432\u0430\u0435\u043C
+// \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u043F\u0440\u0430\u0432\u043A\u0443 \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 (\u0441\u043C. commitCaretMove).
+const CARET_MOVE_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
+
 // \u0418\u043D\u043B\u0430\u0439\u043D\u043E\u0432\u044B\u0435 \u0444\u043E\u0440\u043C\u0430\u0442\u044B: \u0447\u0435\u043C \u0443\u0437\u043D\u0430\u0442\u044C (selector) \u0438 \u0447\u0435\u043C \u043E\u0431\u0435\u0440\u043D\u0443\u0442\u044C (create). \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438
 // \u0442\u043E\u0436\u0435 \u0438\u043D\u043B\u0430\u0439\u043D\u043E\u0432\u044B\u0435 \u2014 H1/H2 \u043F\u0440\u0438\u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F \u043A \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u043E\u043C\u0443 \u043A\u0443\u0441\u043A\u0443 \u0441\u0442\u0440\u043E\u043A\u0438, \u0430 \u043D\u0435 \u043A \u0431\u043B\u043E\u043A\u0443,
 // \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u044D\u0442\u043E span \u0441 \u043A\u043B\u0430\u0441\u0441\u043E\u043C, \u0430 \u043D\u0435 \u0441\u0430\u043C \u0442\u0435\u0433 <h1>.
@@ -2115,6 +2128,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
    */
   function recordHistory() {
     clearTimeout(historyTimer);
+    historyTimer = null;
     const caret = getCaretOffset();
     const snapshot = { html: serializeEditor(contentEl), caret, caretBefore: pendingCaretBefore === null ? caret : pendingCaretBefore };
     if (history[historyIndex] && snapshot.html === history[historyIndex].html) return;
@@ -2140,6 +2154,26 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (isRestoring || drawState) return;
     clearTimeout(historyTimer);
     historyTimer = setTimeout(recordHistory, 400);
+  }
+
+  /**
+   * Переезд каретки — граница правки: дальше пользователь работает в другом
+   * месте. Незаписанный ввод фиксируем своим снимком прямо сейчас, иначе он
+   * попадёт в один снимок со следующей правкой, и caretBefore у того снимка
+   * будет указывать на СТАРОЕ место — отсюда и прыжок каретки после Ctrl+Z
+   * (правка на 2-й строке, клик на 4-ю, вставка, отмена — и каретка на 2-й).
+   * Щелчок мышью снимка не создаёт: наблюдатель следит за содержимым, а не за
+   * выделением, поэтому обе правки склеивались одним debounce-таймером.
+   *
+   * Засов начала правки сбрасываем в любом случае: где началась прошлая серия,
+   * для новой уже не важно.
+   */
+  function commitCaretMove() {
+    if (isRestoring) return;
+    // Только когда снимок правда ждёт: recordHistory зовёт serializeEditor —
+    // клон всех страниц, и гонять его на каждую стрелку в большой заметке нельзя.
+    if (historyTimer) recordHistory();
+    pendingCaretBefore = null;
   }
 
   // Любое изменение содержимого страниц откладывает запись снимка. Классы/титулы
@@ -4118,6 +4152,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("mouseup", refreshToolbarState);
   contentEl.addEventListener("keyup", refreshToolbarState);
   contentEl.addEventListener("focusin", refreshToolbarState);
+
+  // Щелчок и переход стрелками закрывают текущую правку (см. commitCaretMove).
+  contentEl.addEventListener("mouseup", commitCaretMove);
+  contentEl.addEventListener("keyup", (event) => {
+    // Только клавиши перехода: keyup летит и после каждой напечатанной буквы,
+    // и снимок писался бы посимвольно.
+    if (CARET_MOVE_KEYS.has(event.key)) commitCaretMove();
+  });
 
   applyPageMode();
 
