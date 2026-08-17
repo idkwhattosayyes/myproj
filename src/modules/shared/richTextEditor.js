@@ -12,6 +12,7 @@ import * as blockTagsService from "../../services/blockTagsService.js";
 import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock, setBlockTagIds } from "./blockTags.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
+import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   TEXT_COLORS,
@@ -1492,6 +1493,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       row.className = "rte-block-panel-tag";
       row.style.setProperty("--tag-color", tag ? tag.color : "transparent");
       row.textContent = tag ? tag.name : "?";
+      // Клик по имени (не ПКМ) — открыть полноэкранный браузер всех блоков
+      // этого тега по всем заметкам.
+      row.addEventListener("click", () => {
+        closeBlockTagsPanel();
+        openBlockTagsBrowser([tagId]);
+      });
       row.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         openBlockTagContextMenu(event.clientX, event.clientY, page, blockId, tagId);

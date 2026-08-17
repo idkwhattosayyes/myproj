@@ -188,6 +188,15 @@ export const translations = {
     "editor.tagAddItem": "Add tag",
     "editor.tagDissolve": "Dissolve block",
 
+    "blockBrowser.count": "Blocks: {n}",
+    "blockBrowser.empty": "No blocks match this filter",
+    "blockBrowser.clearAll": "Clear all",
+    "blockBrowser.sortNewest": "Newest",
+    "blockBrowser.sortOldest": "Oldest",
+    "blockBrowser.sortNoteOrder": "Note order",
+    "blockBrowser.addFilter": "Add tag to filter",
+    "blockBrowser.removeFilter": "Remove from filter",
+
     "modal.yes": "Yes",
     "modal.cancel": "Cancel",
     "modal.ok": "OK",
@@ -380,6 +389,15 @@ export const translations = {
     "editor.tagAddItem": "Добавить тег",
     "editor.tagDissolve": "Распустить блок",
 
+    "blockBrowser.count": "Блоков: {n}",
+    "blockBrowser.empty": "По этому набору тегов ничего не найдено",
+    "blockBrowser.clearAll": "Очистить всё",
+    "blockBrowser.sortNewest": "Сначала новые",
+    "blockBrowser.sortOldest": "Сначала старые",
+    "blockBrowser.sortNoteOrder": "Как в списке заметок",
+    "blockBrowser.addFilter": "Добавить тег в фильтр",
+    "blockBrowser.removeFilter": "Убрать из фильтра",
+
     "modal.yes": "Да",
     "modal.cancel": "Отмена",
     "modal.ok": "ОК",
@@ -571,6 +589,15 @@ export const translations = {
     "editor.tagDeleteItem": "מחיקת תג",
     "editor.tagAddItem": "הוספת תג",
     "editor.tagDissolve": "פירוק הבלוק",
+
+    "blockBrowser.count": "בלוקים: {n}",
+    "blockBrowser.empty": "לא נמצאו בלוקים בסינון הזה",
+    "blockBrowser.clearAll": "נקה הכול",
+    "blockBrowser.sortNewest": "החדשים ביותר",
+    "blockBrowser.sortOldest": "הישנים ביותר",
+    "blockBrowser.sortNoteOrder": "לפי סדר הפתקים",
+    "blockBrowser.addFilter": "הוספת תג לסינון",
+    "blockBrowser.removeFilter": "הסרה מהסינון",
 
     "modal.yes": "כן",
     "modal.cancel": "ביטול",
