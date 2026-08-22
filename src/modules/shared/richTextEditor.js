@@ -4145,13 +4145,23 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // каретку в ближайшую валидную позицию (щёлкнули по ::before-псевдоэлементу,
   // а не по настоящему узлу — ближайшая позиция для него начало строки).
   // Глушим это здесь же, до появления самой каретки, а не постфактум.
+  //
+  // Отметка переключается парой mousedown/mouseup, а не click: click в браузере
+  // фактически привязан к точке ОТПУСКАНИЯ, а не нажатия — зажми где угодно,
+  // отпусти на квадратике, и click всё равно долетит с target на нём. Запоминаем
+  // на mousedown, по какому пункту (если по какому-то) было НАЖАТИЕ, и сверяем
+  // на mouseup — тот же ли это пункт (ТЗ: срабатывать только если и зажатие, и
+  // отпускание — в его пределах).
+  let checklistMouseDownLi = null;
   contentEl.addEventListener("mousedown", (event) => {
-    if (checklistMarkerLi(event)) event.preventDefault();
+    checklistMouseDownLi = checklistMarkerLi(event);
+    if (checklistMouseDownLi) event.preventDefault();
   });
 
-  contentEl.addEventListener("click", (event) => {
-    const li = checklistMarkerLi(event);
-    if (!li) return;
+  contentEl.addEventListener("mouseup", (event) => {
+    const li = checklistMouseDownLi;
+    checklistMouseDownLi = null;
+    if (!li || checklistMarkerLi(event) !== li) return;
     li.classList.toggle("is-done");
     // MutationObserver истории не слушает атрибуты (только childList/characterData),
     // поэтому смену класса снимком не ловит — пишем явно, как при перетаскивании
