@@ -3983,7 +3983,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
     // панели с отпусканием снаружи не должно её схлопывать.
     document.addEventListener("mousedown", onSelectionToolbarOutside, true);
-    showSelectionActions(selRect, above ? bar.getBoundingClientRect() : null);
+    showSelectionActions(selRect, above ? bar.getBoundingClientRect() : null, bar);
   }
 
   // Блок cut/copy/paste/delete/open-as-link — справа от выделенного текста, на
@@ -3993,7 +3993,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // (обычный случай) — тогда стрелка сворачивания тянется к её правому краю;
   // если панель ушла влево (редкий случай нехватки места сверху), toolbarRect
   // равен null и стрелка просто встаёт по правому краю самого этого блока.
-  function showSelectionActions(selRect, toolbarRect) {
+  // bar — сам элемент панели форматирования, нужен для сдвига (см. ниже).
+  function showSelectionActions(selRect, toolbarRect, bar) {
     const el = document.createElement("div");
     el.className = "rte-selection-actions";
     const buttonsGroup = document.createElement("div");
@@ -4012,15 +4013,34 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
     const GAP = 8;
     const rect = el.getBoundingClientRect();
+    // clientWidth, а не innerWidth: у fixed-элемента right считается от ширины
+    // БЕЗ вертикального скроллбара, а innerWidth его включает — на странице со
+    // скроллбаром это давало систематический сдвиг вправо ровно на его ширину,
+    // и правые края (панели форматирования и этого блока) переставали
+    // совпадать. Используем ту же базу и для сдвига панели ниже — иначе
+    // расхождение просто переезжает в клампинг сдвига.
+    const viewportWidth = document.documentElement.clientWidth;
     const top = clamp(selRect.top, GAP, window.innerHeight - rect.height - GAP);
     el.style.top = `${top}px`;
     if (toolbarRect) {
+      let barLeft = toolbarRect.left;
+      let left = toolbarRect.right - rect.width;
+      const minLeft = selRect.right + GAP; // не наезжать на сам текст
+      if (left < minLeft) {
+        // На длинном выделении тексту не хватает места при выравнивании с
+        // панелью — сдвигаем ОБЕ панели вправо на одну и ту же величину, а не
+        // только блок действий: иначе они разъезжаются (ТЗ), панель остаётся
+        // на месте, а блок действий уезжает к правому краю выделения.
+        const shift = minLeft - left;
+        barLeft = clamp(barLeft + shift, GAP, viewportWidth - toolbarRect.width - GAP);
+        bar.style.left = `${barLeft}px`;
+        left = barLeft + toolbarRect.width - rect.width;
+      }
       // Правый край — через CSS right, а не left: сворачивание блока (см.
       // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
       // стрелку на месте старого левого края — она "убегала" от текста и
       // пропадала из виду при каждом сворачивании (ТЗ).
-      const left = Math.max(selRect.right + GAP, toolbarRect.right - rect.width);
-      const right = clamp(window.innerWidth - (left + rect.width), GAP, window.innerWidth - rect.width - GAP);
+      const right = clamp(viewportWidth - (left + rect.width), GAP, viewportWidth - rect.width - GAP);
       el.style.right = `${right}px`;
     } else {
       const left = clamp(selRect.right + GAP, GAP, window.innerWidth - rect.width - GAP);
