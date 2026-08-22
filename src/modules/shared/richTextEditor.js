@@ -47,6 +47,10 @@ function updateSwatch(btn, def) {
 // создаёт редактор заново.
 const TOOLBAR_COLLAPSED_KEY = "app:toolbarCollapsed";
 
+// Свёрнутость блока cut/copy/paste/delete/open-as-link на мини-панели
+// выделения — та же логика, что у TOOLBAR_COLLAPSED_KEY выше.
+const SELECTION_ACTIONS_COLLAPSED_KEY = "app:selectionActionsCollapsed";
+
 // Тулбар сменил набор видимых кнопок — значит сменил и габариты. Тому, кто держит
 // его на экране (floatingToolbar.js), это надо знать: у прилипшей к краю полосы от
 // числа кнопок зависит число колонок, а от него — ширина и левая координата.
@@ -207,6 +211,27 @@ function getButtonDefs() {
     // В основной тулбар не попадает — только в мини-панель на выделении, см.
     // selectionButtons в showSelectionToolbar.
     tag: { label: "#", title: t("editor.tag"), isTag: true },
+    // Блок cut/copy/paste/delete/open-as-link рядом с мини-панелью на выделении
+    // (см. showSelectionActions) — не форматирование, отдельная строка кнопок.
+    // Cut/Copy/Delete — обычные execCommand, ничего своего им не нужно.
+    selectionCut: { label: "✂", title: t("editor.cut"), command: () => document.execCommand("cut") },
+    selectionCopy: { label: "⧉", title: t("editor.copy"), command: () => document.execCommand("copy") },
+    selectionDelete: { label: "🗑", title: t("editor.delete"), command: () => document.execCommand("delete") },
+    // execCommand("paste") браузеры блокируют программно — единственный рабочий
+    // путь через Clipboard API, а он отдаёт только голый текст, без
+    // форматирования и картинок. Обычный Ctrl+V этим не заменяется, это
+    // дополнительный путь.
+    selectionPaste: {
+      label: "📋",
+      title: t("editor.paste"),
+      command: async () => {
+        const text = await navigator.clipboard.readText();
+        if (text) document.execCommand("insertText", false, text);
+      },
+    },
+    // Не команда форматирования — открывает уже существующую ссылку в новой
+    // вкладке, обрабатывается отдельно в buildToolbarButton (см. isOpenLink).
+    selectionOpenLink: { label: "↗", title: t("editor.openAsLink"), isOpenLink: true },
     // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
     // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
     // доступ к сохранённому диапазону и serializeEditor.
@@ -3574,6 +3599,24 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         const rect = btn.getBoundingClientRect();
         openTagAddCreateMenu(rect.left, rect.bottom, lines, onApplied);
       });
+    } else if (def.isOpenLink) {
+      // Та же логика открытия, что и у настоящего клика по ссылке в тексте
+      // (см. contentEl.addEventListener("click", ...) для a.rte-link выше) —
+      // просто вызывается из кнопки, а не по клику на саму ссылку.
+      btn.addEventListener("click", () => {
+        const range = getCurrentRange(contentEl);
+        if (!range) return;
+        if (isInlineFormatActive(contentEl, FORMATS.linkExternal)) {
+          const wrappers = uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkExternal);
+          const links = wrappers.length ? JSON.parse(wrappers[0].dataset.links || "[]") : [];
+          if (links.length === 1) openExternalLink(links[0]);
+          else if (links.length > 1) showLinkPreview(wrappers[0], links, { clickable: true });
+        } else if (isInlineFormatActive(contentEl, FORMATS.linkInternal)) {
+          const wrappers = uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkInternal);
+          if (wrappers.length) openInternalLink(wrappers[0]);
+        }
+        onApplied();
+      });
     } else {
       btn.addEventListener("click", async () => {
         // await — командой может быть insertTable, которая асинхронно спрашивает
@@ -3847,19 +3890,28 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // кнопки, что и в основном тулбаре (buildToolbarButton), просто в
   // уменьшенном плавающем блоке: одинаковый вид, активное состояние и
   // ЛКМ/ПКМ-логика цветовых кнопок. Клик по любой из них закрывает панель.
+  //
+  // Рядом с ней — второй, независимый плавающий блок (cut/copy/paste/delete/
+  // open-as-link, см. showSelectionActions): у него своя точка привязки
+  // (справа от текста, а не над/сбоку панели форматирования), поэтому это
+  // два разных элемента с общим закрытием, а не один флекс-контейнер.
   let selectionToolbarEl = null;
+  let selectionActionsEl = null;
   let unregisterSelectionLayer = null;
 
   function onSelectionToolbarOutside(event) {
-    if (selectionToolbarEl && !selectionToolbarEl.contains(event.target)) closeSelectionToolbar();
+    const inside = (el) => el && el.contains(event.target);
+    if (!inside(selectionToolbarEl) && !inside(selectionActionsEl)) closeSelectionToolbar();
   }
 
   function closeSelectionToolbar() {
-    if (!selectionToolbarEl) return;
+    if (!selectionToolbarEl && !selectionActionsEl) return;
     closeColorPopovers(); // палитра внутри панели закрывается вместе с ней
     document.removeEventListener("mousedown", onSelectionToolbarOutside, true);
-    selectionToolbarEl.remove();
+    selectionToolbarEl?.remove();
+    selectionActionsEl?.remove();
     selectionToolbarEl = null;
+    selectionActionsEl = null;
     if (unregisterSelectionLayer) {
       unregisterSelectionLayer();
       unregisterSelectionLayer = null;
@@ -3892,7 +3944,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const GAP = 8;
     let left = selRect.left;
     let top = selRect.top - rect.height - GAP;
-    if (top < GAP) {
+    const above = top >= GAP;
+    if (!above) {
       left = selRect.left - rect.width - GAP;
       top = selRect.top;
     }
@@ -3903,6 +3956,68 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
     // панели с отпусканием снаружи не должно её схлопывать.
     document.addEventListener("mousedown", onSelectionToolbarOutside, true);
+    showSelectionActions(selRect, above ? bar.getBoundingClientRect() : null);
+  }
+
+  // Блок cut/copy/paste/delete/open-as-link — справа от выделенного текста, на
+  // одной строке с ним (панель форматирования выше уже не перекрывает текст,
+  // но стоит либо над, либо сбоку — не рядом с этим блоком). toolbarRect
+  // передаётся только когда панель форматирования встала НАД выделением
+  // (обычный случай) — тогда стрелка сворачивания тянется к её правому краю;
+  // если панель ушла влево (редкий случай нехватки места сверху), toolbarRect
+  // равен null и стрелка просто встаёт по правому краю самого этого блока.
+  function showSelectionActions(selRect, toolbarRect) {
+    const el = document.createElement("div");
+    el.className = "rte-selection-actions";
+    const buttonsGroup = document.createElement("div");
+    buttonsGroup.className = "rte-selection-actions-buttons";
+    const actionKeys = ["selectionCut", "selectionCopy", "selectionPaste", "selectionDelete"];
+    if (isInlineFormatActive(contentEl, FORMATS.linkExternal) || isInlineFormatActive(contentEl, FORMATS.linkInternal)) {
+      actionKeys.push("selectionOpenLink");
+    }
+    actionKeys.forEach((key) => {
+      const btn = buildToolbarButton(key, closeSelectionToolbar);
+      if (btn) buttonsGroup.appendChild(btn);
+    });
+    const toggle = createSelectionActionsToggle(el);
+    el.append(buttonsGroup, toggle);
+    document.body.appendChild(el);
+
+    const GAP = 8;
+    const rect = el.getBoundingClientRect();
+    let left = selRect.right + GAP;
+    if (toolbarRect) {
+      // Правый край блока — вровень с правым краем панели форматирования,
+      // но не ценой наезда на сам выделенный текст.
+      left = Math.max(left, toolbarRect.right - rect.width);
+    }
+    const top = clamp(selRect.top, GAP, window.innerHeight - rect.height - GAP);
+    el.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
+    el.style.top = `${top}px`;
+    selectionActionsEl = el;
+  }
+
+  // Тот же приём, что у createToolbarToggle (▾/▴, свой ключ localStorage,
+  // mousedown → preventDefault, чтобы клик по стрелке не снимал выделение) —
+  // не переиспользуем саму функцию напрямую: та завязана на соседнюю кнопку
+  // "+/−" основного тулбара, которой здесь нет и не нужно.
+  function createSelectionActionsToggle(actionsEl) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rte-toolbar-toggle";
+    btn.title = t("editor.toggleSelectionActions");
+    function apply(collapsed) {
+      actionsEl.classList.toggle("is-collapsed", collapsed);
+      btn.textContent = collapsed ? "▾" : "▴";
+    }
+    apply(localStorage.getItem(SELECTION_ACTIONS_COLLAPSED_KEY) === "1");
+    btn.addEventListener("mousedown", (event) => event.preventDefault());
+    btn.addEventListener("click", () => {
+      const collapsed = !actionsEl.classList.contains("is-collapsed");
+      localStorage.setItem(SELECTION_ACTIONS_COLLAPSED_KEY, collapsed ? "1" : "0");
+      apply(collapsed);
+    });
+    return btn;
   }
 
   // Единственное контекстное меню редактора: сюда же попадают пункты раздела
