@@ -119,7 +119,7 @@ export function createBlockSync(editorEl) {
   // растащила бы блок по всей странице. В восстановленном HTML data-block-id
   // уже верные, угадывать нечего: перед такой синхронизацией нужно объявить
   // всё текущее содержимое старым.
-  return { sync: syncBlockGeometry, remember: rememberAll };
+  return { sync: syncBlockGeometry, remember: rememberAll, markKnown: (line) => known.add(line) };
 }
 
 // Снимает блок целиком со всех его строк на странице. Пустой tagIds в

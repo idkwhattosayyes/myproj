@@ -3755,6 +3755,25 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     placeCaretAfter(anchor, anchor.length);
   }
 
+  /**
+   * Enter перед блоком не должен в него входить. Chrome при разбиении строки
+   * всегда кладёт новую половину СЛЕДОМ за местом разрыва — если разрывали
+   * строку прямо перед блоком, новая пустая строка окажется вплотную к нему,
+   * без своего data-block-id и как "только что появившаяся". Пропагация
+   * границ (см. propagateBlockMembership в blockTags.js) в этом случае
+   * решит, что строку забыли пометить, и затянет её в блок — а это просто
+   * артефакт разбиения, не решение пользователя писать внутри тега.
+   * Помечаем строку "старой" ДО синхронизации — тогда пропагация её не
+   * тронет, и блок вместо поглощения новой строки сдвинется вниз.
+   */
+  function preventBlockPushDown() {
+    const line = getCaretLine(contentEl);
+    if (!line || line.dataset.blockId) return; // уже часть блока — Chrome сам склонировал, это Enter внутри блока
+    const lines = pageLines(line.parentElement);
+    const next = lines[lines.indexOf(line) + 1];
+    if (next && next.dataset.blockId) blockSync.markKnown(line);
+  }
+
   contentEl.addEventListener("input", (event) => {
     // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
     if (event.inputType && event.inputType.startsWith("delete")) {
@@ -3779,6 +3798,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // пережить Enter обязано — иначе продолжать писать тем же цветом и
       // жирным/подчёркнутым нельзя.
       restoreLineFormat();
+      preventBlockPushDown();
     }
     // Строки, которых не было при открытии: вставка из буфера и всё, что создал
     // сам браузер. Новую строку по Enter Chrome клонирует вместе с атрибутами,
