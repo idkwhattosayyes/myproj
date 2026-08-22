@@ -4012,15 +4012,20 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
     const GAP = 8;
     const rect = el.getBoundingClientRect();
-    let left = selRect.right + GAP;
-    if (toolbarRect) {
-      // Правый край блока — вровень с правым краем панели форматирования,
-      // но не ценой наезда на сам выделенный текст.
-      left = Math.max(left, toolbarRect.right - rect.width);
-    }
     const top = clamp(selRect.top, GAP, window.innerHeight - rect.height - GAP);
-    el.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
     el.style.top = `${top}px`;
+    if (toolbarRect) {
+      // Правый край — через CSS right, а не left: сворачивание блока (см.
+      // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
+      // стрелку на месте старого левого края — она "убегала" от текста и
+      // пропадала из виду при каждом сворачивании (ТЗ).
+      const left = Math.max(selRect.right + GAP, toolbarRect.right - rect.width);
+      const right = clamp(window.innerWidth - (left + rect.width), GAP, window.innerWidth - rect.width - GAP);
+      el.style.right = `${right}px`;
+    } else {
+      const left = clamp(selRect.right + GAP, GAP, window.innerWidth - rect.width - GAP);
+      el.style.left = `${left}px`;
+    }
     selectionActionsEl = el;
   }
 
