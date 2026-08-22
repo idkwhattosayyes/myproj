@@ -608,8 +608,17 @@ function sortPinnedFirst(list) {
 }
 
 // То же для заметок, но закрепление берётся для конкретного места показа.
+// Внутри закреплённых порядок не трогаем (пришли уже order-сортированными) —
+// остальные идут по недавней правке текста/заголовка, самые свежие наверху.
 function sortItemsByPin(list, locationKey) {
-  return [...list.filter((e) => isPinnedIn(e, locationKey)), ...list.filter((e) => !isPinnedIn(e, locationKey))];
+  const pinned = list.filter((e) => isPinnedIn(e, locationKey));
+  const rest = list.filter((e) => !isPinnedIn(e, locationKey));
+  return [...pinned, ...sortByRecency(rest)];
+}
+
+function sortByRecency(list) {
+  const time = (item) => (item.activityAt ? new Date(item.activityAt).getTime() : 0);
+  return [...list].sort((a, b) => time(b) - time(a));
 }
 
 // Прямые дети parentId, отсортированные по общему order (отдельного
@@ -1398,6 +1407,9 @@ function renderDetail(container, config, state) {
 
   function scheduleSave(patch) {
     Object.assign(item, patch);
+    // itemsService.updateItem проставит activityAt и persist'нет его сам, но
+    // только через 400мс дебаунса ниже — а список нужно пересортировать сразу.
+    if ("content" in patch || "title" in patch) item.activityAt = new Date().toISOString();
     Object.assign(pendingPatch, patch);
     renderList(container, config, state);
     clearTimeout(saveTimer);

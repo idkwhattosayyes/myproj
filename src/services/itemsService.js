@@ -127,8 +127,12 @@ export async function createItem(section, { title, content, folderIds, isFavorit
   return storage.createItem(item);
 }
 
+// Правка текста или заголовка поднимает заметку наверх списка (см.
+// sortItemsByPin в panelSection.js) — остальные патчи (избранное, закрепление,
+// папка) на activityAt не влияют, иначе список прыгал бы от них тоже.
 export async function updateItem(id, patch) {
-  return storage.updateItem(id, patch);
+  const activity = "content" in patch || "title" in patch ? { activityAt: new Date().toISOString() } : {};
+  return storage.updateItem(id, { ...patch, ...activity });
 }
 
 // Заметка отправляется в Корзину: связи (папки, избранное, закрепление)

@@ -36,6 +36,12 @@ export function createItemModel({ title = "", content = "", folderIds = [], sect
     order: Date.now(), // порядок сортировки; переназначается при drag-and-drop
     createdAt: now,
     updatedAt: now,
+    // Момент последней правки текста/заголовка — от updatedAt отдельно, потому
+    // что тот трогается ЛЮБЫМ сохранением (избранное, закрепление, папка), а
+    // наверх списка (см. sortItemsByPin) должны поднимать только правки
+    // содержимого. У новой заметки совпадает с createdAt, чтобы она сама
+    // сразу оказалась наверху (см. itemsService.updateItem).
+    activityAt: now,
     deletedAt: null, // время попадания в Корзину; null = заметка на своём месте
   };
 }
