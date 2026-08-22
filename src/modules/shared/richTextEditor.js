@@ -3982,6 +3982,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       getComputedStyle(li).direction === "rtl" ? box.right - event.clientX : event.clientX - box.left;
     if (fromStart > CHECKLIST_MARKER_WIDTH) return;
     li.classList.toggle("is-done");
+    // MutationObserver истории не слушает атрибуты (только childList/characterData),
+    // поэтому смену класса снимком не ловит — пишем явно, как при перетаскивании
+    // фото и смене отступа (Tab). Иначе отметка тихо прилипает к следующему
+    // текстовому снимку и откатывается вместе с ним при Ctrl+Z.
+    recordHistory();
     onChange(serializeEditor(contentEl));
   });
 
