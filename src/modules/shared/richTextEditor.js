@@ -4288,6 +4288,19 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Вставка фото из буфера обмена (Ctrl+V со скриншотом/картинкой). Текстовую
   // вставку не трогаем — только когда в буфере есть изображение.
   contentEl.addEventListener("paste", (event) => {
+    const block = getCaretBlock(contentEl);
+    if (block && block.tagName === "LI" && block.classList.contains("is-done")) {
+      // Отмеченный пункт весь целиком серый и зачёркнутый (li.is-done в
+      // editor.css) — своим цветом из буфера вставка выбивается из этого стиля.
+      // Зачёркивание переживает вставку само (рисуется поверх потомков), а вот
+      // цвет как обычное наследуемое свойство перебивается инлайновым style у
+      // вставленного HTML. Вставляем как обычный текст — тогда он ничем не
+      // отличается от напечатанного руками.
+      event.preventDefault();
+      const text = event.clipboardData.getData("text/plain");
+      if (text) document.execCommand("insertText", false, text);
+      return;
+    }
     const items = event.clipboardData ? event.clipboardData.items : null;
     if (!items) return;
     for (const item of items) {
