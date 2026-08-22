@@ -4125,9 +4125,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Отметка "выполнено" — клик по квадратику слева от текста. Сам квадратик
   // рисуется через ::before в левом отступе пункта, поэтому целью клика будет
   // сам <li>, а не текстовый узел внутри него.
-  contentEl.addEventListener("click", (event) => {
+  //
+  // Общая проверка для mousedown (глушить перенос каретки, см. ниже) и клика —
+  // используется и на mousedown, и на mouseup (см. ТЗ п.4, пара mousedown/mouseup).
+  function checklistMarkerLi(event) {
     const li = event.target instanceof Element ? event.target.closest("li") : null;
-    if (!li || !li.closest("ul.checklist") || event.target !== li) return;
+    if (!li || event.target !== li || !li.closest("ul.checklist")) return null;
     // Квадратик стоит в НАЧАЛЕ пункта, а начало зависит от направления: в
     // ивритском пункте оно справа. Меряем с той же стороны, с которой его рисует
     // inset-inline-start, иначе клик по квадратику в RTL уходил бы в текст, а
@@ -4135,7 +4138,20 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const box = li.getBoundingClientRect();
     const fromStart =
       getComputedStyle(li).direction === "rtl" ? box.right - event.clientX : event.clientX - box.left;
-    if (fromStart > CHECKLIST_MARKER_WIDTH) return;
+    return fromStart <= CHECKLIST_MARKER_WIDTH ? li : null;
+  }
+
+  // Клик по квадратику — не по строке: браузер сам, ещё на mousedown, ставит
+  // каретку в ближайшую валидную позицию (щёлкнули по ::before-псевдоэлементу,
+  // а не по настоящему узлу — ближайшая позиция для него начало строки).
+  // Глушим это здесь же, до появления самой каретки, а не постфактум.
+  contentEl.addEventListener("mousedown", (event) => {
+    if (checklistMarkerLi(event)) event.preventDefault();
+  });
+
+  contentEl.addEventListener("click", (event) => {
+    const li = checklistMarkerLi(event);
+    if (!li) return;
     li.classList.toggle("is-done");
     // MutationObserver истории не слушает атрибуты (только childList/characterData),
     // поэтому смену класса снимком не ловит — пишем явно, как при перетаскивании
