@@ -2053,7 +2053,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (!focusNode || !contentEl.contains(focusNode)) return -1;
     let offset = 0;
     for (const page of getPages()) {
-      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, {
+      // SHOW_ALL, а не только текст: у пустой строки/пункта списка (пустой
+      // to-do после Ctrl+Z — только <br>, ни одного текстового узла) selection
+      // указывает focusNode прямо на сам элемент, а не на текст внутри него.
+      // Раньше обход находил каретку только среди текстовых узлов, и на такой
+      // строке она "терялась" — offset падал в return offset в самом конце.
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_ALL, {
         acceptNode: (node) =>
           node.parentElement && node.parentElement.closest(".rte-interim")
             ? NodeFilter.FILTER_REJECT
@@ -2061,8 +2066,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       });
       let node;
       while ((node = walker.nextNode())) {
-        if (node === focusNode) return offset + focusOffset;
-        offset += node.textContent.length;
+        if (node === focusNode) return node.nodeType === Node.TEXT_NODE ? offset + focusOffset : offset;
+        if (node.nodeType === Node.TEXT_NODE) offset += node.textContent.length;
       }
       // Каретка стоит на самом элементе страницы (пустая строка) — прибавлять
       // нечего, вернём накопленное.
@@ -2071,9 +2076,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     return offset;
   }
 
-  // Ставит каретку на символьное смещение offset, обходя текстовые узлы страниц.
-  // За концом текста — в конец последней страницы. Обновляет активную страницу и
-  // фокус, чтобы последующий focusActivePage() не сбил позицию.
+  // Ставит каретку на символьное смещение offset, обходя страницы. За концом
+  // текста — в конец последней страницы. Обновляет активную страницу и фокус,
+  // чтобы последующий focusActivePage() не сбил позицию.
   function setCaretOffset(offset) {
     const pages = getPages();
     if (!pages.length) return;
@@ -2087,16 +2092,38 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     let lastNode = null;
     for (const page of pages) {
       lastPage = page;
-      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT, null);
+      // SHOW_ALL — обход по одним текстовым узлам пустую строку/пункт списка
+      // без единого текстового узла внутри просто пропускал бы, и каретка
+      // уезжала к следующему найденному тексту где угодно дальше в заметке
+      // (см. getCaretOffset выше про ту же причину в обратную сторону).
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_ALL, null);
       let node;
       while ((node = walker.nextNode())) {
-        lastNode = node;
-        const len = node.textContent.length;
-        if (remaining <= len) {
-          placeCaret(page, node, remaining);
+        if (node.nodeType === Node.TEXT_NODE) {
+          const len = node.textContent.length;
+          // Строго < , не <=: смещение РОВНО на конце этого текстового узла
+          // не забираем себе сразу — вдруг сразу за ним пустая строка/пункт
+          // без текста внутри, которой это смещение принадлежит по факту
+          // (см. ветку ниже). Если пустой строки не найдётся, тот же случай
+          // отловит финальный fallback ниже — конец последнего текстового узла.
+          if (remaining < len) {
+            placeCaret(page, node, remaining);
+            return;
+          }
+          lastNode = node;
+          remaining -= len;
+        } else if (remaining === 0 && (node.tagName === "LI" || isTextLine(node)) && isLineEmpty(node)) {
+          // Ровно на границе смещения стоит пустая строка/пункт без единого
+          // текстового узла внутри — раньше обход просто пропускал бы её и
+          // уезжал к следующему найденному тексту где угодно дальше в заметке
+          // (см. ТЗ про Ctrl+Z на пустой to-do строке).
+          activePageEl = page;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          range.collapse(true);
+          applyRange(range);
           return;
         }
-        remaining -= len;
       }
     }
     // Смещение вышло за конец текста — встаём в конец последнего текстового узла
