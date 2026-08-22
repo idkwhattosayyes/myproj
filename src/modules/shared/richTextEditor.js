@@ -3866,8 +3866,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     }
   }
 
-  function showSelectionToolbar(x, y) {
+  function showSelectionToolbar() {
     closeSelectionToolbar();
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const selRect = selection.getRangeAt(0).getBoundingClientRect();
+
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
     const selectionButtons = ["bold", "underline", "strikethrough", "textColor", "highlight", "link", "tag"];
@@ -3881,10 +3885,19 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (btn) bar.appendChild(btn);
     });
     document.body.appendChild(bar);
-    // Клампинг по краям вьюпорта — позиция у панели фиксированная.
+    // Панель не должна перекрывать сам выделенный текст: сперва пробуем встать
+    // над выделением, а если сверху не хватает места (выделение у самого верха
+    // экрана) — левее него. Клампинг по краям вьюпорта — позиция фиксированная.
     const rect = bar.getBoundingClientRect();
-    bar.style.left = `${clamp(x, 8, window.innerWidth - rect.width - 8)}px`;
-    bar.style.top = `${clamp(y, 8, window.innerHeight - rect.height - 8)}px`;
+    const GAP = 8;
+    let left = selRect.left;
+    let top = selRect.top - rect.height - GAP;
+    if (top < GAP) {
+      left = selRect.left - rect.width - GAP;
+      top = selRect.top;
+    }
+    bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
+    bar.style.top = `${clamp(top, GAP, window.innerHeight - rect.height - GAP)}px`;
     selectionToolbarEl = bar;
     unregisterSelectionLayer = pushLayer(closeSelectionToolbar);
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
@@ -3912,7 +3925,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       && contentEl.contains(selection.getRangeAt(0).commonAncestorContainer);
     if (hasTextSelection) {
       event.preventDefault();
-      showSelectionToolbar(event.clientX, event.clientY);
+      showSelectionToolbar();
       return;
     }
 
