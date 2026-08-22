@@ -9,7 +9,7 @@ import { openLinkPicker } from "../../search/searchBar.js";
 import { escapeAttr } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
-import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock, setBlockTagIds } from "./blockTags.js";
+import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock, setBlockTagIds, dissolveLine } from "./blockTags.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
@@ -3774,10 +3774,28 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (next && next.dataset.blockId) blockSync.markKnown(line);
   }
 
+  /**
+   * Если блок доходит до последней строки заметки, Enter из него не выпускает:
+   * Chrome клонирует data-block-id на новую пустую строку (это же клонирование
+   * специально используется для Enter в середине блока, см. комментарий в
+   * blockTags.js), а раз эта строка снова последняя — следующий Enter повторяет
+   * то же самое до бесконечности. Единственный выход — напечатать символ и
+   * стереть его: если после стирания строка блока опять пуста и после неё
+   * ничего нет, снимаем с неё тег, и дальше можно писать уже вне блока.
+   */
+  function dissolveDeadEndBlockLine() {
+    const line = getCaretLine(contentEl);
+    if (!line || !line.dataset.blockId || !isLineEmpty(line)) return;
+    const lines = pageLines(line.parentElement);
+    if (lines[lines.length - 1] !== line) return; // после неё есть куда писать — блок не в тупике
+    dissolveLine(line);
+  }
+
   contentEl.addEventListener("input", (event) => {
     // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
     if (event.inputType && event.inputType.startsWith("delete")) {
       clearEmptiedBlock();
+      dissolveDeadEndBlockLine();
       // Удалили строку между двумя списками одного вида — списки стали соседями
       // вплотную, а значит одним списком. Только на удалении: пока разделитель
       // на месте, склеивать нечего (см. mergeAdjacentLists).

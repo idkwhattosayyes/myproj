@@ -122,18 +122,23 @@ export function createBlockSync(editorEl) {
   return { sync: syncBlockGeometry, remember: rememberAll, markKnown: (line) => known.add(line) };
 }
 
+// Снимает тег с одной строки — используется и при роспуске всего блока (ниже),
+// и точечно, когда из блока нужно вывести только одну его строку (см.
+// dissolveDeadEndBlockLine в richTextEditor.js).
+export function dissolveLine(line) {
+  delete line.dataset.blockId;
+  delete line.dataset.tagIds;
+  delete line.dataset.blockStart;
+  delete line.dataset.blockEnd;
+}
+
 // Снимает блок целиком со всех его строк на странице. Пустой tagIds в
 // setBlockTagIds приходит сюда же — удаление последнего тега распускает блок
 // тем же путём, что и ручной роспуск (ТЗ п.17).
 export function dissolveBlock(page, blockId) {
   pageLines(page)
     .filter((line) => line.dataset.blockId === blockId)
-    .forEach((line) => {
-      delete line.dataset.blockId;
-      delete line.dataset.tagIds;
-      delete line.dataset.blockStart;
-      delete line.dataset.blockEnd;
-    });
+    .forEach(dissolveLine);
 }
 
 export function setBlockTagIds(page, blockId, tagIds) {
