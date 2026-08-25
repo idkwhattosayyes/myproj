@@ -183,7 +183,17 @@ function applySearchTarget(state) {
   const folderIsValid = PSEUDO_FOLDER_IDS.includes(target.folderId) || state.folders.some((f) => f.id === target.folderId);
   state.selectedFolderId = folderIsValid ? target.folderId : "all";
   state.selectedItemId = target.id;
-  state.pendingMatch = { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex, blockId: target.blockId };
+  // pendingMatch должен нести РЕАЛЬНУЮ цель (текст, найденный блок или фото), а
+  // не просто маршрут "в какую заметку идти" — иначе он безусловно перехватывал
+  // бы показ заметки в renderDetail (if/else if с item.openAtEnd) и глушил бы
+  // прокрутку в конец даже там, где искать нечего: кружок на главном экране и
+  // перенос быстрой заметки шлют пустой query без blockId/photoIndex именно за
+  // тем, чтобы просто открыть заметку, — highlightMatch("", ...) на пустой
+  // строке ничего не находит и не скроллит, а до openAtEnd очередь не доходила.
+  const hasRealTarget = Boolean(target.blockId) || Boolean(target.query) || target.photoIndex != null;
+  state.pendingMatch = hasRealTarget
+    ? { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex, blockId: target.blockId }
+    : null;
 }
 
 /**
