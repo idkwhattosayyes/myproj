@@ -291,7 +291,8 @@
 }
 
 .rte-btn[data-command="draw"],
-.rte-btn[data-command="photoDraw"] { border-bottom: 3px solid var(--swatch); }
+.rte-btn[data-command="photoDraw"],
+.rte-btn[data-command="divider"] { border-bottom: 3px solid var(--swatch); }
 
 /* Кнопка направления письма: обе стрелки видны всегда, горит та, в которую идёт
    строка под кареткой. is-active тут значит не «режим включён», а «строка RTL»,

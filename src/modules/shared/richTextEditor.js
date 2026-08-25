@@ -198,9 +198,21 @@ function getButtonDefs() {
       caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
-    // Одноразовая вставка, без режима "продолжать применять при печати" — как
-    // и у table, попадает в generic-ветку buildToolbarButton без своей логики.
-    divider: { label: "―", title: t("editor.divider"), command: (editorEl) => insertDivider(editorEl) },
+    // ЛКМ — как у textColor/highlight: вставляет линию последним выбранным
+    // цветом, ПКМ открывает палитру. isActive всегда false — в отличие от
+    // цвета текста, у линии нет состояния "уже применено к выделению", каждый
+    // клик — новая вставка, а не тумблер.
+    divider: {
+      label: "―",
+      title: t("editor.divider"),
+      isColor: true,
+      colors: TEXT_COLORS,
+      storageKey: "app:lastDividerColor",
+      defaultColor: "#d0d7de",
+      apply: (color, editorEl) => insertDivider(editorEl, color),
+      reset: () => {},
+      isActive: () => false,
+    },
     // Ссылка на внешний URL для выделенного слова/фразы — не команда форматирования
     // (нужны модалка ввода и меню Delete/Change), обрабатывается отдельно в
     // buildToolbarButton (см. isLink).
@@ -3455,7 +3467,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         } else if (def.isActive(contentEl)) {
           def.reset();
         } else {
-          def.apply(getLastColor(def.storageKey, def.defaultColor));
+          def.apply(getLastColor(def.storageKey, def.defaultColor), contentEl);
         }
         focusActivePage();
         onChange(serializeEditor(contentEl));
@@ -4729,12 +4741,16 @@ async function insertTable(editorEl) {
 // есть вся её "привязка" к строке перед ней — переживает правки выше сама,
 // средствами обычного потока, без пересчёта смещений через transform, которым
 // занят anchoredObjects/syncAnchors для фото и рисунков.
-function insertDivider(editorEl) {
+function insertDivider(editorEl, color) {
   const line = getCaretLine(editorEl);
   if (!line) return; // каретка не на обычной строке (список/таблица) — вставлять некуда
 
   const hr = document.createElement("hr");
   hr.className = "rte-divider";
+  // Цвет — свой у каждой вставленной линии (инлайн-стиль поверх дефолтного
+  // серого в editor.css), а не общая настройка инструмента: разные линии в
+  // одной заметке могут быть разных цветов, как разные образцы палитры.
+  if (color) hr.style.background = color;
 
   if (isLineEmpty(line)) {
     // Пустая строка, где стоял курсор, — заменяется линией; сразу под ней
@@ -4838,7 +4854,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
     swatch.addEventListener("mousedown", (event) => event.preventDefault());
     swatch.addEventListener("click", (event) => {
       event.stopPropagation();
-      def.apply(color);
+      def.apply(color, editorEl);
       // Выбранный здесь цвет становится тем, которым красит ЛКМ по кнопке, —
       // и тем, что показывает индикатор на самой кнопке.
       setLastColor(def.storageKey, color);
