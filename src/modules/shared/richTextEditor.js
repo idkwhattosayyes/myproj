@@ -3951,7 +3951,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   function onSelectionToolbarOutside(event) {
     const inside = (el) => el && el.contains(event.target);
-    if (!inside(selectionToolbarEl) && !inside(selectionActionsEl)) closeSelectionToolbar();
+    // openColorPopoverEl — поповер цвета/highlight: он вынесен в document.body
+    // (см. toggleColorPopover), а не лежит внутри bar/selectionActionsEl, как
+    // раньше. Без этой проверки клик по образцу цвета/кнопке сброса считался бы
+    // кликом СНАРУЖИ панели — closeSelectionToolbar сносил бы попап на capture-
+    // фазе mousedown раньше, чем успевал отработать click самого образца, и
+    // цвет не применялся бы вовсе.
+    if (!inside(selectionToolbarEl) && !inside(selectionActionsEl) && !inside(openColorPopoverEl)) {
+      closeSelectionToolbar();
+    }
   }
 
   function closeSelectionToolbar() {
@@ -4762,9 +4770,10 @@ function clamp(value, min, max) {
 }
 
 function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, focusEditor, onApplied = () => {}) {
-  const existing = btn.querySelector(".rte-color-popover");
+  // Снимаем ДО closeColorPopovers — она сама обнуляет openPopoverBtn.
+  const alreadyOpenOnThisButton = openPopoverBtn === btn;
   closeColorPopovers();
-  if (existing) return;
+  if (alreadyOpenOnThisButton) return;
 
   const popover = document.createElement("div");
   popover.className = "rte-color-popover";
@@ -4809,7 +4818,19 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
     popover.appendChild(swatch);
   });
 
-  btn.appendChild(popover);
+  // В body, а не в btn: кнопка живёт в .rte-selection-toolbar, у которой свой
+  // z-index и свой stacking context — попап-ребёнок не смог бы пробить его,
+  // сколько бы z-index ему ни задали (ТЗ: палитра должна быть поверх блока
+  // cut/copy/paste). Позицию поэтому считаем сами, тем же приёмом клампинга
+  // к вьюпорту, что у showSelectionToolbar/showSelectionActions.
+  document.body.appendChild(popover);
+  const GAP = 8;
+  const btnRect = btn.getBoundingClientRect();
+  const popoverRect = popover.getBoundingClientRect();
+  popover.style.left = `${clamp(btnRect.left, GAP, window.innerWidth - popoverRect.width - GAP)}px`;
+  popover.style.top = `${clamp(btnRect.bottom + 4, GAP, window.innerHeight - popoverRect.height - GAP)}px`;
+  openPopoverBtn = btn;
+  openColorPopoverEl = popover;
   unregisterPopoverLayer = pushLayer(closeColorPopovers);
   setTimeout(() => document.addEventListener("click", closeColorPopovers, { once: true }), 0);
 }
@@ -4910,9 +4931,19 @@ function showLinkPreview(anchorEl, links, { clickable = false } = {}) {
 // Поповер цвета — такой же "слой", как меню и модалки: закрывается кликом вне
 // и по Esc. Регистрация в стеке слоёв снимается здесь, где бы его ни закрыли.
 let unregisterPopoverLayer = null;
+// Кнопка текущего открытого поповера цвета (toggleColorPopover ниже) — только
+// её и сравниваем на повторный клик; чинить toggleDrawPopover эта переменная
+// не касается, у него своя логика "уже открыт" через btn.querySelector.
+let openPopoverBtn = null;
+// Сам поповер — читает onSelectionToolbarOutside в createRichTextEditor,
+// чтобы не признавать клик по нему кликом СНАРУЖИ мини-панели выделения
+// (поповер лежит в document.body, а не внутри bar/selectionActionsEl).
+let openColorPopoverEl = null;
 
 function closeColorPopovers() {
   document.querySelectorAll(".rte-color-popover").forEach((popover) => popover.remove());
+  openPopoverBtn = null;
+  openColorPopoverEl = null;
   if (unregisterPopoverLayer) {
     unregisterPopoverLayer();
     unregisterPopoverLayer = null;

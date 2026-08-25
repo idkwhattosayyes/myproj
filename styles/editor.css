@@ -368,10 +368,15 @@
   outline-offset: 1px;
 }
 
+/* position/z-index здесь — под toggleColorPopover (кнопки цвета/highlight):
+   тот выносит поповер в body и сам ставит left/top инлайн-стилями, в фикс-
+   координатах вьюпорта (см. richTextEditor.js). Причина — кнопка живёт в
+   .rte-selection-toolbar, у которой свой z-index/stacking context: поповер-
+   ребёнок не пробил бы его никаким собственным z-index, а из body — пробивает.
+   .rte-draw-popover ниже переопределяет оба свойства для другого места
+   применения (кнопка "рисование", не выносится в body). */
 .rte-color-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   display: flex;
   gap: 0.3rem;
   padding: 0.4rem;
@@ -379,6 +384,17 @@
   border: 1px solid #d0d7de;
   border-radius: 6px;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  z-index: 1100;
+}
+
+/* Поповер кисти рисования — единственный, кто всё ещё висит внутри своей
+   кнопки (toggleDrawPopover его в body не выносит: кнопка "draw" не участвует
+   в мини-панели выделения, где всплыл этот баг z-index, — переносить незачем).
+   position: absolute относительно .rte-btn (position: relative). */
+.rte-draw-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
   z-index: 50;
 }
 
