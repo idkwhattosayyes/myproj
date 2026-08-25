@@ -624,11 +624,19 @@ function openRow(rowIndex) {
     return;
   }
 
+  // Заметка, у которой совпало только НАЗВАНИЕ (searchService.js кладёт такую
+  // в titleGroups с пустым matches — искать в теле нечего): тот же случай, что
+  // у blockNote выше. group.query здесь всё ещё непустой (это и есть найденное
+  // название), и без этой проверки applySearchTarget завёл бы pendingMatch на
+  // текст, которого в теле нет, — highlightMatch ничего не найдёт и не
+  // проскроллит, а до openAtEnd (заметки с "открывать с конца") очередь так и
+  // не дойдёт.
+  const titleOnlyMatch = group.kind === "item" && group.matches.length === 0;
   setPendingTarget({
     kind: group.kind,
     id: group.id,
-    query: group.query,
-    matchIndex: row.matchIndex,
+    query: titleOnlyMatch ? "" : group.query,
+    matchIndex: titleOnlyMatch ? 0 : row.matchIndex,
     photoIndex: row.photoIndex,
   });
   closeResults();
