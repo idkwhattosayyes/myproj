@@ -812,7 +812,10 @@ function getCaretLine(editorEl) {
   if (node.closest("ul,ol")) return null;
   let line = node;
   while (line && line.parentElement !== page) line = line.parentElement;
-  return line && line.matches(LINE_SELECTOR) ? line : null;
+  // isTextLine, а не голое matches(LINE_SELECTOR): служебные div-слои (маркеры
+  // выделения фото и т.п.) тоже лежат прямыми потомками листа и матчат селектор
+  // строки, но строкой не являются.
+  return line && isTextLine(line) ? line : null;
 }
 
 // Блок, внутри которого стоит каретка: строка листа либо пункт списка. Пункт
@@ -838,7 +841,7 @@ function getSelectedLines(editorEl) {
   const range = getCurrentRange(editorEl);
   if (!range || range.collapsed) return [line];
   const page = line.parentElement;
-  return [...page.children].filter((child) => child.matches(LINE_SELECTOR) && range.intersectsNode(child));
+  return [...page.children].filter((child) => isTextLine(child) && range.intersectsNode(child));
 }
 
 // Пункты списка, которых касается выделение: при схлопнутой каретке ровно один.
@@ -2248,6 +2251,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     parsePages(entry.html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
     upgradeLegacyChecklists(contentEl);
     upgradeLegacyIndents(contentEl);
+    // Слипшийся блок (см. normalizeLines), однажды попавший в снимок истории,
+    // без этого воспроизводился бы неразрезанным при каждом undo/redo — каретка
+    // ниже выставляется явно из entry.caret/caretOffset, отдельно её снимать
+    // незачем.
+    normalizeLines(contentEl);
     activePageEl = getPages()[0] || null;
     // Курсор — туда, где выполнялось отменяемое (или повторяемое) действие, а не
     // в начало. Куда именно, решают undo/redo: у снимка два положения каретки.
@@ -3894,6 +3902,21 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // проставить некому. Функция только дописывает недостающий атрибут, разметку
     // и каретку не трогает, поэтому на вводе она безопасна.
     applyLineDirection(contentEl);
+    // Вставка и drag-and-drop могут принести один div с несколькими
+    // <br>-разделёнными строками внутри — сам Chrome его не разбивает. До
+    // ближайшего normalizeLines (клик по кнопке тулбара/открытие/undo) Tab на
+    // «одной из» таких строк двигал бы их все разом (см. комментарий у
+    // normalizeLines). Нормализуем сразу же, но только на этих inputType —
+    // на обычной печати проход был бы лишним расходом на каждую клавишу,
+    // а слипшийся блок обычная печать не создаёт.
+    if (event.inputType === "insertFromPaste" || event.inputType === "insertFromPasteAsQuotation" || event.inputType === "insertFromDrop") {
+      const caretNode = saveCaret();
+      const caretOffset = getCaretOffset();
+      if (normalizeLines(contentEl)) {
+        if (caretNode && caretNode.node.isConnected) restoreCaret(caretNode);
+        else setCaretOffset(caretOffset);
+      }
+    }
     // Сначала пересчёт, потом сохранение: syncAnchors внутри refreshPages
     // двигает рисунки и фото вслед за строками, и в заметку должно попасть уже
     // новое положение, а не то, что было до правки.
