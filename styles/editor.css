@@ -994,6 +994,48 @@ button.rte-link-preview-row:hover {
   margin-top: 0.15rem;
 }
 
+/* Перетаскивание пункта чек-листа за квадратик — та же визуальная механика,
+   что у startRowDrag в panelSection.js (клон вместо картинки браузера,
+   индикатор вставки), реализована отдельно в richTextEditor.js: см. комментарий
+   там про циклический импорт. Оригинальная строка гаснет на время переноса. */
+.rte-content ul.checklist li.is-drag-source {
+  opacity: 0.35;
+}
+
+.rte-content ul.checklist li.is-drop-before {
+  box-shadow: inset 0 2px 0 #33507e;
+}
+
+.rte-content ul.checklist li.is-drop-after {
+  box-shadow: inset 0 -2px 0 #33507e;
+}
+
+/* "Призрак" — клон перетаскиваемого <li>, обёрнутый в свой <ul class="checklist">:
+   без этого предка квадратик и зачёркивание "выполнено" остались бы без стиля,
+   они рисуются селектором .rte-content ul.checklist li выше. Обёртка — нулевого
+   размера якорь в углу вьюпорта (overflow: visible), сам li внутри неё висит на
+   position:absolute с координатами курсора В ПИКСЕЛЯХ ВЬЮПОРТА — тот же ноль
+   отсчёта, что у clientX/clientY, поэтому JS передаёт их без пересчёта. */
+.rte-checklist-drag-ghost-anchor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2000;
+  list-style: none;
+}
+
+.rte-checklist-drag-ghost-anchor li {
+  position: absolute;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  opacity: 0.95;
+  cursor: grabbing;
+}
+
 /* table-layout: fixed — колонки делят ширину редактора поровну и не расширяют
    таблицу за его пределы; текст в ячейке переносится, а не растягивает столбец. */
 .rte-content table.rte-table {

@@ -4200,16 +4200,165 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // на mousedown, по какому пункту (если по какому-то) было НАЖАТИЕ, и сверяем
   // на mouseup — тот же ли это пункт (ТЗ: срабатывать только если и зажатие, и
   // отпускание — в его пределах).
+  // Тот же зажатый квадратик — кандидат и на toggle, и на перетаскивание пункта
+  // на другую позицию в списке: какое из двух это на самом деле, решает
+  // движение мыши до отпускания (см. checklistDrag ниже). Похожая механика уже
+  // есть в startRowDrag (panelSection.js) — клон вместо картинки браузера,
+  // индикатор вставки, порог 4px, отмена по Esc через pushLayer, — но
+  // panelSection.js сам импортирует этот файл, и обратный импорт завёл бы
+  // циклическую зависимость (тот же повод, что у LINE_SELECTOR в blockTags.js),
+  // поэтому здесь отдельная реализация под свою специфику: перестановка <li>
+  // в contenteditable вместо элемента массива, recordHistory/onChange вместо
+  // сохранения в хранилище.
+  const CHECKLIST_DRAG_THRESHOLD = 4; // px — тот же порог, что и в startRowDrag
   let checklistMouseDownLi = null;
+  let checklistDrag = null; // { li, startX, startY, dragging, ghostAnchor, offsetX, offsetY, target, unregisterLayer, frame, pendingPoint }
+
+  // Реордер только внутри одного и того же <ul>: смена вложенности — дело
+  // Tab/Shift+Tab (indentListItem/outdentListItem), а не drag.
+  function checklistDropTarget(li, clientX, clientY) {
+    const list = li.parentElement;
+    const hovered = document.elementFromPoint(clientX, clientY);
+    const targetLi = hovered ? hovered.closest("li") : null;
+    if (!targetLi || targetLi === li || targetLi.parentElement !== list) return null;
+    const rect = targetLi.getBoundingClientRect();
+    return { li: targetLi, after: clientY > rect.top + rect.height / 2 };
+  }
+
+  function markChecklistDrop(target) {
+    target.li.classList.toggle("is-drop-before", !target.after);
+    target.li.classList.toggle("is-drop-after", target.after);
+  }
+
+  function clearChecklistDrop(li) {
+    li.classList.remove("is-drop-before", "is-drop-after");
+  }
+
+  function beginChecklistDrag(clientX, clientY) {
+    const drag = checklistDrag;
+    drag.dragging = true;
+    drag.li.classList.add("is-drag-source");
+
+    const rect = drag.li.getBoundingClientRect();
+    const ghost = drag.li.cloneNode(true);
+    ghost.classList.remove("is-drag-source", "is-drop-before", "is-drop-after");
+    ghost.style.width = `${rect.width}px`;
+    // Обёртка нужна квадратику и зачёркиванию "выполнено" — оба стилизованы
+    // селектором .rte-content ul.checklist li, без предка-<ul> клон остался бы
+    // голым текстом (см. editor.css).
+    const ghostAnchor = document.createElement("ul");
+    ghostAnchor.className = "rte-checklist-drag-ghost-anchor checklist";
+    ghostAnchor.appendChild(ghost);
+    contentEl.appendChild(ghostAnchor);
+    drag.ghostAnchor = ghostAnchor;
+    drag.ghostEl = ghost;
+    drag.offsetX = clientX - rect.left;
+    drag.offsetY = clientY - rect.top;
+    updateChecklistGhostPosition(clientX, clientY);
+
+    drag.unregisterLayer = pushLayer(cancelChecklistDrag);
+  }
+
+  function updateChecklistGhostPosition(clientX, clientY) {
+    const drag = checklistDrag;
+    drag.ghostEl.style.left = `${clientX - drag.offsetX}px`;
+    drag.ghostEl.style.top = `${clientY - drag.offsetY}px`;
+  }
+
+  function updateChecklistDrag(clientX, clientY) {
+    const drag = checklistDrag;
+    updateChecklistGhostPosition(clientX, clientY);
+    if (drag.target) clearChecklistDrop(drag.target.li);
+    const target = checklistDropTarget(drag.li, clientX, clientY);
+    if (target) markChecklistDrop(target);
+    drag.target = target;
+  }
+
+  function cleanupChecklistDrag() {
+    const drag = checklistDrag;
+    if (!drag) return;
+    checklistDrag = null;
+    document.removeEventListener("mousemove", onChecklistDragMove);
+    document.removeEventListener("mouseup", onChecklistDragUp);
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    if (drag.unregisterLayer) drag.unregisterLayer();
+    if (drag.target) clearChecklistDrop(drag.target.li);
+    drag.li.classList.remove("is-drag-source");
+    if (drag.ghostAnchor) drag.ghostAnchor.remove();
+  }
+
+  function cancelChecklistDrag() {
+    cleanupChecklistDrag();
+  }
+
+  function onChecklistDragMove(event) {
+    const drag = checklistDrag;
+    if (!drag) return;
+    if (!drag.dragging) {
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (Math.hypot(dx, dy) < CHECKLIST_DRAG_THRESHOLD) return;
+      beginChecklistDrag(event.clientX, event.clientY);
+    }
+    // Тот же приём троттлинга, что в startRowDrag: считаем не чаще кадра.
+    drag.pendingPoint = { x: event.clientX, y: event.clientY };
+    if (drag.frame) return;
+    drag.frame = requestAnimationFrame(() => {
+      drag.frame = 0;
+      if (checklistDrag) updateChecklistDrag(checklistDrag.pendingPoint.x, checklistDrag.pendingPoint.y);
+    });
+  }
+
+  function onChecklistDragUp(event) {
+    const drag = checklistDrag;
+    if (!drag) return;
+    if (!drag.dragging) {
+      // Порог не пройден — обычный клик, toggle делает contentEl-обработчик
+      // mouseup ниже сам (он срабатывает раньше — см. порядок всплытия).
+      cleanupChecklistDrag();
+      return;
+    }
+    updateChecklistDrag(event.clientX, event.clientY);
+    const target = drag.target;
+    const li = drag.li;
+    cleanupChecklistDrag();
+    if (!target) return; // отпустили вне валидной цели — строка остаётся на месте
+    if (target.after) target.li.after(li);
+    else target.li.before(li);
+    // normalizeLines/refreshPages не нужны: перестановка <li> внутри <ul> не
+    // создаёт слипшихся блоков и не двигает anchor-объекты (те привязаны к
+    // строкам уровня .rte-page, не к <li>).
+    recordHistory();
+    onChange(serializeEditor(contentEl));
+  }
+
   contentEl.addEventListener("mousedown", (event) => {
     checklistMouseDownLi = checklistMarkerLi(event);
-    if (checklistMouseDownLi) event.preventDefault();
+    if (!checklistMouseDownLi) return;
+    event.preventDefault();
+    checklistDrag = {
+      li: checklistMouseDownLi,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false,
+      ghostAnchor: null,
+      ghostEl: null,
+      target: null,
+      unregisterLayer: null,
+      frame: 0,
+      pendingPoint: null,
+    };
+    document.addEventListener("mousemove", onChecklistDragMove);
+    document.addEventListener("mouseup", onChecklistDragUp);
   });
 
   contentEl.addEventListener("mouseup", (event) => {
     const li = checklistMouseDownLi;
     checklistMouseDownLi = null;
-    if (!li || checklistMarkerLi(event) !== li) return;
+    // Всплытие до document (см. onChecklistDragUp) идёт ПОСЛЕ этого обработчика,
+    // так что dragging здесь уже выставлен, если порог был пройден.
+    if (!li || (checklistDrag && checklistDrag.dragging)) return;
+    if (checklistMarkerLi(event) !== li) return;
     li.classList.toggle("is-done");
     // MutationObserver истории не слушает атрибуты (только childList/characterData),
     // поэтому смену класса снимком не ловит — пишем явно, как при перетаскивании
