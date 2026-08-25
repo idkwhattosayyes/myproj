@@ -198,6 +198,9 @@ function getButtonDefs() {
       caretStyleProp: "backgroundColor",
     },
     table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    // Одноразовая вставка, без режима "продолжать применять при печати" — как
+    // и у table, попадает в generic-ветку buildToolbarButton без своей логики.
+    divider: { label: "―", title: t("editor.divider"), command: (editorEl) => insertDivider(editorEl) },
     // Ссылка на внешний URL для выделенного слова/фразы — не команда форматирования
     // (нужны модалка ввода и меню Delete/Change), обрабатывается отдельно в
     // buildToolbarButton (см. isLink).
@@ -974,7 +977,9 @@ function isLineEmpty(line) {
 // Что уже лежит на уровне листа само по себе. Строки и списки — содержимое,
 // фото с рисунками и маркеры выделения — служебные слои: заворачивать их в
 // строку нельзя, иначе объект потеряет привязку (см. anchoredObjects).
-const PAGE_LEVEL_SELECTOR = `${LINE_SELECTOR},ul,ol,table,blockquote,img.rte-photo,svg.rte-drawing-layer,.rte-photo-handles`;
+// hr.rte-divider (см. insertDivider) сюда же — иначе она сама попала бы под
+// wrapLooseContent как "бесхозный" контент.
+const PAGE_LEVEL_SELECTOR = `${LINE_SELECTOR},ul,ol,table,blockquote,img.rte-photo,svg.rte-drawing-layer,.rte-photo-handles,hr.rte-divider`;
 
 // Строка с текстом, а не служебный слой: маркеры выделения фото — тоже div среди
 // прямых потомков листа, но резать их по переносам нечего.
@@ -4716,6 +4721,35 @@ async function insertTable(editorEl) {
   const rowHtml = `<tr>${"<td>&nbsp;</td>".repeat(cols)}</tr>`;
   const tableHtml = `<table class="rte-table">${rowHtml.repeat(rows)}</table><p><br></p>`;
   document.execCommand("insertHTML", false, tableHtml);
+}
+
+// Просто визуальный разделитель — без тегов семантики, без рамки блока, без
+// всплывающего меню. Обычный поток-потомок листа, а НЕ anchor-объект (см.
+// комментарий у PAGE_LEVEL_SELECTOR и у anchoredObjects): её место в DOM и
+// есть вся её "привязка" к строке перед ней — переживает правки выше сама,
+// средствами обычного потока, без пересчёта смещений через transform, которым
+// занят anchoredObjects/syncAnchors для фото и рисунков.
+function insertDivider(editorEl) {
+  const line = getCaretLine(editorEl);
+  if (!line) return; // каретка не на обычной строке (список/таблица) — вставлять некуда
+
+  const hr = document.createElement("hr");
+  hr.className = "rte-divider";
+
+  if (isLineEmpty(line)) {
+    // Пустая строка, где стоял курсор, — заменяется линией; сразу под ней
+    // встаёт новая пустая строка для продолжения печати, курсор — туда.
+    const next = document.createElement(line.tagName);
+    next.innerHTML = "<br>";
+    line.replaceWith(hr, next);
+    const range = document.createRange();
+    range.setStart(next, 0);
+    range.collapse(true);
+    restoreRange(range);
+  } else {
+    // Непустая строка — линия встаёт сразу после неё, сам текст не трогаем.
+    line.after(hr);
+  }
 }
 
 function getCurrentRange(editorEl) {

@@ -12,7 +12,7 @@ export async function renderNotesView(container) {
       // родственный инструмент. В сокращённый набор намеренно не входит:
       // направление и так определяется само, кнопка нужна только на промахах.
       "h1", "h2", "h3", "alignLeft", "alignCenter", "alignRight", "textDirection",
-      "bulletList", "orderedList", "checklist", "table", "insertPhoto", "voice", "draw", "pageMode",
+      "bulletList", "orderedList", "checklist", "table", "divider", "insertPhoto", "voice", "draw", "pageMode",
     ],
     // Свёрнутый тулбар (кнопка "+" справа) показывает только этот набор — бывший
     // тулбар Задач. Развёрнутый показывает toolbarButtons целиком.

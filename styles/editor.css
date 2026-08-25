@@ -1052,6 +1052,18 @@ button.rte-link-preview-row:hover {
   cursor: grabbing;
 }
 
+/* Горизонтальная линия-разделитель (insertDivider в richTextEditor.js) — просто
+   визуальный разделитель текста, без семантики и рамки блока. Обнуляем
+   нативный вид <hr> (border с 3D-эффектом inset/groove) и красим плоской
+   заливкой. Высота — вдвое толще зачёркивания на кнопке тулбара (.rte-ico-strike,
+   2px) — если на глаз не совпадёт с зачёркиванием текста, поправить здесь. */
+.rte-content hr.rte-divider {
+  border: none;
+  height: 4px;
+  background: #d0d7de;
+  margin: 0.5rem 0;
+}
+
 /* table-layout: fixed — колонки делят ширину редактора поровну и не расширяют
    таблицу за его пределы; текст в ячейке переносится, а не растягивает столбец. */
 .rte-content table.rte-table {
