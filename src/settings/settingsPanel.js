@@ -227,7 +227,17 @@ async function runImport() {
       if (!folders.length && !items.length) return;
       // Дерево выбирает только папки и заметки — кружки, календарь и теги блоков
       // берём из файла как есть. Кружок на невыбранную заметку importData отбросит сам.
-      await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar, blockTags: data.blockTags });
+      try {
+        await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar, blockTags: data.blockTags });
+      } catch {
+        // Конфликт имени тега сам по себе больше не валит импорт (см.
+        // uniqueTagName в dataTransfer.js) — сюда попадают только настоящие сбои
+        // (сеть, квота и т.п.). Общий индикатор сохранения в углу в этот момент
+        // уже покажет "Couldn't save" от withSaveStatus — это не специфично для
+        // импорта и не объясняет причину, поэтому даём своё, отдельное сообщение.
+        await openConfirm({ message: t("settings.importFailed") });
+        return;
+      }
       location.reload();
     },
   });

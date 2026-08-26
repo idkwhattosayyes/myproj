@@ -125,6 +125,19 @@ function remapBlockTags(content, blockTagIdMap) {
   return holder.innerHTML;
 }
 
+// Импортируемый тег с именем, которое уже занято у пользователя (или другим
+// тегом из этого же файла), получает суффикс "(N)" — растущий, пока не
+// найдётся свободное имя. Оригинальный тег не трогаем; дубликат создаётся
+// отдельным тегом со своим id — blockTagIdMap ниже меняет id, не имя, поэтому
+// эта функция ничего не знает про remapBlockTags: блоки автоматически
+// сошлются на переименованный тег через тот же новый id.
+function uniqueTagName(name, takenNameKeys) {
+  if (!takenNameKeys.has(name.trim().toLowerCase())) return name;
+  let n = 1;
+  while (takenNameKeys.has(`${name} (${n})`.trim().toLowerCase())) n++;
+  return `${name} (${n})`;
+}
+
 // Кружки главной: заметку и папку-контекст переводим на новые id, кружок на
 // невосстановленную заметку отбрасываем. Позицию переносим как есть — если
 // импортированный кружок сядет поверх существующего, раскладка главной разведёт
@@ -181,8 +194,16 @@ export async function importData(data) {
   // Заранее, а не отложенно (как tagIdMap календаря) — нужна уже на шаге ремапа
   // content ниже, а не после того, как все заметки записаны.
   const blockTagIdMap = new Map((data.blockTags || []).map((tag) => [tag.id, crypto.randomUUID()]));
+  // Снимаем занятые имена один раз и пополняем вручную по ходу цикла — иначе
+  // коллизия МЕЖДУ двумя тегами одного файла (оба "DAILY") не будет замечена:
+  // storage.getBlockTags() внутри цикла не перевызывается, а созданный на
+  // предыдущей итерации тег виден только через этот Set.
+  const takenNameKeys = new Set((await storage.getBlockTags()).map((tag) => tag.nameKey));
   for (const tag of data.blockTags || []) {
-    await storage.createBlockTag({ ...tag, id: blockTagIdMap.get(tag.id) });
+    const name = uniqueTagName(tag.name, takenNameKeys);
+    const nameKey = name.trim().toLowerCase();
+    takenNameKeys.add(nameKey);
+    await storage.createBlockTag({ ...tag, id: blockTagIdMap.get(tag.id), name, nameKey });
   }
 
   for (const folder of data.folders || []) {
