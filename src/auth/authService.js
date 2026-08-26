@@ -40,3 +40,22 @@ export async function signInWithGoogle() {
 export async function signOut() {
   await supabaseClient.auth.signOut();
 }
+
+// Выбор "продолжить как гость" — постоянный, переживает перезагрузку и
+// закрытие вкладки. Мелкая UI-настройка входа, а не данные приложения,
+// поэтому напрямую в localStorage, в обход storageAdapter.js (тот же
+// принцип, что у app:lastDrawColor). Сбрасывается только явным логаутом —
+// тогда экран авторизации обязан появиться снова.
+const GUEST_CHOSEN_KEY = "app:authGuestChosen";
+
+export function hasChosenGuest() {
+  return localStorage.getItem(GUEST_CHOSEN_KEY) === "1";
+}
+
+export function setGuestChosen() {
+  localStorage.setItem(GUEST_CHOSEN_KEY, "1");
+}
+
+export function clearGuestChosen() {
+  localStorage.removeItem(GUEST_CHOSEN_KEY);
+}

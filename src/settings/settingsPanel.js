@@ -3,7 +3,7 @@ import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
-import { getCachedSession, signOut } from "../auth/authService.js";
+import { getCachedSession, signOut, clearGuestChosen } from "../auth/authService.js";
 import { openAuthModal } from "../auth/authModal.js";
 import { escapeHtml } from "../utils/dom.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
@@ -141,6 +141,9 @@ function renderPanel() {
   panelEl.querySelector('[data-action="logout"]')?.addEventListener("click", async () => {
     closePanel();
     await signOut();
+    // Явный логаут — единственное, что обязано снова показать экран
+    // авторизации при следующей загрузке, даже если раньше был выбран гость.
+    clearGuestChosen();
     location.reload();
   });
 

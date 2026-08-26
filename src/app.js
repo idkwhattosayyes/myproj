@@ -15,7 +15,7 @@ import {
 } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
-import { getSession } from "./auth/authService.js";
+import { getSession, hasChosenGuest } from "./auth/authService.js";
 import { openAuthModal } from "./auth/authModal.js";
 import { mountSaveIndicator } from "./saveIndicator.js";
 
@@ -130,9 +130,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
   });
   mountSaveIndicator();
-  // Если сессии нет — экран авторизации перекрывает страницу, пока пользователь
-  // не войдёт или не выберет "продолжить как гость" (без сохранения выбора).
+  // Если сессии нет и гость ещё ни разу не выбирал "продолжить как гость" —
+  // экран авторизации перекрывает страницу. Выбор гостя запоминается навсегда
+  // (hasChosenGuest), поэтому повторно модалка не всплывает сама — вернуться
+  // к ней можно только явной кнопкой "Log in" в настройках.
   const session = await getSession();
-  if (!session) await openAuthModal();
+  if (!session && !hasChosenGuest()) await openAuthModal();
   renderRoute();
 });

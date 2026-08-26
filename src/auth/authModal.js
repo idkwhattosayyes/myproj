@@ -1,10 +1,12 @@
 import { t } from "../i18n/i18n.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { escapeAttr } from "../utils/dom.js";
-import { signInWithPassword, signUp, signInWithGoogle } from "./authService.js";
+import { signInWithPassword, signUp, signInWithGoogle, setGuestChosen } from "./authService.js";
 
 /**
- * Экран входа, показывается перед первым рендером раздела, если сессии нет.
+ * Экран входа — перед первым рендером раздела, если нет сессии и гость ещё
+ * ни разу не выбирал "продолжить как гость" (см. hasChosenGuest), либо по
+ * явному клику на "Log in" в настройках.
  * @returns {Promise<void>} резолвится, когда модалка закрылась любым способом
  * (успешный вход/регистрация, гость, Esc, клик снаружи) — дальше можно рендерить сайт.
  */
@@ -24,19 +26,27 @@ export function openAuthModal() {
       resolve();
     }
 
+    // Esc, клик снаружи и явная кнопка "Continue as a guest" — три пути к
+    // одному и тому же исходу, и все три запоминают выбор гостя навсегда
+    // (см. setGuestChosen): в отличие от успешного логина, это решение не
+    // должно спрашиваться заново при каждой перезагрузке.
+    function dismissAsGuest() {
+      setGuestChosen();
+      finish();
+    }
+
     // Тот же паттерн, что в utils/modal.js (private там) и blockTagEditor.js:
-    // закрывать можно только по клику, НАЧАВШЕМУСЯ снаружи, и по Esc — оба ведут
-    // себя как "Continue as a guest".
+    // закрывать можно только по клику, НАЧАВШЕМУСЯ снаружи, и по Esc.
     let pressedOutside = false;
     const onMouseDown = (event) => {
       pressedOutside = event.target === overlay;
     };
     const onClick = (event) => {
-      if (pressedOutside && event.target === overlay) finish();
+      if (pressedOutside && event.target === overlay) dismissAsGuest();
     };
     overlay.addEventListener("mousedown", onMouseDown);
     overlay.addEventListener("click", onClick);
-    const unregisterLayer = pushLayer(finish);
+    const unregisterLayer = pushLayer(dismissAsGuest);
     function unwire() {
       overlay.removeEventListener("mousedown", onMouseDown);
       overlay.removeEventListener("click", onClick);
@@ -56,7 +66,7 @@ export function openAuthModal() {
         </div>
       `;
       overlay.querySelector('[data-action="go-login"]').addEventListener("click", () => goTo("login"));
-      overlay.querySelector('[data-action="guest"]').addEventListener("click", finish);
+      overlay.querySelector('[data-action="guest"]').addEventListener("click", dismissAsGuest);
     }
 
     function renderLogin() {
