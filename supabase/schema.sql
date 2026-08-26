@@ -140,13 +140,19 @@ create policy "tags_owner" on public.tags
 -- ------------------------------------------------------------
 -- blocks (помеченный диапазон внутри content заметки)
 -- ------------------------------------------------------------
+-- Производный индекс: полностью сносится и пересоздаётся из content заметки
+-- при каждом сохранении (см. syncBlocksForNote в src/data/supabaseAdapter.js).
+-- block_key — клиентский строковый id блока ("b1"), уникален только внутри
+-- одной заметки; числового смещения (position) в модели нет нигде — блок
+-- адресуется диапазоном строк через data-block-id, не offset'ом.
 create table public.blocks (
   id uuid primary key default gen_random_uuid(),
   note_id uuid not null references public.notes(id) on delete cascade,
-  start_position integer not null,
-  end_position integer not null,
+  block_key text not null,
+  html text not null,
+  preview_text text not null,
   created_at timestamptz not null default now(),
-  check (end_position >= start_position)
+  unique (note_id, block_key)
 );
 
 create index blocks_note_id_idx on public.blocks(note_id);
