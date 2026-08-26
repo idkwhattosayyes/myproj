@@ -1,4 +1,5 @@
 import * as itemsService from "../../services/itemsService.js";
+import * as photoStorageService from "../../services/photoStorageService.js";
 import { createRichTextEditor } from "./richTextEditor.js";
 import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
@@ -1700,6 +1701,12 @@ function renderDetail(container, config, state) {
     // История undo/redo привязана к id заметки и переживает выход/повторный вход.
     initialHistory: historyStore.get(item.id) || null,
     onHistoryChange: (histState) => saveNoteHistory(item.id, histState),
+    // Безусловно — гость получает no-op изнутри photoStorageService.js (гейт
+    // по сессии там), редактору здесь не нужно знать, залогинен пользователь
+    // или нет.
+    uploadPhoto: (blob) => photoStorageService.uploadPhoto(item.id, blob),
+    resolvePhotoSources: (paths) => photoStorageService.resolvePhotoSources(paths),
+    removePhotoFromStorage: (path) => photoStorageService.removePhoto(path),
     // Раздел без кнопки режима в тулбаре (Заметки): переключать вид можно только
     // по ПКМ внутри открытой заметки. Пункт отдаём редактору, а не вешаем своё
     // меню — иначе поверх его меню открывалось бы второе. У строк списка слева
