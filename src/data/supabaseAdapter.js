@@ -39,15 +39,15 @@ function toRow(fieldMap, source) {
   return row;
 }
 
-function mapItemRow(row, folderIds) {
+function mapItemRow(row, folderIds, isFavorite, pinnedIn) {
   return {
     id: row.id,
     title: row.title,
     content: row.content,
     folderIds,
     section: "notes",
-    isFavorite: false,
-    pinnedIn: [],
+    isFavorite,
+    pinnedIn,
     pageMode: row.page_mode,
     openAtEnd: row.open_at_end,
     order: row.sort_order,
@@ -64,13 +64,13 @@ function mapTagRow(row) {
   return { id: row.id, name: row.display_name, nameKey: row.name, color: row.color };
 }
 
-function mapFolderRow(row, parentFolderIds) {
+function mapFolderRow(row, parentFolderIds, isFavorite, pinned) {
   return {
     id: row.id,
     name: row.name,
     section: "notes",
-    isFavorite: false,
-    pinned: false,
+    isFavorite,
+    pinned,
     order: row.sort_order,
     deletedAt: row.deleted_at,
     parentFolderIds,
@@ -226,21 +226,34 @@ async function fetchPinsByItemId(itemType) {
 export const supabaseAdapter = {
   // Folders ------------------------------------------------------------
   async getFolders() {
-    const [foldersResult, parentIdsByFolder] = await Promise.all([
+    const [foldersResult, parentIdsByFolder, favoriteIds, pinsByFolder] = await Promise.all([
       supabaseClient.from("folders").select("*").is("deleted_at", null).order("sort_order"),
       fetchParentFolderIdsByFolderId(),
+      fetchFavoriteIdSet("folder"),
+      fetchPinsByItemId("folder"),
     ]);
     if (foldersResult.error) throw foldersResult.error;
-    return foldersResult.data.map((row) => mapFolderRow(row, parentIdsByFolder.get(row.id) || []));
+    return foldersResult.data.map((row) =>
+      mapFolderRow(
+        row,
+        parentIdsByFolder.get(row.id) || [],
+        favoriteIds.has(row.id),
+        (pinsByFolder.get(row.id) || []).includes("global")
+      )
+    );
   },
 
+  // Корзина: попадание в неё гарантированно уже сбросило isFavorite/pinned до
+  // false — deletedAt ставит только itemsService.moveFolderToTrash, тем же
+  // вызовом updateFolder, что и сброс избранного/закрепления. Поэтому здесь
+  // без доп. запросов, false литералом.
   async getTrashedFolders() {
     const [foldersResult, parentIdsByFolder] = await Promise.all([
       supabaseClient.from("folders").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
       fetchParentFolderIdsByFolderId(),
     ]);
     if (foldersResult.error) throw foldersResult.error;
-    return foldersResult.data.map((row) => mapFolderRow(row, parentIdsByFolder.get(row.id) || []));
+    return foldersResult.data.map((row) => mapFolderRow(row, parentIdsByFolder.get(row.id) || [], false, false));
   },
 
   async createFolder(folder) {
@@ -252,13 +265,17 @@ export const supabaseAdapter = {
       if (error) throw error;
       const parentFolderIds = folder.parentFolderIds || [];
       if (parentFolderIds.length) await replaceFolderFolderLinks(data.id, parentFolderIds);
-      return mapFolderRow(data, parentFolderIds);
+      const isFavorite = !!folder.isFavorite;
+      if (isFavorite) await setFavorite("folder", data.id, true);
+      const pinned = !!folder.pinned;
+      if (pinned) await replacePins("folder", data.id, ["global"]);
+      return mapFolderRow(data, parentFolderIds, isFavorite, pinned);
     });
   },
 
   async updateFolder(id, patch) {
     return withSaveStatus(async () => {
-      const { parentFolderIds, ...rest } = patch;
+      const { parentFolderIds, isFavorite, pinned, ...rest } = patch;
       const row = toRow(FOLDER_FIELD_MAP, rest);
       let data = null;
       if (Object.keys(row).length) {
@@ -267,6 +284,8 @@ export const supabaseAdapter = {
         data = result.data;
       }
       if (parentFolderIds !== undefined) await replaceFolderFolderLinks(id, parentFolderIds);
+      if (isFavorite !== undefined) await setFavorite("folder", id, isFavorite);
+      if (pinned !== undefined) await replacePins("folder", id, pinned ? ["global"] : []);
       if (!data) {
         const result = await supabaseClient.from("folders").select("*").eq("id", id).maybeSingle();
         if (result.error) throw result.error;
@@ -274,7 +293,9 @@ export const supabaseAdapter = {
       }
       if (!data) return null;
       const finalParentFolderIds = parentFolderIds !== undefined ? parentFolderIds : await fetchParentFolderIdsFor(id);
-      return mapFolderRow(data, finalParentFolderIds);
+      const finalIsFavorite = isFavorite !== undefined ? isFavorite : await fetchIsFavorite("folder", id);
+      const finalPinned = pinned !== undefined ? pinned : (await fetchPinnedIn("folder", id)).includes("global");
+      return mapFolderRow(data, finalParentFolderIds, finalIsFavorite, finalPinned);
     });
   },
 
@@ -300,28 +321,39 @@ export const supabaseAdapter = {
 
   // Items ----------------------------------------------------------------
   async getItems() {
-    const [itemsResult, folderIdsByNote] = await Promise.all([
+    const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
       supabaseClient.from("notes").select("*").is("deleted_at", null).order("sort_order"),
       fetchFolderIdsByNoteId(),
+      fetchFavoriteIdSet("note"),
+      fetchPinsByItemId("note"),
     ]);
     if (itemsResult.error) throw itemsResult.error;
-    return itemsResult.data.map((row) => mapItemRow(row, folderIdsByNote.get(row.id) || []));
+    return itemsResult.data.map((row) =>
+      mapItemRow(row, folderIdsByNote.get(row.id) || [], favoriteIds.has(row.id), pinsByItem.get(row.id) || [])
+    );
   },
 
+  // См. комментарий у getTrashedFolders — тот же инвариант для заметок
+  // (itemsService.moveItemToTrash).
   async getTrashedItems() {
     const [itemsResult, folderIdsByNote] = await Promise.all([
       supabaseClient.from("notes").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
       fetchFolderIdsByNoteId(),
     ]);
     if (itemsResult.error) throw itemsResult.error;
-    return itemsResult.data.map((row) => mapItemRow(row, folderIdsByNote.get(row.id) || []));
+    return itemsResult.data.map((row) => mapItemRow(row, folderIdsByNote.get(row.id) || [], false, []));
   },
 
   async getItem(id) {
     const { data, error } = await supabaseClient.from("notes").select("*").eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    return mapItemRow(data, await fetchFolderIdsForNote(id));
+    const [folderIds, isFavorite, pinnedIn] = await Promise.all([
+      fetchFolderIdsForNote(id),
+      fetchIsFavorite("note", id),
+      fetchPinnedIn("note", id),
+    ]);
+    return mapItemRow(data, folderIds, isFavorite, pinnedIn);
   },
 
   async createItem(item) {
@@ -333,13 +365,17 @@ export const supabaseAdapter = {
       if (error) throw error;
       const folderIds = item.folderIds || [];
       if (folderIds.length) await replaceNoteFolderLinks(data.id, folderIds);
-      return mapItemRow(data, folderIds);
+      const isFavorite = !!item.isFavorite;
+      if (isFavorite) await setFavorite("note", data.id, true);
+      const pinnedIn = item.pinnedIn || [];
+      if (pinnedIn.length) await replacePins("note", data.id, pinnedIn);
+      return mapItemRow(data, folderIds, isFavorite, pinnedIn);
     });
   },
 
   async updateItem(id, patch) {
     return withSaveStatus(async () => {
-      const { folderIds, ...rest } = patch;
+      const { folderIds, isFavorite, pinnedIn, ...rest } = patch;
       const row = toRow(ITEM_FIELD_MAP, rest);
       let data = null;
       if (Object.keys(row).length) {
@@ -348,6 +384,8 @@ export const supabaseAdapter = {
         data = result.data;
       }
       if (folderIds !== undefined) await replaceNoteFolderLinks(id, folderIds);
+      if (isFavorite !== undefined) await setFavorite("note", id, isFavorite);
+      if (pinnedIn !== undefined) await replacePins("note", id, pinnedIn);
       if (!data) {
         const result = await supabaseClient.from("notes").select("*").eq("id", id).maybeSingle();
         if (result.error) throw result.error;
@@ -355,7 +393,9 @@ export const supabaseAdapter = {
       }
       if (!data) return null;
       const finalFolderIds = folderIds !== undefined ? folderIds : await fetchFolderIdsForNote(id);
-      return mapItemRow(data, finalFolderIds);
+      const finalIsFavorite = isFavorite !== undefined ? isFavorite : await fetchIsFavorite("note", id);
+      const finalPinnedIn = pinnedIn !== undefined ? pinnedIn : await fetchPinnedIn("note", id);
+      return mapItemRow(data, finalFolderIds, finalIsFavorite, finalPinnedIn);
     });
   },
 
