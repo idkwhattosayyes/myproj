@@ -2,6 +2,7 @@ import { getStorage } from "../data/storageAdapter.js";
 import { createFolderModel, createItemModel } from "../data/models.js";
 import { parentIdsOf, isAncestorOf } from "../data/folderTree.js";
 import * as blockTagsService from "./blockTagsService.js";
+import * as photoStorageService from "./photoStorageService.js";
 
 const storage = getStorage();
 
@@ -111,6 +112,7 @@ export async function createItem(section, { title, content, folderIds, isFavorit
   const item = createItemModel({ title, content, folderIds, section, isFavorite });
   const created = await storage.createItem(item);
   await blockTagsService.syncBlocksIndex(created.id, created.content);
+  await photoStorageService.syncPhotosIndex(created.id, created.content);
   return created;
 }
 
@@ -119,6 +121,7 @@ export async function createItem(section, { title, content, folderIds, isFavorit
 export async function createItemFromModel(model) {
   const created = await storage.createItem(model);
   await blockTagsService.syncBlocksIndex(created.id, created.content);
+  await photoStorageService.syncPhotosIndex(created.id, created.content);
   return created;
 }
 
@@ -128,7 +131,10 @@ export async function createItemFromModel(model) {
 export async function updateItem(id, patch) {
   const activity = "content" in patch || "title" in patch ? { activityAt: new Date().toISOString() } : {};
   const updated = await storage.updateItem(id, { ...patch, ...activity });
-  if ("content" in patch) await blockTagsService.syncBlocksIndex(id, patch.content);
+  if ("content" in patch) {
+    await blockTagsService.syncBlocksIndex(id, patch.content);
+    await photoStorageService.syncPhotosIndex(id, patch.content);
+  }
   return updated;
 }
 
