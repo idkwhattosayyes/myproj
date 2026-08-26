@@ -125,16 +125,16 @@ function remapBlockTags(content, blockTagIdMap) {
   return holder.innerHTML;
 }
 
-// Импортируемый тег с именем, которое уже занято у пользователя (или другим
-// тегом из этого же файла), получает суффикс "(N)" — растущий, пока не
-// найдётся свободное имя. Оригинальный тег не трогаем; дубликат создаётся
-// отдельным тегом со своим id — blockTagIdMap ниже меняет id, не имя, поэтому
-// эта функция ничего не знает про remapBlockTags: блоки автоматически
-// сошлются на переименованный тег через тот же новый id.
-function uniqueTagName(name, takenNameKeys) {
-  if (!takenNameKeys.has(name.trim().toLowerCase())) return name;
+// Имя (тега или заметки), которое уже занято — у пользователя или другой
+// сущностью из этого же файла, — получает суффикс "(N)", растущий, пока не
+// найдётся свободное имя. Сравнение без учёта регистра/краевых пробелов.
+// Оригинальная сущность не трогается; дубликат создаётся отдельной записью со
+// своим id — id-based ремап (blockTagIdMap/itemIdMap) ничего не знает об
+// имени, поэтому переименование не требует отдельной правки remapBlockTags.
+function uniqueName(name, takenKeys) {
+  if (!takenKeys.has(name.trim().toLowerCase())) return name;
   let n = 1;
-  while (takenNameKeys.has(`${name} (${n})`.trim().toLowerCase())) n++;
+  while (takenKeys.has(`${name} (${n})`.trim().toLowerCase())) n++;
   return `${name} (${n})`;
 }
 
@@ -200,11 +200,15 @@ export async function importData(data) {
   // предыдущей итерации тег виден только через этот Set.
   const takenNameKeys = new Set((await storage.getBlockTags()).map((tag) => tag.nameKey));
   for (const tag of data.blockTags || []) {
-    const name = uniqueTagName(tag.name, takenNameKeys);
+    const name = uniqueName(tag.name, takenNameKeys);
     const nameKey = name.trim().toLowerCase();
     takenNameKeys.add(nameKey);
     await storage.createBlockTag({ ...tag, id: blockTagIdMap.get(tag.id), name, nameKey });
   }
+  // Та же логика для заголовков заметок — заметка с названием, которое уже
+  // есть у пользователя (или у другой заметки этого же файла), получает
+  // суффикс "(N)", чтобы её было видно отдельно от уже существующей.
+  const takenTitleKeys = new Set((await storage.getItems("notes")).map((item) => item.title.trim().toLowerCase()));
 
   for (const folder of data.folders || []) {
     // Вложенность папки живёт в parentFolderIds (папка может лежать сразу в
@@ -225,9 +229,12 @@ export async function importData(data) {
       .filter(Boolean);
     const content = remapBlockTags(remapInternalLinks(item.content, itemIdMap), blockTagIdMap);
     const newId = itemIdMap.get(item.id);
+    const title = uniqueName(item.title || "", takenTitleKeys);
+    takenTitleKeys.add(title.trim().toLowerCase());
     await storage.createItem({
       ...item,
       id: newId,
+      title,
       content,
       folderIds,
       pinnedIn,
