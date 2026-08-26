@@ -954,7 +954,7 @@ async function reorderFolder(draggedId, targetId, state, after) {
   // Индекс цели ищем уже после удаления перетаскиваемой папки — сдвиг учтён.
   const to = arr.findIndex((f) => f.id === targetId);
   arr.splice(after ? to + 1 : to, 0, moved);
-  await itemsService.setFoldersOrder(collectOrder(arr));
+  await itemsService.setFoldersOrder(assignOrderByIndex(arr));
 }
 
 // Все удалённые папки и заметки одним списком — недавно удалённое сверху,
