@@ -575,6 +575,15 @@ export async function createSignedUrlMap(paths) {
   return new Map(data.map((row) => [row.path, row.signedUrl]));
 }
 
+// Точечное удаление одного файла — вызывается из richTextEditor.js
+// (attachBackgroundUpload) при замене версии фото ("Изменить" оставляет
+// старый файл ненужным) или когда фото удалили/заменили раньше, чем долетел
+// ответ на аплоад (только что залитый файл никому больше не нужен). Ошибка
+// не пробрасывается — вызывающий код уже трактует это как best-effort.
+export async function removePhotoFromStorage(path) {
+  await supabaseClient.storage.from(PHOTO_BUCKET).remove([path]).catch(() => {});
+}
+
 // Производный индекс images — снос-и-пересоздание строк заметки, тот же
 // приём, что syncBlocksForNote выше. В отличие от blocks/block_tags, здесь за
 // DB-строкой стоит РЕАЛЬНЫЙ файл в Storage — простое "тихое самоисправление"

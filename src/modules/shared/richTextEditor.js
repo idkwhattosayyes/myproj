@@ -1396,7 +1396,7 @@ function isColorActive(editorEl, cssProp) {
  * @param {{content: string, buttons: string[], basicButtons?: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, showWordCount?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, basicButtons = null, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false }) {
+export function createRichTextEditor({ content, buttons, basicButtons = null, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false, uploadPhoto = null, resolvePhotoSources = null, removePhotoFromStorage = null }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -1423,6 +1423,48 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Слипшиеся строки уже разошлись по сохранённым заметкам — чиним при открытии,
   // отдельной миграции для этого не нужно.
   normalizeLines(contentEl);
+
+  // Фото залогиненного пользователя, уже залитые в Storage (data-storage-path
+  // проставлен вставкой/повторным редактированием — см. attachBackgroundUpload
+  // ниже), при сохранении несут протухающую signed-ссылку, а не постоянную —
+  // при каждом открытии заметки резолвим её заново одним batch-запросом.
+  // querySelectorAll работает и на ещё не вставленном в document дереве —
+  // ждать монтирования не нужно. У гостя resolvePhotoSources не передан
+  // (undefined), блок просто не выполняется — content и так base64.
+  if (resolvePhotoSources) {
+    const pendingPhotos = [...contentEl.querySelectorAll("img.rte-photo[data-storage-path]")];
+    if (pendingPhotos.length) {
+      resolvePhotoSources(pendingPhotos.map((img) => img.dataset.storagePath))
+        .then((urlByPath) => {
+          pendingPhotos.forEach((img) => {
+            const url = urlByPath.get(img.dataset.storagePath);
+            if (url) img.src = url;
+          });
+        })
+        .catch(() => {});
+    }
+    // Самовосстановление при протухшем/не долетевшем signed URL: браузер сам
+    // сообщит об этом через "error" на конкретном <img> (событие НЕ всплывает,
+    // поэтому слушаем на фазе capture). Один повторный запрос на фото за сессию
+    // редактора — не зацикливаемся, если сеть реально недоступна.
+    const retriedPhotos = new WeakSet();
+    contentEl.addEventListener(
+      "error",
+      (event) => {
+        const img = event.target;
+        if (!(img instanceof HTMLImageElement) || !img.classList.contains("rte-photo") || !img.dataset.storagePath) return;
+        if (retriedPhotos.has(img)) return;
+        retriedPhotos.add(img);
+        resolvePhotoSources([img.dataset.storagePath])
+          .then((urlByPath) => {
+            const url = urlByPath.get(img.dataset.storagePath);
+            if (url) img.src = url;
+          })
+          .catch(() => {});
+      },
+      true
+    );
+  }
   // createBlockSync запоминает уже имеющиеся строки как "старые" — это должно
   // случиться один раз, сразу после normalizeLines и до первого реального
   // редактирования, иначе разграничение "новое/старое" будет отсчитываться не
@@ -2972,6 +3014,40 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     insertPhotoElement(result, savedRange);
   }
 
+  // Фоновая заливка фото в Storage для залогиненного пользователя — общий
+  // helper для первой вставки и повторного редактирования (ПКМ → «Изменить»):
+  // оба случая одинаково рискуют гонкой, пока аплоад летит — тот же img мог
+  // смениться ещё раз (второй параллельный вызов) или вовсе исчезнуть из
+  // документа (удалили). Перед применением результата сверяем img.src с тем,
+  // что грузили, и что img всё ещё в документе — иначе тихо чистим только что
+  // залитый файл и не трогаем DOM. previousStoragePath (если был) чистится
+  // отдельно — «Изменить» без этого плодило бы в Storage новый файл на каждое
+  // редактирование одного и того же фото, старые версии никогда бы не удалялись
+  // (diff-очистка производного индекса видит только ОДИН актуальный путь за раз).
+  // Сбой аплоада не откатывает вставку/правку: фото остаётся на локальном
+  // base64, data-storage-path просто не проставляется — ведёт себя как ещё не
+  // мигрированное, ретрай — открыть «Изменить» и подтвердить ещё раз.
+  function attachBackgroundUpload(img, dataUrl, previousStoragePath) {
+    if (!uploadPhoto) return; // гость — колбэк не передан вообще
+    fetch(dataUrl)
+      .then((res) => res.blob())
+      .then((blob) => uploadPhoto(blob))
+      .then((result) => {
+        if (!result) return;
+        if (!contentEl.contains(img) || img.src !== dataUrl) {
+          if (removePhotoFromStorage) removePhotoFromStorage(result.storagePath);
+          return;
+        }
+        img.dataset.storagePath = result.storagePath;
+        img.src = result.signedUrl;
+        onChange(serializeEditor(contentEl));
+        if (previousStoragePath && previousStoragePath !== result.storagePath && removePhotoFromStorage) {
+          removePhotoFromStorage(previousStoragePath);
+        }
+      })
+      .catch(() => {});
+  }
+
   // Вставляет готовое фото как <img> в место каретки. contenteditable=false —
   // фото ведёт себя как цельный островок, а не набор редактируемых символов;
   // data-name несёт название (в поиске и «сведениях»), размер — inline-стилем.
@@ -2992,6 +3068,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (img) {
       img.removeAttribute("id");
       ensureFloatPosition(img);
+      attachBackgroundUpload(img, dataUrl, null);
     }
     onChange(serializeEditor(contentEl));
     refreshPages();
@@ -3242,6 +3319,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       name: img.dataset.name || "",
     });
     if (!result) return; // отмена
+    // До перезаписи src/data-storage-path — иначе к моменту, когда аплоад
+    // разрешится, старый путь уже потерян и его нечем будет удалить.
+    const previousStoragePath = img.dataset.storagePath || null;
     img.src = result.dataUrl;
     img.style.width = `${result.width}px`;
     img.style.height = `${result.height}px`;
@@ -3253,6 +3333,10 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     syncHandles();
     recordHistory();
     onChange(serializeEditor(contentEl));
+    // Повторная заливка НЕЗАВИСИМО от того, был ли уже data-storage-path —
+    // иначе content залогиненного пользователя снова получил бы base64
+    // (result.dataUrl уже содержит и карандаш поверх фото, если рисовали).
+    attachBackgroundUpload(img, result.dataUrl, previousStoragePath);
   }
 
   // float → flow: фото уходит из абсолютного позиционирования, left/top больше

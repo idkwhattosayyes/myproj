@@ -1,6 +1,12 @@
 import { getCachedSession } from "../auth/authService.js";
 import { extractImageMetadata, extractDrawingMetadata } from "../utils/dom.js";
-import { uploadPhotoToStorage, createSignedUrlMap, syncImagesForNote, syncDrawingsForNote } from "../data/supabaseAdapter.js";
+import {
+  uploadPhotoToStorage,
+  createSignedUrlMap,
+  removePhotoFromStorage,
+  syncImagesForNote,
+  syncDrawingsForNote,
+} from "../data/supabaseAdapter.js";
 
 // Заливает фото в Storage для залогиненного пользователя — гость получает
 // null, вызывающий код (richTextEditor.js, через колбэк uploadPhoto) в этом
@@ -17,6 +23,15 @@ export async function uploadPhoto(noteId, blob) {
 export async function resolvePhotoSources(paths) {
   if (!getCachedSession() || !paths.length) return new Map();
   return createSignedUrlMap(paths);
+}
+
+// Точечное удаление файла (замена версии при "Изменить", или файл только что
+// залился, а фото уже успели удалить/заменить — см. attachBackgroundUpload в
+// richTextEditor.js). Best-effort — вызывающий код не ждёт и не проверяет
+// результат.
+export async function removePhoto(path) {
+  if (!getCachedSession()) return;
+  await removePhotoFromStorage(path);
 }
 
 // Производный индекс images/drawings в Supabase — держит его в актуальном
