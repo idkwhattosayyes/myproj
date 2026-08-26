@@ -1,8 +1,8 @@
-// Заметки, папки, теги блоков и избранное/закрепление для залогиненного
-// пользователя — через Supabase. Остальные методы контракта (дневник,
-// календарь, clearAll) сюда не входят, их для залогиненных тоже отдаёт
-// localStorageAdapter — маршрутизация в storageAdapter.js. Файл будет расти
-// следующим модулем (картинки/рисунки).
+// Заметки, папки, теги блоков, избранное/закрепление и фото/рисунки (Storage +
+// производный индекс images/drawings) для залогиненного пользователя — через
+// Supabase. Остальные методы контракта (дневник, календарь, clearAll) сюда не
+// входят, их для залогиненных тоже отдаёт localStorageAdapter — маршрутизация
+// в storageAdapter.js.
 import { supabaseClient } from "./supabaseClient.js";
 import { getCachedSession } from "../auth/authService.js";
 import { withSaveStatus } from "../utils/saveStatus.js";
@@ -426,6 +426,11 @@ export const supabaseAdapter = {
   },
 
   // См. комментарий у deleteFolder — тот же defensive cleanup для заметок.
+  // Плюс файлы фото в Storage: on delete cascade чистит DB-строки images/
+  // drawings автоматически, но Storage — отдельная подсистема, cascade FK её
+  // не касается. Папка note-images/{userId}/{noteId}/ убирается целиком по
+  // префиксу — заметка удаляется навсегда одним действием, отдельно ходить
+  // за путями каждого фото в images не нужно.
   async deleteItem(id) {
     await withSaveStatus(async () => {
       const { error } = await supabaseClient.from("notes").delete().eq("id", id);
@@ -434,6 +439,12 @@ export const supabaseAdapter = {
         supabaseClient.from("favorites").delete().eq("item_type", "note").eq("item_id", id),
         supabaseClient.from("pins").delete().eq("item_type", "note").eq("item_id", id),
       ]);
+      const userId = getCachedSession().user.id;
+      const { data: files } = await supabaseClient.storage.from("note-images").list(`${userId}/${id}`);
+      if (files?.length) {
+        const paths = files.map((f) => `${userId}/${id}/${f.name}`);
+        await supabaseClient.storage.from("note-images").remove(paths).catch(() => {});
+      }
     });
   },
 
@@ -527,4 +538,96 @@ export async function findTaggedBlocks(tagIds) {
     updatedAt: row.notes.updated_at,
     order: row.notes.sort_order,
   }));
+}
+
+const PHOTO_BUCKET = "note-images";
+// Signed URL живёт этот срок, затем протухает; самовосстановление — по
+// событию error на самом <img> (см. richTextEditor.js), не по таймеру: проще
+// и не нужно отслеживать "заметку закрыли — не забыть снять таймер".
+const SIGNED_URL_TTL_SECONDS = 3600;
+
+// Заливает уже сжатый/при необходимости отредактированный (карандашом поверх)
+// Blob фото — вызывающий код (richTextEditor.js через photoStorageService.js)
+// передаёт именно то, что видно на экране, не оригинал с телефона. Путь —
+// {userId}/{noteId}/{imageId}.{ext}: второй сегмент даёт тривиальный
+// bulk-delete по префиксу при permanent delete заметки (см. deleteItem выше),
+// первый — то единственное, что проверяет RLS-политика на storage.objects
+// (см. supabase/005_note_images_storage.sql). Сразу же создаёт signed URL —
+// одним заходом, без отдельного round-trip только за ссылкой для отображения.
+export async function uploadPhotoToStorage(noteId, blob) {
+  const userId = getCachedSession().user.id;
+  const imageId = crypto.randomUUID();
+  const ext = blob.type === "image/png" ? "png" : "jpg";
+  const path = `${userId}/${noteId}/${imageId}.${ext}`;
+  const { error } = await supabaseClient.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: blob.type });
+  if (error) throw error;
+  const { data, error: signError } = await supabaseClient.storage.from(PHOTO_BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+  if (signError) throw signError;
+  return { storagePath: path, signedUrl: data.signedUrl };
+}
+
+// Batch-версия — один запрос на все фото заметки при открытии, не по запросу
+// на картинку (createSignedUrls, plural API).
+export async function createSignedUrlMap(paths) {
+  if (!paths.length) return new Map();
+  const { data, error } = await supabaseClient.storage.from(PHOTO_BUCKET).createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
+  if (error) throw error;
+  return new Map(data.map((row) => [row.path, row.signedUrl]));
+}
+
+// Производный индекс images — снос-и-пересоздание строк заметки, тот же
+// приём, что syncBlocksForNote выше. В отличие от blocks/block_tags, здесь за
+// DB-строкой стоит РЕАЛЬНЫЙ файл в Storage — простое "тихое самоисправление"
+// оставило бы файл удалённого/перезалитого фото висеть в бакете навсегда.
+// Поэтому читаем старые storage_path ДО пересоздания, и то, чего нет в новом
+// наборе (фото удалили через ПКМ/выделение, или "Изменить" залило новую
+// версию поверх старой — см. richTextEditor.js) — чистим из Storage
+// best-effort ПОСЛЕ: неудачная уборка файла не должна валить сохранение
+// самого индекса позиций.
+export async function syncImagesForNote(noteId, images) {
+  const { data: existing, error: selError } = await supabaseClient.from("images").select("storage_path").eq("note_id", noteId);
+  if (selError) throw selError;
+  const keptPaths = new Set(images.map((i) => i.storagePath));
+  const removedPaths = existing.map((row) => row.storage_path).filter((path) => !keptPaths.has(path));
+
+  const { error: delError } = await supabaseClient.from("images").delete().eq("note_id", noteId);
+  if (delError) throw delError;
+  if (images.length) {
+    const rows = images.map((i) => ({
+      note_id: noteId,
+      storage_path: i.storagePath,
+      position_x_percent: i.xPercent,
+      position_y_percent: i.yPercent,
+      width_percent: i.widthPercent,
+      z_index: i.zIndex,
+      title: i.title,
+      anchor_line_id: i.anchorLineId,
+    }));
+    const { error: insError } = await supabaseClient.from("images").insert(rows);
+    if (insError) throw insError;
+  }
+  if (removedPaths.length) {
+    await supabaseClient.storage.from(PHOTO_BUCKET).remove(removedPaths).catch(() => {});
+  }
+}
+
+// Производный индекс drawings — обычный снос-и-пересоздание, без diff-очистки:
+// рисунок хранится как текст (path_data), в Storage файла нет и нечего
+// чистить. Таблица физически не хранит цвет/толщину штриха (в схеме таких
+// колонок нет) — не страшно, рендер всё равно берётся из content, это чисто
+// вспомогательный индекс.
+export async function syncDrawingsForNote(noteId, drawings) {
+  const { error: delError } = await supabaseClient.from("drawings").delete().eq("note_id", noteId);
+  if (delError) throw delError;
+  if (!drawings.length) return;
+  const rows = drawings.map((d) => ({
+    note_id: noteId,
+    path_data: d.pathData,
+    position_x_percent: d.xPercent,
+    position_y_percent: d.yPercent,
+    z_index: d.zIndex,
+    anchor_line_id: d.anchorLineId,
+  }));
+  const { error: insError } = await supabaseClient.from("drawings").insert(rows);
+  if (insError) throw insError;
 }
