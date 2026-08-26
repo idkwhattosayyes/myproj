@@ -4,6 +4,7 @@ import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
 import { getCachedSession, signOut } from "../auth/authService.js";
+import { openAuthModal } from "../auth/authModal.js";
 import { escapeHtml } from "../utils/dom.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
@@ -106,7 +107,7 @@ function renderPanel() {
     ${
       session
         ? `<button type="button" class="btn btn-danger btn-small settings-clear" data-action="logout">${t("auth.logout")}</button>`
-        : ""
+        : `<button type="button" class="btn btn-small settings-clear" data-action="login">${t("auth.login")}</button>`
     }
   `;
 
@@ -141,6 +142,12 @@ function renderPanel() {
     closePanel();
     await signOut();
     location.reload();
+  });
+
+  panelEl.querySelector('[data-action="login"]')?.addEventListener("click", async () => {
+    closePanel();
+    await openAuthModal();
+    if (getCachedSession()) location.reload();
   });
 }
 
