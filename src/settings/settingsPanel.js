@@ -80,7 +80,6 @@ function renderPanel() {
       session
         ? `<div class="settings-row settings-account-row">
             <span class="settings-label settings-account-email" title="${escapeHtml(session.user.email)}">${escapeHtml(session.user.email)}</span>
-            <button type="button" class="btn btn-small" data-action="logout">${t("auth.logout")}</button>
           </div>`
         : ""
     }
@@ -104,6 +103,11 @@ function renderPanel() {
       </div>
     </div>
     <button type="button" class="btn btn-danger btn-small settings-clear" data-action="clear-data">${t("settings.clearData")}</button>
+    ${
+      session
+        ? `<button type="button" class="btn btn-danger btn-small settings-clear" data-action="logout">${t("auth.logout")}</button>`
+        : ""
+    }
   `;
 
   panelEl.querySelectorAll("[data-lang]").forEach((btn) => {
