@@ -175,6 +175,54 @@ async function fetchFavoriteIdSet(itemType) {
   return new Set(data.map((row) => row.item_id));
 }
 
+// Закрепление — снос-и-пересоздание строк pins для одной сущности (тот же
+// приём, что replaceNoteFolderLinks выше). У заметки contexts = pinnedIn как
+// есть (0+ мест показа сразу). У папки закрепление глобальное (folder.pinned,
+// булев) — вызывающий код сводит его к contexts = pinned ? ["global"] : [].
+// "global" — литерал, который никогда не совпадёт ни с одним из мест показа
+// заметки ("all"/"favorites"/"unfiled"/uuid папки), поэтому одна функция
+// безопасно обслуживает оба item_type. Дедуп на входе — contexts дублей
+// давать не должен, но повторный элемент в одном insert упёрся бы в
+// unique-constraint (пакетный insert сам не дедуплицирует).
+async function replacePins(itemType, itemId, contexts) {
+  const { error: delError } = await supabaseClient.from("pins").delete().eq("item_type", itemType).eq("item_id", itemId);
+  if (delError) throw delError;
+  const uniqueContexts = [...new Set(contexts)];
+  if (!uniqueContexts.length) return;
+  const userId = getCachedSession().user.id;
+  const rows = uniqueContexts.map((sectionContext) => ({
+    user_id: userId,
+    item_type: itemType,
+    item_id: itemId,
+    section_context: sectionContext,
+  }));
+  const { error: insError } = await supabaseClient.from("pins").insert(rows);
+  if (insError) throw insError;
+}
+
+async function fetchPinnedIn(itemType, itemId) {
+  const { data, error } = await supabaseClient
+    .from("pins")
+    .select("section_context")
+    .eq("item_type", itemType)
+    .eq("item_id", itemId);
+  if (error) throw error;
+  return data.map((row) => row.section_context);
+}
+
+// Bulk-версия fetchPinnedIn — один запрос на весь список.
+async function fetchPinsByItemId(itemType) {
+  const { data, error } = await supabaseClient.from("pins").select("item_id, section_context").eq("item_type", itemType);
+  if (error) throw error;
+  const map = new Map();
+  for (const row of data) {
+    const list = map.get(row.item_id) || [];
+    list.push(row.section_context);
+    map.set(row.item_id, list);
+  }
+  return map;
+}
+
 export const supabaseAdapter = {
   // Folders ------------------------------------------------------------
   async getFolders() {
