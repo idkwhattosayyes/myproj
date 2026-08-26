@@ -17,6 +17,7 @@ import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
 import { getSession } from "./auth/authService.js";
 import { openAuthModal } from "./auth/authModal.js";
+import { mountSaveIndicator } from "./saveIndicator.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -128,6 +129,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       renderRoute();
     },
   });
+  mountSaveIndicator();
   // Если сессии нет — экран авторизации перекрывает страницу, пока пользователь
   // не войдёт или не выберет "продолжить как гость" (без сохранения выбора).
   const session = await getSession();

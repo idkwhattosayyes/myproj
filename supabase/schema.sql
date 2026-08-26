@@ -24,10 +24,18 @@ create table public.notes (
   updated_at timestamptz not null default now(),
   open_at_end boolean not null default false,
   page_mode text not null default 'flow' check (page_mode in ('flow', 'paged')),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  -- Порядок в списке (drag-and-drop) и момент последней правки текста/заголовка
+  -- (отдельно от updated_at — реордер меняет sort_order, но не должен считаться
+  -- "правкой" для сортировки "недавно изменённые"). Оба явно выставляются
+  -- адаптером (src/data/supabaseAdapter.js), автотриггера на updated_at
+  -- намеренно нет — иначе точечное обновление sort_order тоже трогало бы его.
+  sort_order bigint not null default 0,
+  activity_at timestamptz not null default now()
 );
 
 create index notes_user_id_idx on public.notes(user_id);
+create index notes_sort_order_idx on public.notes(user_id, sort_order);
 
 alter table public.notes enable row level security;
 
@@ -35,22 +43,6 @@ create policy "notes_owner" on public.notes
   for all to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
-
--- автообновление updated_at при любом изменении строки
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
-create trigger notes_set_updated_at
-  before update on public.notes
-  for each row
-  execute function public.set_updated_at();
 
 -- ------------------------------------------------------------
 -- folders
@@ -61,10 +53,12 @@ create table public.folders (
   name text not null,
   color text,
   icon text,
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  sort_order bigint not null default 0
 );
 
 create index folders_user_id_idx on public.folders(user_id);
+create index folders_sort_order_idx on public.folders(user_id, sort_order);
 
 alter table public.folders enable row level security;
 
@@ -282,3 +276,24 @@ create policy "drawings_owner" on public.drawings
   for all to authenticated
   using (exists (select 1 from public.notes n where n.id = note_id and n.user_id = auth.uid()))
   with check (exists (select 1 from public.notes n where n.id = note_id and n.user_id = auth.uid()));
+
+-- ------------------------------------------------------------
+-- Права на таблицы для роли authenticated. RLS-политики выше решают, КАКИЕ
+-- строки видно — но сама роль ещё должна иметь право прикоснуться к таблице,
+-- иначе Postgres отвечает "permission denied for table ..." до всякой RLS.
+-- anon НЕ грантуем — гость вообще не обращается к Supabase.
+-- ------------------------------------------------------------
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on
+  public.notes,
+  public.folders,
+  public.note_folder_links,
+  public.folder_folder_links,
+  public.tags,
+  public.blocks,
+  public.block_tags,
+  public.favorites,
+  public.pins,
+  public.images,
+  public.drawings
+to authenticated;

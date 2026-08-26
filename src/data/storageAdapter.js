@@ -1,4 +1,6 @@
 import { localStorageAdapter } from "./localStorageAdapter.js";
+import { supabaseAdapter } from "./supabaseAdapter.js";
+import { getCachedSession } from "../auth/authService.js";
 
 /**
  * Контракт слоя хранения данных. Любой адаптер (localStorage, позже Supabase)
@@ -37,10 +39,36 @@ import { localStorageAdapter } from "./localStorageAdapter.js";
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateBlockTag
  */
 
-// Единственное место, которое нужно поменять при переходе на Supabase.
-const ACTIVE_ADAPTER = localStorageAdapter;
+// Заметки/папки — единственные сущности, уже перенесённые на Supabase (модуль
+// 1/5), и только для залогиненных: проверка идёт на каждый вызов, а не один
+// раз при загрузке, поэтому гость никогда не задевает supabaseAdapter.js.
+// Остальной контракт (дневник, календарь, теги блоков, clearAll) пока всегда
+// localStorage — так и останется, пока не приедут следующие модули.
+const NOTES_AND_FOLDERS_METHODS = [
+  "getFolders",
+  "createFolder",
+  "updateFolder",
+  "setFoldersOrder",
+  "deleteFolder",
+  "getTrashedFolders",
+  "getItems",
+  "getItem",
+  "createItem",
+  "updateItem",
+  "setItemsOrder",
+  "deleteItem",
+  "getTrashedItems",
+];
+
+const hybridAdapter = { ...localStorageAdapter };
+NOTES_AND_FOLDERS_METHODS.forEach((method) => {
+  hybridAdapter[method] = (...args) => {
+    const adapter = getCachedSession() ? supabaseAdapter : localStorageAdapter;
+    return adapter[method](...args);
+  };
+});
 
 /** @returns {StorageAdapter} */
 export function getStorage() {
-  return ACTIVE_ADAPTER;
+  return hybridAdapter;
 }

@@ -78,8 +78,8 @@ function renderPanel() {
     <h3 class="settings-title">${t("settings.title")}</h3>
     ${
       session
-        ? `<div class="settings-row">
-            <span class="settings-label">${escapeHtml(session.user.email)}</span>
+        ? `<div class="settings-row settings-account-row">
+            <span class="settings-label settings-account-email" title="${escapeHtml(session.user.email)}">${escapeHtml(session.user.email)}</span>
             <button type="button" class="btn btn-small" data-action="logout">${t("auth.logout")}</button>
           </div>`
         : ""

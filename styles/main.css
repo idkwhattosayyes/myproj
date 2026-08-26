@@ -139,6 +139,29 @@ button {
   display: none;
 }
 
+/* Индикатор сохранения в облако — тот же ярус (z-index), что у settings-btn,
+   свободный угол снизу справа. Виден только залогиненным (см. saveIndicator.js). */
+.save-indicator {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  background: #24292f;
+  color: #ffffff;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+}
+
+.save-indicator--error {
+  background: #b91c1c;
+}
+
+.save-indicator[hidden] {
+  display: none;
+}
+
 .settings-title {
   font-size: 0.9rem;
   margin-bottom: 0.7rem;
@@ -152,6 +175,20 @@ button {
   margin-bottom: 0.7rem;
   font-size: 0.85rem;
   cursor: pointer;
+}
+
+/* Email залогиненного может быть длиннее панели (15rem) — обрезаем многоточием,
+   а не выталкиваем кнопку "Log out" за край. min-width:0 нужен именно потому,
+   что flex-элементы по умолчанию не сжимаются меньше своего контента. */
+.settings-account-row {
+  cursor: default;
+}
+
+.settings-account-email {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-lang {
