@@ -1,8 +1,8 @@
-// Заметки и папки для залогиненного пользователя — через Supabase. Остальные
-// методы контракта (дневник, календарь, теги блоков, clearAll) сюда не входят,
-// их для залогиненных тоже отдаёт localStorageAdapter — маршрутизация в
-// storageAdapter.js. Файл будет расти следующими модулями (теги, избранное/
-// закрепление, картинки/рисунки) — пока в нём только заметки и папки.
+// Заметки, папки и теги блоков для залогиненного пользователя — через
+// Supabase. Остальные методы контракта (дневник, календарь, clearAll) сюда не
+// входят, их для залогиненных тоже отдаёт localStorageAdapter — маршрутизация
+// в storageAdapter.js. Файл будет расти следующими модулями (избранное/
+// закрепление, картинки/рисунки).
 import { supabaseClient } from "./supabaseClient.js";
 import { getCachedSession } from "../auth/authService.js";
 import { withSaveStatus } from "../utils/saveStatus.js";
@@ -58,6 +58,12 @@ function mapItemRow(row, folderIds) {
     activityAt: row.activity_at,
     deletedAt: row.deleted_at,
   };
+}
+
+// nameKey (JS, нормализованное для проверки на дубли) ↔ name (Postgres,
+// unique(user_id, name)); name (JS, как ввёл пользователь) ↔ display_name.
+function mapTagRow(row) {
+  return { id: row.id, name: row.display_name, nameKey: row.name, color: row.color };
 }
 
 function mapFolderRow(row, parentFolderIds) {
@@ -285,6 +291,34 @@ export const supabaseAdapter = {
     await withSaveStatus(async () => {
       const { error } = await supabaseClient.from("notes").delete().eq("id", id);
       if (error) throw error;
+    });
+  },
+
+  // Block tags (справочник тегов блоков) ----------------------------------
+  async getBlockTags() {
+    const { data, error } = await supabaseClient.from("tags").select("*").order("display_name");
+    if (error) throw error;
+    return data.map(mapTagRow);
+  },
+
+  async createBlockTag(tag) {
+    return withSaveStatus(async () => {
+      const row = { id: tag.id, user_id: getCachedSession().user.id, name: tag.nameKey, display_name: tag.name, color: tag.color };
+      const { data, error } = await supabaseClient.from("tags").insert(row).select().single();
+      if (error) throw error;
+      return mapTagRow(data);
+    });
+  },
+
+  async updateBlockTag(id, patch) {
+    return withSaveStatus(async () => {
+      const row = {};
+      if (patch.name !== undefined) row.display_name = patch.name;
+      if (patch.nameKey !== undefined) row.name = patch.nameKey;
+      if (patch.color !== undefined) row.color = patch.color;
+      const { data, error } = await supabaseClient.from("tags").update(row).eq("id", id).select().maybeSingle();
+      if (error) throw error;
+      return data ? mapTagRow(data) : null;
     });
   },
 };

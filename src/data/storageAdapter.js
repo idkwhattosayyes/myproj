@@ -39,11 +39,12 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateBlockTag
  */
 
-// Заметки/папки — единственные сущности, уже перенесённые на Supabase (модуль
-// 1/5), и только для залогиненных: проверка идёт на каждый вызов, а не один
-// раз при загрузке, поэтому гость никогда не задевает supabaseAdapter.js.
-// Остальной контракт (дневник, календарь, теги блоков, clearAll) пока всегда
-// localStorage — так и останется, пока не приедут следующие модули.
+// Заметки/папки (модуль 1/5) и справочник тегов блоков (модуль 2/5) —
+// сущности, уже перенесённые на Supabase, и только для залогиненных: проверка
+// идёт на каждый вызов, а не один раз при загрузке, поэтому гость никогда не
+// задевает supabaseAdapter.js. Остальной контракт (дневник, календарь,
+// clearAll) пока всегда localStorage — так и останется, пока не приедут
+// следующие модули.
 const NOTES_AND_FOLDERS_METHODS = [
   "getFolders",
   "createFolder",
@@ -60,8 +61,10 @@ const NOTES_AND_FOLDERS_METHODS = [
   "getTrashedItems",
 ];
 
+const BLOCK_TAG_METHODS = ["getBlockTags", "createBlockTag", "updateBlockTag"];
+
 const hybridAdapter = { ...localStorageAdapter };
-NOTES_AND_FOLDERS_METHODS.forEach((method) => {
+[...NOTES_AND_FOLDERS_METHODS, ...BLOCK_TAG_METHODS].forEach((method) => {
   hybridAdapter[method] = (...args) => {
     const adapter = getCachedSession() ? supabaseAdapter : localStorageAdapter;
     return adapter[method](...args);
