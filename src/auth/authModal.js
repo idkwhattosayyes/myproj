@@ -68,13 +68,15 @@ export function openAuthModal() {
           <p class="auth-error" data-role="error" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="login">${t("auth.login")}</button>
           <div class="auth-split-row">
-            <button type="button" class="btn" data-action="google">${t("auth.loginFromServices")}</button>
+            <button type="button" class="btn auth-google-btn" data-action="google">
+              ${t("auth.loginFromServices")}
+              <span class="auth-google-overlay">${t("home.aiUnavailable")}</span>
+            </button>
             <button type="button" class="btn" data-action="go-register">${t("auth.register")}</button>
           </div>
         </div>
       `;
       overlay.querySelector('[data-action="back"]').addEventListener("click", () => goTo("start"));
-      overlay.querySelector('[data-action="google"]').addEventListener("click", runGoogle);
       overlay.querySelector('[data-action="go-register"]').addEventListener("click", () => goTo("register"));
 
       const emailInput = overlay.querySelector('[data-role="email"]');
@@ -109,14 +111,16 @@ export function openAuthModal() {
           <p class="auth-hint" data-role="hint" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="register">${t("auth.register")}</button>
           <div class="auth-split-row">
-            <button type="button" class="btn" data-action="google">${t("auth.loginFromServices")}</button>
+            <button type="button" class="btn auth-google-btn" data-action="google">
+              ${t("auth.loginFromServices")}
+              <span class="auth-google-overlay">${t("home.aiUnavailable")}</span>
+            </button>
             <button type="button" class="btn" data-action="back-to-login">${t("auth.backToLogin")}</button>
           </div>
         </div>
       `;
       overlay.querySelector('[data-action="back"]').addEventListener("click", () => goTo("login"));
       overlay.querySelector('[data-action="back-to-login"]').addEventListener("click", () => goTo("login"));
-      overlay.querySelector('[data-action="google"]').addEventListener("click", runGoogle);
 
       const emailInput = overlay.querySelector('[data-role="email"]');
       const passwordInput = overlay.querySelector('[data-role="password"]');
@@ -151,6 +155,9 @@ export function openAuthModal() {
       emailInput.focus();
     }
 
+    // Пока не навешана ни на одну кнопку — Google-провайдер ещё не включён
+    // в Supabase (см. .auth-google-btn/.auth-google-overlay в auth.css),
+    // код уже готов, останется вернуть addEventListener на обе кнопки.
     async function runGoogle() {
       const { error } = await signInWithGoogle();
       if (!error) return; // успех — браузер уже уходит на страницу Google

@@ -52,6 +52,37 @@
   color: #24292f;
 }
 
+/* "Login from services" — Google ещё не включён в Supabase, кнопка временно
+   неактивна. Тот же приём, что у кружка AI на главном (home.css
+   .home-circle-overlay): затемнение с подсказкой по наведению/фокусу, без
+   native disabled — иначе :hover на некоторых движках не сработает. */
+.auth-google-btn {
+  position: relative;
+  cursor: default;
+}
+
+.auth-google-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.4rem;
+  background: rgba(20, 24, 30, 0.6);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.auth-google-btn:hover .auth-google-overlay,
+.auth-google-btn:focus-visible .auth-google-overlay {
+  opacity: 1;
+}
+
 .auth-error {
   color: #b91c1c;
   font-size: 0.85rem;
