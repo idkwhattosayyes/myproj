@@ -14,6 +14,10 @@
 
 .modal-box.auth-box {
   position: relative;
+  max-width: 400px;
+  /* Место под стрелку "назад" отдельной полосой сверху, чтобы не наезжала
+     на первое поле ввода (оно 100% ширины). */
+  padding-top: 2.6rem;
 }
 
 .auth-btn {
