@@ -1,5 +1,6 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { createFolderModel, createItemModel } from "../data/models.js";
+import { parentIdsOf, isAncestorOf } from "../data/folderTree.js";
 
 const storage = getStorage();
 
@@ -7,9 +8,11 @@ export async function listFolders(section) {
   return storage.getFolders(section);
 }
 
-export async function createFolder(section, name) {
-  const folder = createFolderModel({ name, section });
-  return storage.createFolder(folder);
+// Модель уже построена вызывающим кодом (id сгенерирован раньше, до этого
+// вызова) — нужно для оптимистичного UI: panelSection.js сразу показывает
+// объект на экране и persist'ит ровно ЕГО ЖЕ, а не строит новый с другим id.
+export async function createFolderFromModel(model) {
+  return storage.createFolder(model);
 }
 
 export async function updateFolder(id, patch) {
@@ -27,18 +30,16 @@ export async function setItemsOrder(orderById) {
   return storage.setItemsOrder(orderById);
 }
 
-// Папки, созданные до появления вложенности, ещё не имеют parentFolderIds в
-// хранилище — везде, где это поле читаем, подстраховываемся пустым массивом
-// (тот же приём, что и у item.pinnedIn).
-function parentIdsOf(folder) {
-  return folder.parentFolderIds || [];
-}
-
 // Папка отправляется в Корзину, а не удаляется насовсем. Заметка может быть
 // сразу в нескольких папках — как и раньше, при удалении папки убираем её из
 // членства (id из folderIds), а не выкидываем заметку в «Без папки» целиком;
 // вложенные заметки в Корзину НЕ уходят.
-export async function moveFolderToTrash(section, id) {
+//
+// deletedAt — необязательный: оптимистичный UI (panelSection.js) считает его
+// ОДИН раз и передаёт сюда же, чтобы локальная и сохранённая версии не
+// разъехались на пару миллисекунд (иначе при пакетном удалении может съехать
+// сортировка корзины по времени).
+export async function moveFolderToTrash(section, id, deletedAt = new Date().toISOString()) {
   const items = await storage.getItems(section);
   const affected = items.filter((item) => item.folderIds.includes(id));
   await Promise.all(
@@ -54,7 +55,7 @@ export async function moveFolderToTrash(section, id) {
     )
   );
   return storage.updateFolder(id, {
-    deletedAt: new Date().toISOString(),
+    deletedAt,
     isFavorite: false,
     pinned: false,
     parentFolderIds: [], // и сама папка выходит из ВСЕХ своих родителей
@@ -72,23 +73,6 @@ export async function restoreFolder(id) {
 // на родителя ни у кого не остаётся, чистить нечего.
 export async function deleteFolderForever(id) {
   return storage.deleteFolder(id);
-}
-
-// Обходит ВСЕ пути вверх по parentFolderIds (родителей может быть несколько) —
-// true, если candidateAncestorId встречается среди предков startId.
-function isAncestorOf(folders, candidateAncestorId, startId) {
-  const visited = new Set();
-  const stack = [startId];
-  while (stack.length) {
-    const currentId = stack.pop();
-    if (currentId === candidateAncestorId) return true;
-    if (visited.has(currentId)) continue;
-    visited.add(currentId);
-    const node = folders.find((f) => f.id === currentId);
-    if (!node) continue;
-    for (const parentId of parentIdsOf(node)) stack.push(parentId);
-  }
-  return false;
 }
 
 // Вкладывает folderId в parentId. null, если это создало бы цикл, папка не
@@ -127,6 +111,12 @@ export async function createItem(section, { title, content, folderIds, isFavorit
   return storage.createItem(item);
 }
 
+// Модель уже построена вызывающим кодом — тот же смысл, что у
+// createFolderFromModel выше (см. комментарий там).
+export async function createItemFromModel(model) {
+  return storage.createItem(model);
+}
+
 // Правка текста или заголовка поднимает заметку наверх списка (см.
 // sortItemsByPin в panelSection.js) — остальные патчи (избранное, закрепление,
 // папка) на activityAt не влияют, иначе список прыгал бы от них тоже.
@@ -136,9 +126,10 @@ export async function updateItem(id, patch) {
 }
 
 // Заметка отправляется в Корзину: связи (папки, избранное, закрепление)
-// сбрасываются сразу — при восстановлении они не возвращаются.
-export async function moveItemToTrash(id) {
-  return storage.updateItem(id, { deletedAt: new Date().toISOString(), isFavorite: false, pinnedIn: [], folderIds: [] });
+// сбрасываются сразу — при восстановлении они не возвращаются. deletedAt —
+// см. комментарий у moveFolderToTrash.
+export async function moveItemToTrash(id, deletedAt = new Date().toISOString()) {
+  return storage.updateItem(id, { deletedAt, isFavorite: false, pinnedIn: [], folderIds: [] });
 }
 
 export async function restoreItem(id) {

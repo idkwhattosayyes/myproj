@@ -7,6 +7,131 @@ import { escapeHtml } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
+import { createFolderModel, createItemModel } from "../../data/models.js";
+import { parentIdsOf, isAncestorOf } from "../../data/folderTree.js";
+
+// ------------------------------------------------------------------
+// Оптимистичный UI: любое действие красит экран СРАЗУ, сохранение уходит в
+// фон не блокируя интерфейс; при сбое — откат + индикатор Saving/Saved/error
+// (saveStatus.js) сам покажет ошибку, здесь только откат видимого состояния.
+// ------------------------------------------------------------------
+
+// Точечная правка ОДНОЙ сущности по id в state.items/state.folders — без
+// замены всего массива, поэтому параллельное действие над ДРУГОЙ сущностью
+// не пострадает при откате. Для избранного/закрепления/переименования/
+// "убрать из папки".
+function optimisticField(state, listKey, id, patch, persist, renderAfter) {
+  const list = state[listKey];
+  const index = list.findIndex((e) => e.id === id);
+  if (index === -1) return;
+  const previous = list[index];
+  state[listKey] = list.map((e, i) => (i === index ? { ...e, ...patch } : e));
+  renderAfter();
+  persist().catch(() => {
+    state[listKey] = state[listKey].map((e) => (e.id === id ? previous : e));
+    renderAfter();
+  });
+}
+
+// Структурные действия, которые трогают НЕСКОЛЬКО сущностей/массивов разом
+// (корзина, вложение папки, реордер, создание) — снимаем ссылки на все три
+// массива, apply() обязан ЗАМЕНЯТЬ их новыми (не мутировать существующие), а
+// не просто дописывать в старые — иначе откат "верни старую ссылку" не сработает.
+function optimisticBulk(state, apply, persist, renderAfter) {
+  const previousItems = state.items;
+  const previousFolders = state.folders;
+  const previousTrash = state.trash;
+  apply();
+  renderAfter();
+  persist().catch(() => {
+    state.items = previousItems;
+    state.folders = previousFolders;
+    state.trash = previousTrash;
+    renderAfter();
+  });
+}
+
+// Ниже — чистые функции, синхронно повторяющие ровно то, что делает
+// соответствующая async-функция itemsService.js на сервере/localStorage, но
+// локально на state, для мгновенного apply() внутри optimisticBulk.
+
+// Зеркало itemsService.moveFolderToTrash. deletedAt считается ОДИН раз
+// вызывающим кодом и передаётся сюда же и в persist — иначе локальная и
+// сохранённая версии разъедутся на пару миллисекунд (и после listTrash()
+// может съехать сортировка корзины при пакетном удалении).
+function localTrashFolder(state, folderId, deletedAt) {
+  const folder = state.folders.find((f) => f.id === folderId);
+  if (!folder) return;
+  state.items = state.items.map((item) =>
+    item.folderIds.includes(folderId) ? { ...item, folderIds: item.folderIds.filter((f) => f !== folderId) } : item
+  );
+  state.folders = state.folders.map((f) =>
+    parentIdsOf(f).includes(folderId) ? { ...f, parentFolderIds: parentIdsOf(f).filter((p) => p !== folderId) } : f
+  );
+  const trashedFolder = { ...folder, deletedAt, isFavorite: false, pinned: false, parentFolderIds: [] };
+  state.folders = state.folders.filter((f) => f.id !== folderId);
+  state.trash = { ...state.trash, folders: [trashedFolder, ...state.trash.folders] };
+}
+
+// Зеркало itemsService.moveItemToTrash.
+function localTrashItem(state, itemId, deletedAt) {
+  const item = state.items.find((i) => i.id === itemId);
+  if (!item) return;
+  const trashedItem = { ...item, deletedAt, isFavorite: false, pinnedIn: [], folderIds: [] };
+  state.items = state.items.filter((i) => i.id !== itemId);
+  state.trash = { ...state.trash, items: [trashedItem, ...state.trash.items] };
+}
+
+function localRestoreFolder(state, folderId) {
+  const folder = state.trash.folders.find((f) => f.id === folderId);
+  if (!folder) return;
+  state.trash = { ...state.trash, folders: state.trash.folders.filter((f) => f.id !== folderId) };
+  state.folders = [...state.folders, { ...folder, deletedAt: null }];
+}
+
+function localRestoreItem(state, itemId) {
+  const item = state.trash.items.find((i) => i.id === itemId);
+  if (!item) return;
+  state.trash = { ...state.trash, items: state.trash.items.filter((i) => i.id !== itemId) };
+  state.items = [...state.items, { ...item, deletedAt: null }];
+}
+
+// Реальные версии тривиальны (каскад по parentFolderIds уже снят в момент
+// trashing) — просто убрать из корзины.
+function localDeleteFolderForever(state, folderId) {
+  state.trash = { ...state.trash, folders: state.trash.folders.filter((f) => f.id !== folderId) };
+}
+
+function localDeleteItemForever(state, itemId) {
+  state.trash = { ...state.trash, items: state.trash.items.filter((i) => i.id !== itemId) };
+}
+
+// itemsService.moveFolderInto на невалидном переносе тихо резолвится
+// null/самой папкой (не бросает исключение) — значит .catch()-откат для
+// такого не сработает никогда. Поэтому те же guard-проверки дублируются
+// здесь и вызываются ДО optimisticBulk: если canMoveFolderInto вернула
+// false, apply()/persist() не запускаются вовсе, невалидное состояние не
+// показывается на экране даже на долю секунды.
+function canMoveFolderInto(state, folderId, parentId) {
+  if (folderId === parentId) return false;
+  const folder = state.folders.find((f) => f.id === folderId);
+  if (!folder) return false;
+  if (parentIdsOf(folder).includes(parentId)) return false; // уже вложена — no-op
+  if (isAncestorOf(state.folders, folderId, parentId)) return false; // создало бы цикл
+  return true;
+}
+
+function applyMoveFolderInto(state, folderId, parentId) {
+  state.folders = state.folders.map((f) =>
+    f.id === folderId ? { ...f, parentFolderIds: [...parentIdsOf(f), parentId] } : f
+  );
+}
+
+function localRemoveFolderFromParent(state, folderId, parentId) {
+  state.folders = state.folders.map((f) =>
+    f.id === folderId ? { ...f, parentFolderIds: parentIdsOf(f).filter((p) => p !== parentId) } : f
+  );
+}
 
 // Ссылка на смонтированный сейчас раздел — чтобы внешние источники (быстрая
 // заметка) могли попросить обновить список без перемонтирования. { container,
@@ -338,23 +463,26 @@ function wireHeaderActions(container, config, state) {
     });
   });
 
-  container.querySelector('[data-action="new-item"]').addEventListener("click", async () => {
+  container.querySelector('[data-action="new-item"]').addEventListener("click", () => {
     const folderIds = isRealFolderId(state.selectedFolderId) ? [state.selectedFolderId] : [];
     // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
     const inFavorites = state.selectedFolderId === "favorites";
-    const item = await itemsService.createItem(config.section, {
-      title: t("panel.untitled"),
-      content: "",
-      folderIds,
-      isFavorite: inFavorites,
-    });
-    state.items = await itemsService.listItems(config.section);
-    state.selectedItemId = item.id;
-    state.selectedTrash = null;
-    // Разово попросить деталь поставить курсор в поле названия — чтобы печатать
-    // сразу, без клика мышкой.
-    state.focusTitleOnCreate = true;
-    render(container, config, state);
+    // id уже готов на этом месте (createItemModel генерирует его сам) — экран
+    // красим ЭТИМ ЖЕ объектом, persist ниже сохраняет его же, не строит заново.
+    const item = createItemModel({ title: t("panel.untitled"), content: "", folderIds, section: config.section, isFavorite: inFavorites });
+    optimisticBulk(
+      state,
+      () => {
+        state.items = [...state.items, item];
+        state.selectedItemId = item.id;
+        state.selectedTrash = null;
+        // Разово попросить деталь поставить курсор в поле названия — чтобы
+        // печатать сразу, без клика мышкой.
+        state.focusTitleOnCreate = true;
+      },
+      () => itemsService.createItemFromModel(item),
+      () => render(container, config, state)
+    );
   });
 }
 
@@ -366,15 +494,12 @@ function countTrash(state) {
   return state.trash.folders.length + state.trash.items.length;
 }
 
-// Перечитывает папки/заметки/корзину и делает полный render. Общая точка после
-// любой операции с Корзиной (удаление в неё, восстановление, удаление навсегда,
-// очистка) — счётчик и видимость раздела "Корзина" должны обновиться сразу.
-async function refreshTrashState(container, config, state) {
-  state.trash = await itemsService.listTrash(config.section);
-  state.folders = await itemsService.listFolders(config.section);
-  state.items = await itemsService.listItems(config.section);
-  // Корзина опустела, пока была открыта, — раздел исчезнет из списка слева,
-  // самим собой оставаться в нём было бы некуда.
+// Общий renderAfter для optimisticBulk-действий с Корзиной (удаление в неё,
+// восстановление, удаление навсегда, массовая очистка) — полный render
+// (детали корзины не жалко пересоздавать, там нет открытого редактора с
+// курсором). Корзина опустела, пока была открыта, — раздел исчезнет из
+// списка слева, самим собой оставаться в нём было бы некуда.
+function renderAfterTrashChange(container, config, state) {
   if (state.selectedFolderId === "trash" && countTrash(state) === 0) {
     state.selectedFolderId = "all";
   }
@@ -789,19 +914,42 @@ function renderFolders(container, config, state) {
             }
             return null;
           },
-          onDrop: async (target) => {
+          onDrop: (target) => {
             if (target.folderId === "favorites") {
-              await itemsService.updateFolder(folderId, { isFavorite: true });
+              optimisticField(
+                state, "folders", folderId, { isFavorite: true },
+                () => itemsService.updateFolder(folderId, { isFavorite: true }),
+                () => renderFoldersAndList(container, config, state)
+              );
             } else if (target.folderId === "unfiled") {
-              await itemsService.updateFolder(folderId, { parentFolderIds: [] });
+              optimisticField(
+                state, "folders", folderId, { parentFolderIds: [] },
+                () => itemsService.updateFolder(folderId, { parentFolderIds: [] }),
+                () => renderFolders(container, config, state)
+              );
             } else if (target.into) {
-              await itemsService.moveFolderInto(config.section, folderId, target.folderId);
+              // itemsService.moveFolderInto тихо резолвится null на невалидном
+              // переносе (не бросает) — без локальной проверки .catch()-откат
+              // не сработал бы вовсе, см. canMoveFolderInto.
+              if (canMoveFolderInto(state, folderId, target.folderId)) {
+                optimisticBulk(
+                  state,
+                  () => applyMoveFolderInto(state, folderId, target.folderId),
+                  () => itemsService.moveFolderInto(config.section, folderId, target.folderId),
+                  () => renderFolders(container, config, state)
+                );
+              }
             } else {
-              await reorderFolder(folderId, target.folderId, state, target.after);
+              const result = reorderedFolders(state.folders, folderId, target.folderId, target.after);
+              if (result) {
+                optimisticBulk(
+                  state,
+                  () => { state.folders = result.entries; },
+                  () => itemsService.setFoldersOrder(result.orderById),
+                  () => renderFolders(container, config, state)
+                );
+              }
             }
-            state.folders = await itemsService.listFolders(config.section);
-            state.items = await itemsService.listItems(config.section);
-            render(container, config, state);
           },
         });
       });
@@ -821,27 +969,33 @@ function renderFolders(container, config, state) {
           {
             label: t("panel.rename"),
             onClick: () => {
-              startInlineRename(el, folder.name, async (name) => {
-                await itemsService.updateFolder(folder.id, { name });
-                state.folders = await itemsService.listFolders(config.section);
-                render(container, config, state);
+              startInlineRename(el, folder.name, (name) => {
+                optimisticField(
+                  state, "folders", folder.id, { name },
+                  () => itemsService.updateFolder(folder.id, { name }),
+                  () => renderFolders(container, config, state)
+                );
               });
             },
           },
           {
             label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
-            onClick: async () => {
-              await itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite });
-              state.folders = await itemsService.listFolders(config.section);
-              render(container, config, state);
+            onClick: () => {
+              optimisticField(
+                state, "folders", folder.id, { isFavorite: !folder.isFavorite },
+                () => itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite }),
+                () => renderFoldersAndList(container, config, state)
+              );
             },
           },
           {
             label: folder.pinned ? t("panel.unpin") : t("panel.pin"),
-            onClick: async () => {
-              await itemsService.updateFolder(folder.id, { pinned: !folder.pinned });
-              state.folders = await itemsService.listFolders(config.section);
-              render(container, config, state);
+            onClick: () => {
+              optimisticField(
+                state, "folders", folder.id, { pinned: !folder.pinned },
+                () => itemsService.updateFolder(folder.id, { pinned: !folder.pinned }),
+                () => renderFolders(container, config, state)
+              );
             },
           },
           // Показана как дочерняя строка дерева под конкретным родителем — можно
@@ -851,10 +1005,13 @@ function renderFolders(container, config, state) {
             ? [
                 {
                   label: t("panel.removeFromFolder"),
-                  onClick: async () => {
-                    await itemsService.removeFolderFromParent(config.section, folder.id, parentContext);
-                    state.folders = await itemsService.listFolders(config.section);
-                    render(container, config, state);
+                  onClick: () => {
+                    optimisticBulk(
+                      state,
+                      () => localRemoveFolderFromParent(state, folder.id, parentContext),
+                      () => itemsService.removeFolderFromParent(config.section, folder.id, parentContext),
+                      () => renderFolders(container, config, state)
+                    );
                   },
                 },
               ]
@@ -875,9 +1032,18 @@ function renderFolders(container, config, state) {
         showContextMenu(event.clientX, event.clientY, [
           {
             label: t("panel.restoreAll"),
-            onClick: async () => {
-              await itemsService.restoreAllTrash(config.section);
-              await refreshTrashState(container, config, state);
+            onClick: () => {
+              const folderIds = state.trash.folders.map((f) => f.id);
+              const itemIds = state.trash.items.map((i) => i.id);
+              optimisticBulk(
+                state,
+                () => {
+                  folderIds.forEach((id) => localRestoreFolder(state, id));
+                  itemIds.forEach((id) => localRestoreItem(state, id));
+                },
+                () => itemsService.restoreAllTrash(config.section),
+                () => renderAfterTrashChange(container, config, state)
+              );
             },
           },
           {
@@ -885,8 +1051,17 @@ function renderFolders(container, config, state) {
             onClick: async () => {
               const ok = await openConfirm({ message: t("panel.emptyTrashConfirm") });
               if (!ok) return;
-              await itemsService.emptyTrash(config.section);
-              await refreshTrashState(container, config, state);
+              const folderIds = state.trash.folders.map((f) => f.id);
+              const itemIds = state.trash.items.map((i) => i.id);
+              optimisticBulk(
+                state,
+                () => {
+                  folderIds.forEach((id) => localDeleteFolderForever(state, id));
+                  itemIds.forEach((id) => localDeleteItemForever(state, id));
+                },
+                () => itemsService.emptyTrash(config.section),
+                () => renderAfterTrashChange(container, config, state)
+              );
             },
           },
         ]);
@@ -910,9 +1085,13 @@ function renderFolders(container, config, state) {
         onClick: async () => {
           const name = await openPrompt({ message: t("panel.folderNamePrompt") });
           if (!name || !name.trim()) return;
-          await itemsService.createFolder(config.section, name.trim());
-          state.folders = await itemsService.listFolders(config.section);
-          render(container, config, state);
+          const folder = createFolderModel({ name: name.trim(), section: config.section });
+          optimisticBulk(
+            state,
+            () => { state.folders = [...state.folders, folder]; },
+            () => itemsService.createFolderFromModel(folder),
+            () => renderFolders(container, config, state)
+          );
         },
       },
     ]);
@@ -936,26 +1115,18 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
     const ok = await confirmDelete("panel.deleteFolderConfirm", folder?.name);
     if (!ok) return;
   }
-  await itemsService.moveFolderToTrash(config.section, folderId);
-  state.folders = await itemsService.listFolders(config.section);
-  state.items = await itemsService.listItems(config.section);
-  state.trash = await itemsService.listTrash(config.section);
-  if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
-  render(container, config, state);
+  const deletedAt = new Date().toISOString();
+  optimisticBulk(
+    state,
+    () => {
+      localTrashFolder(state, folderId, deletedAt);
+      if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
+    },
+    () => itemsService.moveFolderToTrash(config.section, folderId, deletedAt),
+    () => renderAfterTrashChange(container, config, state)
+  );
 }
 
-// Переставляет папку draggedId рядом с targetId — перед ней или после неё, —
-// затем переназначает order = index всем папкам и сохраняет.
-async function reorderFolder(draggedId, targetId, state, after) {
-  const arr = state.folders;
-  const from = arr.findIndex((f) => f.id === draggedId);
-  if (from < 0) return;
-  const [moved] = arr.splice(from, 1);
-  // Индекс цели ищем уже после удаления перетаскиваемой папки — сдвиг учтён.
-  const to = arr.findIndex((f) => f.id === targetId);
-  arr.splice(after ? to + 1 : to, 0, moved);
-  await itemsService.setFoldersOrder(assignOrderByIndex(arr));
-}
 
 // Все удалённые папки и заметки одним списком — недавно удалённое сверху,
 // вперемешку по типу, как в обычной корзине файловой системы.
@@ -1006,11 +1177,17 @@ function renderTrashList(bodyEl, titleEl, container, config, state) {
       showContextMenu(event.clientX, event.clientY, [
         {
           label: t("panel.restore"),
-          onClick: async () => {
-            if (kind === "folder") await itemsService.restoreFolder(id);
-            else await itemsService.restoreItem(id);
-            if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
-            await refreshTrashState(container, config, state);
+          onClick: () => {
+            optimisticBulk(
+              state,
+              () => {
+                if (kind === "folder") localRestoreFolder(state, id);
+                else localRestoreItem(state, id);
+                if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+              },
+              () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
+              () => renderAfterTrashChange(container, config, state)
+            );
           },
         },
         {
@@ -1018,15 +1195,30 @@ function renderTrashList(bodyEl, titleEl, container, config, state) {
           onClick: async () => {
             const ok = await confirmDelete("panel.deleteForeverConfirm", name);
             if (!ok) return;
-            if (kind === "folder") await itemsService.deleteFolderForever(id);
-            else await itemsService.deleteItemForever(id);
-            if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
-            await refreshTrashState(container, config, state);
+            optimisticBulk(
+              state,
+              () => {
+                if (kind === "folder") localDeleteFolderForever(state, id);
+                else localDeleteItemForever(state, id);
+                if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+              },
+              () => (kind === "folder" ? itemsService.deleteFolderForever(id) : itemsService.deleteItemForever(id)),
+              () => renderAfterTrashChange(container, config, state)
+            );
           },
         },
       ]);
     });
   });
+}
+
+// Правка заметки, которая может задеть счётчики папок слева (избранное — общий
+// счётчик "Избранное (N)"; folderIds — счётчик конкретной папки), но не
+// трогает открытый редактор — оба уже "коллекции этого дешёвого узкого
+// рендера" (в отличие от полного render(), который его бы пересоздал).
+function renderFoldersAndList(container, config, state) {
+  renderFolders(container, config, state);
+  renderList(container, config, state);
 }
 
 function renderList(container, config, state) {
@@ -1121,35 +1313,55 @@ function renderList(container, config, state) {
           }
           return null;
         },
-        onDrop: async (target) => {
+        onDrop: (target) => {
           // Перестановка внутри списка считается целиком в памяти, поэтому
           // рисуем новый порядок сразу, а запись отправляем за кадр:
           // setItemsOrder переписывает всю коллекцию вместе с фото в base64, и
           // на паре мегабайт это десятки миллисекунд — ровно то залипание,
           // которое было видно в момент отпускания кнопки. У папок такой
           // развилки нет: их коллекция весит килобайты и пишется мгновенно.
+          // Откат здесь пишется вручную (не через optimisticBulk) именно из-за
+          // этой отложенной записи — снимаем старую ссылку до замены.
           if (target.kind === "item") {
-            const orderById = reorderItemInState(itemId, target.id, state, target.after);
+            const result = reorderedItems(state.items, itemId, target.id, target.after);
+            if (!result) return;
+            const previousItems = state.items;
+            state.items = result.entries;
             // Только список: полный render() пересоздал бы ещё и редактор со
             // всей открытой заметкой (и сбросил бы в нём каретку с прокруткой),
             // хотя от перестановки строк он не меняется вовсе.
             renderList(container, config, state);
-            afterPaint(() => itemsService.setItemsOrder(orderById));
+            afterPaint(() => {
+              itemsService.setItemsOrder(result.orderById).catch(() => {
+                state.items = previousItems;
+                renderList(container, config, state);
+              });
+            });
             return;
           }
           if (target.id === "favorites") {
-            await itemsService.updateItem(itemId, { isFavorite: true });
+            optimisticField(
+              state, "items", itemId, { isFavorite: true },
+              () => itemsService.updateItem(itemId, { isFavorite: true }),
+              () => renderFoldersAndList(container, config, state)
+            );
           } else if (target.id === "unfiled") {
-            await itemsService.updateItem(itemId, { folderIds: [] });
+            optimisticField(
+              state, "items", itemId, { folderIds: [] },
+              () => itemsService.updateItem(itemId, { folderIds: [] }),
+              () => renderFoldersAndList(container, config, state)
+            );
           } else {
             const item = state.items.find((i) => i.id === itemId);
             if (item && !item.folderIds.includes(target.id)) {
-              await itemsService.updateItem(itemId, { folderIds: [...item.folderIds, target.id] });
+              const folderIds = [...item.folderIds, target.id];
+              optimisticField(
+                state, "items", itemId, { folderIds },
+                () => itemsService.updateItem(itemId, { folderIds }),
+                () => renderFoldersAndList(container, config, state)
+              );
             }
           }
-          state.folders = await itemsService.listFolders(config.section);
-          state.items = await itemsService.listItems(config.section);
-          render(container, config, state);
         },
       });
     });
@@ -1161,33 +1373,39 @@ function renderList(container, config, state) {
         {
           label: t("panel.rename"),
           onClick: () => {
-            startInlineRename(el, item.title, async (title) => {
-              await itemsService.updateItem(item.id, { title });
-              state.items = await itemsService.listItems(config.section);
-              render(container, config, state);
+            startInlineRename(el, item.title, (title) => {
+              optimisticField(
+                state, "items", item.id, { title },
+                () => itemsService.updateItem(item.id, { title }),
+                () => renderList(container, config, state)
+              );
             });
           },
         },
         {
           label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
-          onClick: async () => {
-            await itemsService.updateItem(item.id, { isFavorite: !item.isFavorite });
-            state.items = await itemsService.listItems(config.section);
-            render(container, config, state);
+          onClick: () => {
+            optimisticField(
+              state, "items", item.id, { isFavorite: !item.isFavorite },
+              () => itemsService.updateItem(item.id, { isFavorite: !item.isFavorite }),
+              () => renderFoldersAndList(container, config, state)
+            );
           },
         },
         {
           // Закрепление тоглим для ТЕКУЩЕГО места показа (selectedFolderId),
           // независимо от других мест, где заметка тоже видна.
           label: isPinnedIn(item, state.selectedFolderId) ? t("panel.unpin") : t("panel.pin"),
-          onClick: async () => {
+          onClick: () => {
             const key = state.selectedFolderId;
             const pinnedIn = isPinnedIn(item, key)
               ? item.pinnedIn.filter((k) => k !== key)
               : [...(item.pinnedIn || []), key];
-            await itemsService.updateItem(item.id, { pinnedIn });
-            state.items = await itemsService.listItems(config.section);
-            render(container, config, state);
+            optimisticField(
+              state, "items", item.id, { pinnedIn },
+              () => itemsService.updateItem(item.id, { pinnedIn }),
+              () => renderList(container, config, state)
+            );
           },
         },
         // «Убрать из этой папки» — только когда открыт вид конкретной папки и
@@ -1197,11 +1415,14 @@ function renderList(container, config, state) {
           ? [
               {
                 label: t("panel.removeFromFolder"),
-                onClick: async () => {
+                onClick: () => {
                   const key = state.selectedFolderId;
-                  await itemsService.updateItem(item.id, { folderIds: item.folderIds.filter((f) => f !== key) });
-                  state.items = await itemsService.listItems(config.section);
-                  render(container, config, state);
+                  const folderIds = item.folderIds.filter((f) => f !== key);
+                  optimisticField(
+                    state, "items", item.id, { folderIds },
+                    () => itemsService.updateItem(item.id, { folderIds }),
+                    () => renderFoldersAndList(container, config, state)
+                  );
                 },
               },
             ]
@@ -1238,20 +1459,26 @@ async function deleteItemFlow(itemId, container, config, state, confirm) {
     const ok = await confirmDelete("panel.deleteItemConfirm", item?.title);
     if (!ok) return;
   }
-  await itemsService.moveItemToTrash(itemId);
-  state.items = await itemsService.listItems(config.section);
-  state.trash = await itemsService.listTrash(config.section);
-  if (state.selectedItemId === itemId) state.selectedItemId = null;
-  render(container, config, state);
+  const deletedAt = new Date().toISOString();
+  optimisticBulk(
+    state,
+    () => {
+      localTrashItem(state, itemId, deletedAt);
+      if (state.selectedItemId === itemId) state.selectedItemId = null;
+    },
+    () => itemsService.moveItemToTrash(itemId, deletedAt),
+    () => renderAfterTrashChange(container, config, state)
+  );
 }
 
-// Переставляет заметку draggedId перед targetId или после неё и переназначает
-// order всем — но ТОЛЬКО в памяти. Сохранение отдельно, потому что оно дорогое:
-// см. вызов в onDrop.
-function reorderItemInState(draggedId, targetId, state, after) {
-  const arr = state.items;
+// Переставляет заметку draggedId перед targetId или после неё — на КОПИИ
+// массива (не state.items напрямую), чтобы старая ссылка, снятая для отката,
+// осталась нетронутой. Возвращает { entries, orderById } или null, если
+// draggedId не нашёлся.
+function reorderedItems(items, draggedId, targetId, after) {
+  const arr = [...items];
   const from = arr.findIndex((i) => i.id === draggedId);
-  if (from < 0) return {};
+  if (from < 0) return null;
   const [moved] = arr.splice(from, 1);
   // Индекс цели ищем уже после удаления перетаскиваемой заметки — сдвиг учтён.
   const to = arr.findIndex((i) => i.id === targetId);
@@ -1259,19 +1486,31 @@ function reorderItemInState(draggedId, targetId, state, after) {
   return assignOrderByIndex(arr);
 }
 
+// То же для папок — см. reorderedItems.
+function reorderedFolders(folders, draggedId, targetId, after) {
+  const arr = [...folders];
+  const from = arr.findIndex((f) => f.id === draggedId);
+  if (from < 0) return null;
+  const [moved] = arr.splice(from, 1);
+  const to = arr.findIndex((f) => f.id === targetId);
+  arr.splice(after ? to + 1 : to, 0, moved);
+  return assignOrderByIndex(arr);
+}
+
 // Проставляет order = index (массив уже в нужном порядке) и возвращает
-// изменившиеся как { id: order } — одним объектом, потому что адаптер сохраняет
-// всю перестановку одной записью. order правим и в самих объектах: список
-// сортируется по нему при каждой отрисовке, а перечитывать коллекцию из
-// хранилища ради этих же чисел — лишние миллисекунды на мегабайтах.
+// { entries, orderById } — новые объекты только для реально сдвинувшихся
+// записей (остальные — те же ссылки), orderById одним объектом, потому что
+// адаптер сохраняет всю перестановку одной записью. Важно НЕ мутировать
+// существующие объекты на месте (как раньше) — иначе снятая для отката старая
+// ссылка на массив держала бы уже изменённые объекты, и откат ничего не вернул бы.
 function assignOrderByIndex(arr) {
   const orderById = {};
-  arr.forEach((entry, index) => {
-    if (entry.order === index) return;
-    entry.order = index;
+  const entries = arr.map((entry, index) => {
+    if (entry.order === index) return entry;
     orderById[entry.id] = index;
+    return { ...entry, order: index };
   });
-  return orderById;
+  return { entries, orderById };
 }
 
 // Выполнить работу после того, как браузер покажет уже перерисованный экран:
@@ -1319,19 +1558,31 @@ function renderTrashDetail(detailEl, container, config, state) {
   }
 
   function wireActions(kind, id, name) {
-    detailEl.querySelector('[data-action="trash-restore"]').addEventListener("click", async () => {
-      if (kind === "folder") await itemsService.restoreFolder(id);
-      else await itemsService.restoreItem(id);
-      state.selectedTrash = null;
-      await refreshTrashState(container, config, state);
+    detailEl.querySelector('[data-action="trash-restore"]').addEventListener("click", () => {
+      optimisticBulk(
+        state,
+        () => {
+          if (kind === "folder") localRestoreFolder(state, id);
+          else localRestoreItem(state, id);
+          state.selectedTrash = null;
+        },
+        () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
+        () => renderAfterTrashChange(container, config, state)
+      );
     });
     detailEl.querySelector('[data-action="trash-delete-forever"]').addEventListener("click", async () => {
       const ok = await confirmDelete("panel.deleteForeverConfirm", name);
       if (!ok) return;
-      if (kind === "folder") await itemsService.deleteFolderForever(id);
-      else await itemsService.deleteItemForever(id);
-      state.selectedTrash = null;
-      await refreshTrashState(container, config, state);
+      optimisticBulk(
+        state,
+        () => {
+          if (kind === "folder") localDeleteFolderForever(state, id);
+          else localDeleteItemForever(state, id);
+          state.selectedTrash = null;
+        },
+        () => (kind === "folder" ? itemsService.deleteFolderForever(id) : itemsService.deleteItemForever(id)),
+        () => renderAfterTrashChange(container, config, state)
+      );
     });
   }
 
@@ -1426,7 +1677,12 @@ function renderDetail(container, config, state) {
     saveTimer = setTimeout(() => {
       const toSave = pendingPatch;
       pendingPatch = {};
-      itemsService.updateItem(item.id, toSave);
+      // Сознательно НЕ откатываем текст в открытом редакторе при сбое — это
+      // живой DOM, который печатает человек, а не производная от item.content
+      // при каждом рендере; вырывать у него только что напечатанное не станет
+      // делать ни один текстовый редактор. .catch здесь только гасит
+      // необработанный reject — сам факт ошибки увидит индикатор сохранения.
+      itemsService.updateItem(item.id, toSave).catch(() => {});
     }, 400);
   }
 
@@ -1530,10 +1786,15 @@ function renderDetail(container, config, state) {
     const ok = await confirmDelete("panel.deleteItemConfirm", titleInput.value);
     if (!ok) return;
     clearTimeout(saveTimer);
-    await itemsService.moveItemToTrash(item.id);
-    state.items = await itemsService.listItems(config.section);
-    state.trash = await itemsService.listTrash(config.section);
-    state.selectedItemId = null;
-    render(container, config, state);
+    const deletedAt = new Date().toISOString();
+    optimisticBulk(
+      state,
+      () => {
+        localTrashItem(state, item.id, deletedAt);
+        state.selectedItemId = null;
+      },
+      () => itemsService.moveItemToTrash(item.id, deletedAt),
+      () => renderAfterTrashChange(container, config, state)
+    );
   });
 }

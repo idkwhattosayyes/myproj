@@ -5,22 +5,7 @@
 // закрепление, картинки/рисунки) — пока в нём только заметки и папки.
 import { supabaseClient } from "./supabaseClient.js";
 import { getCachedSession } from "../auth/authService.js";
-import { notifySaving, notifySaved, notifySaveError } from "../utils/saveStatus.js";
-
-// Оборачивает любую ЗАПИСЫВАЮЩУЮ операцию индикатором сохранения. Ошибка не
-// глотается — пробрасывается дальше, у вызывающего кода (itemsService.js)
-// и раньше не было catch на storage.*, поведение то же, просто видимое.
-async function withSaveStatus(work) {
-  notifySaving();
-  try {
-    const result = await work();
-    notifySaved();
-    return result;
-  } catch (error) {
-    notifySaveError();
-    throw error;
-  }
-}
+import { withSaveStatus } from "../utils/saveStatus.js";
 
 // isFavorite/pinned/pinnedIn/section — таких колонок в Supabase нет (см.
 // supabase/schema.sql): избранное/закрепление ждут своего модуля, а section

@@ -1,3 +1,5 @@
+import { withSaveStatus } from "../utils/saveStatus.js";
+
 const STORAGE_KEYS = {
   folders: "app:folders",
   items: "app:items",
@@ -66,36 +68,44 @@ export const localStorageAdapter = {
       .sort(byDeletedAtDesc);
   },
   async createFolder(folder) {
-    const folders = readCollection(STORAGE_KEYS.folders);
-    folders.push(folder);
-    writeCollection(STORAGE_KEYS.folders, folders);
-    return folder;
+    return withSaveStatus(async () => {
+      const folders = readCollection(STORAGE_KEYS.folders);
+      folders.push(folder);
+      writeCollection(STORAGE_KEYS.folders, folders);
+      return folder;
+    });
   },
   async updateFolder(id, patch) {
-    const folders = readCollection(STORAGE_KEYS.folders);
-    const index = folders.findIndex((folder) => folder.id === id);
-    if (index === -1) return null;
-    folders[index] = { ...folders[index], ...patch };
-    writeCollection(STORAGE_KEYS.folders, folders);
-    return folders[index];
+    return withSaveStatus(async () => {
+      const folders = readCollection(STORAGE_KEYS.folders);
+      const index = folders.findIndex((folder) => folder.id === id);
+      if (index === -1) return null;
+      folders[index] = { ...folders[index], ...patch };
+      writeCollection(STORAGE_KEYS.folders, folders);
+      return folders[index];
+    });
   },
   // Новый порядок сразу у многих папок — одной записью. Поштучный updateFolder
   // на каждую перестановку перечитывал и переписывал всю коллекцию, а
   // перетаскивание меняет order почти у всех сразу. См. setItemsOrder.
   async setFoldersOrder(orderById) {
-    const folders = readCollection(STORAGE_KEYS.folders);
-    let changed = false;
-    folders.forEach((folder, index) => {
-      const order = orderById[folder.id];
-      if (order === undefined || folder.order === order) return;
-      folders[index] = { ...folder, order };
-      changed = true;
+    return withSaveStatus(async () => {
+      const folders = readCollection(STORAGE_KEYS.folders);
+      let changed = false;
+      folders.forEach((folder, index) => {
+        const order = orderById[folder.id];
+        if (order === undefined || folder.order === order) return;
+        folders[index] = { ...folder, order };
+        changed = true;
+      });
+      if (changed) writeCollection(STORAGE_KEYS.folders, folders);
     });
-    if (changed) writeCollection(STORAGE_KEYS.folders, folders);
   },
   async deleteFolder(id) {
-    const folders = readCollection(STORAGE_KEYS.folders).filter((folder) => folder.id !== id);
-    writeCollection(STORAGE_KEYS.folders, folders);
+    return withSaveStatus(async () => {
+      const folders = readCollection(STORAGE_KEYS.folders).filter((folder) => folder.id !== id);
+      writeCollection(STORAGE_KEYS.folders, folders);
+    });
   },
 
   // Items (общая коллекция, отфильтрованная по section: "notes", см. NOTE_SECTIONS)
@@ -116,18 +126,22 @@ export const localStorageAdapter = {
     return item ? normalizeItem(item) : null;
   },
   async createItem(item) {
-    const items = readCollection(STORAGE_KEYS.items);
-    items.push(item);
-    writeCollection(STORAGE_KEYS.items, items);
-    return item;
+    return withSaveStatus(async () => {
+      const items = readCollection(STORAGE_KEYS.items);
+      items.push(item);
+      writeCollection(STORAGE_KEYS.items, items);
+      return item;
+    });
   },
   async updateItem(id, patch) {
-    const items = readCollection(STORAGE_KEYS.items);
-    const index = items.findIndex((item) => item.id === id);
-    if (index === -1) return null;
-    items[index] = touch({ ...items[index], ...patch });
-    writeCollection(STORAGE_KEYS.items, items);
-    return items[index];
+    return withSaveStatus(async () => {
+      const items = readCollection(STORAGE_KEYS.items);
+      const index = items.findIndex((item) => item.id === id);
+      if (index === -1) return null;
+      items[index] = touch({ ...items[index], ...patch });
+      writeCollection(STORAGE_KEYS.items, items);
+      return items[index];
+    });
   },
   // Новый порядок сразу у многих заметок — одной записью. Раньше перестановка
   // звала updateItem на каждую сдвинувшуюся заметку, а он читает и переписывает
@@ -136,19 +150,23 @@ export const localStorageAdapter = {
   // многомегабайтной строке, сколько заметок в списке, и отпускание заметно
   // подвисало. touch здесь не зовём: меняется только порядок, а не содержимое.
   async setItemsOrder(orderById) {
-    const items = readCollection(STORAGE_KEYS.items);
-    let changed = false;
-    items.forEach((item, index) => {
-      const order = orderById[item.id];
-      if (order === undefined || item.order === order) return;
-      items[index] = { ...item, order };
-      changed = true;
+    return withSaveStatus(async () => {
+      const items = readCollection(STORAGE_KEYS.items);
+      let changed = false;
+      items.forEach((item, index) => {
+        const order = orderById[item.id];
+        if (order === undefined || item.order === order) return;
+        items[index] = { ...item, order };
+        changed = true;
+      });
+      if (changed) writeCollection(STORAGE_KEYS.items, items);
     });
-    if (changed) writeCollection(STORAGE_KEYS.items, items);
   },
   async deleteItem(id) {
-    const items = readCollection(STORAGE_KEYS.items).filter((item) => item.id !== id);
-    writeCollection(STORAGE_KEYS.items, items);
+    return withSaveStatus(async () => {
+      const items = readCollection(STORAGE_KEYS.items).filter((item) => item.id !== id);
+      writeCollection(STORAGE_KEYS.items, items);
+    });
   },
 
   // Diary entries (один на дату) — данные не трогаем, UI на них больше не ссылается
