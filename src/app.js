@@ -15,6 +15,8 @@ import {
 } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
+import { getSession } from "./auth/authService.js";
+import { openAuthModal } from "./auth/authModal.js";
 
 const DEFAULT_ROUTE = "home";
 
@@ -98,7 +100,7 @@ window.addEventListener("keydown", (event) => {
 document.addEventListener("contextmenu", (event) => event.preventDefault(), true);
 
 window.addEventListener("hashchange", renderRoute);
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   applyBorderSetting();
   watchUiScale();
   // Полоска поиска сама не знает про роутер: она отдаёт нужный раздел, а переход
@@ -126,5 +128,9 @@ window.addEventListener("DOMContentLoaded", () => {
       renderRoute();
     },
   });
+  // Если сессии нет — экран авторизации перекрывает страницу, пока пользователь
+  // не войдёт или не выберет "продолжить как гость" (без сохранения выбора).
+  const session = await getSession();
+  if (!session) await openAuthModal();
   renderRoute();
 });

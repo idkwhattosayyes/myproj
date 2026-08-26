@@ -3,6 +3,8 @@ import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
+import { getCachedSession, signOut } from "../auth/authService.js";
+import { escapeHtml } from "../utils/dom.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
 import { getState as getHomeCirclesState } from "../modules/home/customCircles.js";
@@ -71,8 +73,17 @@ function onOutsideMouseDown(event) {
 
 function renderPanel() {
   const lang = getLang();
+  const session = getCachedSession();
   panelEl.innerHTML = `
     <h3 class="settings-title">${t("settings.title")}</h3>
+    ${
+      session
+        ? `<div class="settings-row">
+            <span class="settings-label">${escapeHtml(session.user.email)}</span>
+            <button type="button" class="btn btn-small" data-action="logout">${t("auth.logout")}</button>
+          </div>`
+        : ""
+    }
     <div class="settings-row">
       <span class="settings-label">${t("settings.language")}</span>
       <div class="settings-lang">
@@ -119,6 +130,12 @@ function renderPanel() {
     const ok = await openConfirm({ message: t("settings.clearDataConfirm") });
     if (!ok) return;
     await getStorage().clearAll();
+    location.reload();
+  });
+
+  panelEl.querySelector('[data-action="logout"]')?.addEventListener("click", async () => {
+    closePanel();
+    await signOut();
     location.reload();
   });
 }

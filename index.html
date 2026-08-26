@@ -11,12 +11,16 @@
   <link rel="stylesheet" href="styles/calendar.css">
   <link rel="stylesheet" href="styles/search.css">
   <link rel="stylesheet" href="styles/blockTagsBrowser.css">
+  <link rel="stylesheet" href="styles/auth.css">
 </head>
 <body>
   <main id="app-view" class="app-view">
     <!-- Сюда рендерится текущий раздел -->
   </main>
 
+  <!-- Обычный (не module) скрипт — блокирует парсер и гарантированно
+       выполняется раньше src/app.js, чтобы window.supabase уже был готов. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="src/app.js"></script>
 </body>
 </html>

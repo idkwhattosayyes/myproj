@@ -1,0 +1,61 @@
+/* Экран авторизации. Карточка — обычный .modal-box (как везде на сайте),
+   новый тут только акцентный цвет кнопки входа. */
+
+.btn-accent {
+  background: #f97316;
+  border-color: #f97316;
+  color: #ffffff;
+}
+
+.btn-accent:hover {
+  background: #ea6a0c;
+  border-color: #ea6a0c;
+}
+
+.modal-box.auth-box {
+  position: relative;
+}
+
+.auth-btn {
+  width: 100%;
+  display: block;
+  margin-bottom: 0.6rem;
+}
+
+.auth-split-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.auth-split-row .btn {
+  flex: 1;
+}
+
+.auth-back-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #57606a;
+  padding: 0.2rem;
+}
+
+.auth-back-btn:hover {
+  color: #24292f;
+}
+
+.auth-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin: -0.3rem 0 0.6rem;
+}
+
+.auth-hint {
+  color: #57606a;
+  font-size: 0.85rem;
+  margin: -0.3rem 0 0.6rem;
+}
