@@ -1,17 +1,15 @@
-// Заметки, папки и теги блоков для залогиненного пользователя — через
-// Supabase. Остальные методы контракта (дневник, календарь, clearAll) сюда не
-// входят, их для залогиненных тоже отдаёт localStorageAdapter — маршрутизация
-// в storageAdapter.js. Файл будет расти следующими модулями (избранное/
-// закрепление, картинки/рисунки).
+// Заметки, папки, теги блоков и избранное/закрепление для залогиненного
+// пользователя — через Supabase. Остальные методы контракта (дневник,
+// календарь, clearAll) сюда не входят, их для залогиненных тоже отдаёт
+// localStorageAdapter — маршрутизация в storageAdapter.js. Файл будет расти
+// следующим модулем (картинки/рисунки).
 import { supabaseClient } from "./supabaseClient.js";
 import { getCachedSession } from "../auth/authService.js";
 import { withSaveStatus } from "../utils/saveStatus.js";
 
-// isFavorite/pinned/pinnedIn/section — таких колонок в Supabase нет (см.
-// supabase/schema.sql): избранное/закрепление ждут своего модуля, а section
-// в живых Supabase-данных всегда "notes" (легаси tasks/documents — мёртвый
-// код). Поэтому на запись эти поля просто отбрасываются, на чтение — гасятся
-// в false/[]/"notes" ниже, чтобы объект имел форму, которую ждёт остальной код.
+// section в живых Supabase-данных всегда "notes" (легаси tasks/documents —
+// мёртвый код на localStorage-стороне), поэтому здесь она читается/пишется
+// как константа — отдельной колонки под неё нет.
 
 const ITEM_FIELD_MAP = {
   title: "title",
@@ -136,6 +134,45 @@ async function replaceFolderFolderLinks(childFolderId, parentFolderIds) {
   const rows = parentFolderIds.map((parentId) => ({ parent_folder_id: parentId, child_folder_id: childFolderId }));
   const { error: insError } = await supabaseClient.from("folder_folder_links").insert(rows);
   if (insError) throw insError;
+}
+
+// Избранное — просто наличие строки. upsert вместо insert+"проглотить unique-
+// violation": повторный клик/гонка при быстром двойном тоггле не должны
+// падать на нарушении уникальности (user_id, item_type, item_id) — upsert
+// идемпотентен, не требует разбора кода ошибки Postgres. RLS with check уже
+// гарантирует user_id.
+async function setFavorite(itemType, itemId, isFavorite) {
+  if (isFavorite) {
+    const { error } = await supabaseClient
+      .from("favorites")
+      .upsert(
+        { user_id: getCachedSession().user.id, item_type: itemType, item_id: itemId },
+        { onConflict: "user_id,item_type,item_id" }
+      );
+    if (error) throw error;
+  } else {
+    const { error } = await supabaseClient.from("favorites").delete().eq("item_type", itemType).eq("item_id", itemId);
+    if (error) throw error;
+  }
+}
+
+async function fetchIsFavorite(itemType, itemId) {
+  const { data, error } = await supabaseClient
+    .from("favorites")
+    .select("id")
+    .eq("item_type", itemType)
+    .eq("item_id", itemId)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+// Bulk-версия fetchIsFavorite — один запрос на весь список (getItems/getFolders),
+// а не по запросу на карточку.
+async function fetchFavoriteIdSet(itemType) {
+  const { data, error } = await supabaseClient.from("favorites").select("item_id").eq("item_type", itemType);
+  if (error) throw error;
+  return new Set(data.map((row) => row.item_id));
 }
 
 export const supabaseAdapter = {
