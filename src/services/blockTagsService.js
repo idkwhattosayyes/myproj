@@ -1,6 +1,8 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { createBlockTagModel } from "../data/models.js";
 import { extractTaggedBlocks, getBlockLines, getBlockTagIds, setBlockTagIds } from "../modules/shared/blockTags.js";
+import { getCachedSession } from "../auth/authService.js";
+import { syncBlocksForNote, findTaggedBlocks } from "../data/supabaseAdapter.js";
 import * as itemsService from "./itemsService.js";
 
 const storage = getStorage();
@@ -35,11 +37,31 @@ export async function updateTag(id, { name, color }) {
   return { tag };
 }
 
+// Производный индекс blocks/block_tags в Supabase — держит его в актуальном
+// состоянии при создании/изменении content заметки (вызывается централизованно
+// из itemsService.js, а не из отдельных мест в UI, чтобы ни одна точка входа
+// не осталась не покрыта — см. dataTransfer.js для единственного места, где
+// content создаётся в обход itemsService). Гость — no-op, у него всё по
+// старому HTML-сканирующему пути (ТЗ п.5). Ошибка глотается: это вторичный
+// derived-индекс, тихий сбой самоисправится на следующем сохранении content,
+// не должен топить успешное сохранение самой заметки.
+export async function syncBlocksIndex(noteId, content) {
+  if (!getCachedSession()) return;
+  try {
+    const blocks = extractTaggedBlocks(content, []);
+    await syncBlocksForNote(noteId, blocks);
+  } catch {
+    // см. комментарий выше — сбой намеренно проглочен
+  }
+}
+
 // Все блоки (по всем заметкам), у которых есть ВСЕ перечисленные теги —
-// для полноэкранного браузера тегов. listItems уже отдаёт заметки без
-// удалённых (см. localStorageAdapter.getItems), лишний фильтр не нужен.
-// Порядок и сортировка — забота вызывающего UI, не сервиса.
+// для полноэкранного браузера тегов. Для залогиненных — SQL-запрос к
+// blocks/block_tags вместо сканирования HTML всех заметок (ТЗ п.4).
+// listItems уже отдаёт заметки без удалённых (см. localStorageAdapter.getItems),
+// лишний фильтр не нужен. Порядок и сортировка — забота вызывающего UI, не сервиса.
 export async function findBlocks(tagIds) {
+  if (getCachedSession()) return findTaggedBlocks(tagIds);
   const items = await itemsService.listItems("notes");
   const results = [];
   items.forEach((item) => {

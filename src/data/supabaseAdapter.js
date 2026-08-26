@@ -322,3 +322,66 @@ export const supabaseAdapter = {
     });
   },
 };
+
+// Производный индекс blocks/block_tags — полный снос-и-пересоздание строк
+// заметки при каждой синхронизации (тот же приём, что replaceNoteFolderLinks/
+// replaceFolderFolderLinks выше). Не часть контракта StorageAdapter: у гостя
+// нет осмысленного localStorage-аналога (findBlocks идёт своим, отдельным
+// путём через extractTaggedBlocks по всем заметкам) — вызывается напрямую из
+// blockTagsService.js, минуя getStorage(). blocks — [{blockId, tagIds, html,
+// text}], форма ровно как у extractTaggedBlocks.
+export async function syncBlocksForNote(noteId, blocks) {
+  const { error: delError } = await supabaseClient.from("blocks").delete().eq("note_id", noteId);
+  if (delError) throw delError;
+  if (!blocks.length) return;
+  const rows = blocks.map((b) => ({ note_id: noteId, block_key: b.blockId, html: b.html, preview_text: b.text }));
+  const { data: inserted, error: insError } = await supabaseClient.from("blocks").insert(rows).select();
+  if (insError) throw insError;
+  const idByKey = new Map(inserted.map((row) => [row.block_key, row.id]));
+  const linkRows = blocks.flatMap((b) => b.tagIds.map((tagId) => ({ block_id: idByKey.get(b.blockId), tag_id: tagId })));
+  if (linkRows.length) {
+    const { error: linkError } = await supabaseClient.from("block_tags").insert(linkRows);
+    if (linkError) throw linkError;
+  }
+}
+
+// Все блоки (по всем заметкам), у которых есть ВСЕ перечисленные теги — SQL-путь
+// для полноэкранного браузера тегов (замена сканирования HTML). AND-фильтр —
+// задача реляционного деления, простыми фильтрами PostgREST не выражается,
+// поэтому сначала считаем пересечение в JS по block_tags, потом одним запросом
+// тянем сами блоки. Пустой tagIds — не гипотетический случай: и кнопка "#" у
+// поиска, и "Clear all" в браузере открывают именно пустой фильтр ("все блоки").
+export async function findTaggedBlocks(tagIds) {
+  let blockIds = null; // null = без ограничения по id
+  if (tagIds.length) {
+    const { data, error } = await supabaseClient.from("block_tags").select("block_id, tag_id").in("tag_id", tagIds);
+    if (error) throw error;
+    const tagsByBlock = new Map();
+    data.forEach((row) => {
+      const set = tagsByBlock.get(row.block_id) || new Set();
+      set.add(row.tag_id);
+      tagsByBlock.set(row.block_id, set);
+    });
+    blockIds = [...tagsByBlock.entries()].filter(([, set]) => tagIds.every((id) => set.has(id))).map(([id]) => id);
+    if (!blockIds.length) return [];
+  }
+
+  let query = supabaseClient
+    .from("blocks")
+    .select("id, note_id, block_key, html, preview_text, block_tags(tag_id), notes!inner(title, updated_at, sort_order, deleted_at)")
+    .is("notes.deleted_at", null);
+  if (blockIds) query = query.in("id", blockIds);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return data.map((row) => ({
+    blockId: row.block_key,
+    tagIds: row.block_tags.map((bt) => bt.tag_id),
+    html: row.html,
+    text: row.preview_text,
+    itemId: row.note_id,
+    itemTitle: row.notes.title,
+    updatedAt: row.notes.updated_at,
+    order: row.notes.sort_order,
+  }));
+}

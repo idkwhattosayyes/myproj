@@ -1,6 +1,7 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { createFolderModel, createItemModel } from "../data/models.js";
 import { parentIdsOf, isAncestorOf } from "../data/folderTree.js";
+import * as blockTagsService from "./blockTagsService.js";
 
 const storage = getStorage();
 
@@ -108,13 +109,17 @@ export async function getItem(id) {
 
 export async function createItem(section, { title, content, folderIds, isFavorite }) {
   const item = createItemModel({ title, content, folderIds, section, isFavorite });
-  return storage.createItem(item);
+  const created = await storage.createItem(item);
+  await blockTagsService.syncBlocksIndex(created.id, created.content);
+  return created;
 }
 
 // Модель уже построена вызывающим кодом — тот же смысл, что у
 // createFolderFromModel выше (см. комментарий там).
 export async function createItemFromModel(model) {
-  return storage.createItem(model);
+  const created = await storage.createItem(model);
+  await blockTagsService.syncBlocksIndex(created.id, created.content);
+  return created;
 }
 
 // Правка текста или заголовка поднимает заметку наверх списка (см.
@@ -122,7 +127,9 @@ export async function createItemFromModel(model) {
 // папка) на activityAt не влияют, иначе список прыгал бы от них тоже.
 export async function updateItem(id, patch) {
   const activity = "content" in patch || "title" in patch ? { activityAt: new Date().toISOString() } : {};
-  return storage.updateItem(id, { ...patch, ...activity });
+  const updated = await storage.updateItem(id, { ...patch, ...activity });
+  if ("content" in patch) await blockTagsService.syncBlocksIndex(id, patch.content);
+  return updated;
 }
 
 // Заметка отправляется в Корзину: связи (папки, избранное, закрепление)
