@@ -312,10 +312,23 @@ export const supabaseAdapter = {
     );
   },
 
+  // favorites/pins не имеют FK на folders (item_id полиморфный — общая колонка
+  // на note/folder), поэтому Postgres не каскадит сюда сам. Структурно эти
+  // строки уже пусты к этому моменту (moveFolderToTrash сбрасывает isFavorite/
+  // pinned до постановки deletedAt), но фоновый persist() позднего клика
+  // "избранное"/"закрепить", отправленный ДО ухода в Корзину и доехавший до
+  // сервера ПОСЛЕ — теоретически мог воскресить строку уже после трэша.
+  // Удаление 0 строк — бесплатный no-op, чистим здесь как страховку от этой
+  // гонки (permanent delete необратим, в отличие от обычного дрейфа
+  // состояния при гонке кликов).
   async deleteFolder(id) {
     await withSaveStatus(async () => {
       const { error } = await supabaseClient.from("folders").delete().eq("id", id);
       if (error) throw error;
+      await Promise.all([
+        supabaseClient.from("favorites").delete().eq("item_type", "folder").eq("item_id", id),
+        supabaseClient.from("pins").delete().eq("item_type", "folder").eq("item_id", id),
+      ]);
     });
   },
 
@@ -412,10 +425,15 @@ export const supabaseAdapter = {
     );
   },
 
+  // См. комментарий у deleteFolder — тот же defensive cleanup для заметок.
   async deleteItem(id) {
     await withSaveStatus(async () => {
       const { error } = await supabaseClient.from("notes").delete().eq("id", id);
       if (error) throw error;
+      await Promise.all([
+        supabaseClient.from("favorites").delete().eq("item_type", "note").eq("item_id", id),
+        supabaseClient.from("pins").delete().eq("item_type", "note").eq("item_id", id),
+      ]);
     });
   },
 
