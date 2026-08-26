@@ -1,5 +1,6 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { appendCircles } from "../modules/home/customCircles.js";
+import * as blockTagsService from "../services/blockTagsService.js";
 
 // Экспорт/импорт заметок и папок одним JSON-файлом. Форматирование хранится
 // прямо в item.content (HTML), поэтому выгрузка моделей сохраняет жирность,
@@ -201,15 +202,22 @@ export async function importData(data) {
     const pinnedIn = srcPinnedIn
       .map((key) => (key === "all" || key === "favorites" || key === "unfiled" ? key : folderIdMap.get(key)))
       .filter(Boolean);
+    const content = remapBlockTags(remapInternalLinks(item.content, itemIdMap), blockTagIdMap);
+    const newId = itemIdMap.get(item.id);
     await storage.createItem({
       ...item,
-      id: itemIdMap.get(item.id),
-      content: remapBlockTags(remapInternalLinks(item.content, itemIdMap), blockTagIdMap),
+      id: newId,
+      content,
       folderIds,
       pinnedIn,
       createdAt: item.createdAt || now,
       updatedAt: now,
     });
+    // storage.createItem вызван напрямую (не через itemsService), поэтому
+    // централизованный хук синхронизации там до этой заметки не дотянется —
+    // единственное место, где derived-индекс blocks/block_tags нужно подтолкнуть
+    // явно (см. комментарий у syncBlocksIndex в blockTagsService.js).
+    await blockTagsService.syncBlocksIndex(newId, content);
   }
 
   const circles = importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
