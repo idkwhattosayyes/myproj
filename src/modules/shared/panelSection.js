@@ -253,10 +253,17 @@ function startInlineRename(rowEl, currentValue, onCommit) {
  * @param {{section: string, toolbarButtons: string[], basicToolbarButtons?: string[], pageModeInContextMenu?: boolean}} config
  */
 export async function renderPanelSection(container, config) {
+  // Три волны независимы друг от друга — были последовательными await
+  // (3 RTT подряд), переводим на Promise.all.
+  const [folders, items, trash] = await Promise.all([
+    itemsService.listFolders(config.section),
+    itemsService.listItems(config.section),
+    itemsService.listTrash(config.section),
+  ]);
   const state = {
-    folders: await itemsService.listFolders(config.section),
-    items: await itemsService.listItems(config.section),
-    trash: await itemsService.listTrash(config.section),
+    folders,
+    items,
+    trash,
     selectedFolderId: "all", // "all" | "unfiled" | "trash" | id папки
     selectedItemId: null,
     // Что показано в детали справа, если это удалённый элемент — { kind, id }.
@@ -284,8 +291,10 @@ export async function refreshActivePanelItems() {
   if (!activePanel) return;
   const { container, config, state } = activePanel;
   if (!container.querySelector('[data-role="list-body"]')) return;
-  state.items = await itemsService.listItems(config.section);
-  state.folders = await itemsService.listFolders(config.section);
+  [state.items, state.folders] = await Promise.all([
+    itemsService.listItems(config.section),
+    itemsService.listFolders(config.section),
+  ]);
   renderFolders(container, config, state);
   renderList(container, config, state);
 }
