@@ -517,6 +517,17 @@ export const supabaseAdapter = {
     });
   },
 
+  // Удаление тега как сущности (не снятие с одного блока — это removeTagFromBlock
+  // в blockTagsService.js). on delete cascade сам чистит block_tags — это
+  // только производный кэш; сам content заметок с data-tag-ids на этот тег
+  // вычищает blockTagsService.deleteTag ДО вызова этого метода.
+  async deleteBlockTag(id) {
+    return withSaveStatus(async () => {
+      const { error } = await supabaseClient.from("tags").delete().eq("id", id);
+      if (error) throw error;
+    });
+  },
+
   // Полная очистка данных залогиненного пользователя — кнопка "Clear all
   // data" (settingsPanel.js). До этой правки метод не входил в гибридную
   // маршрутизацию storageAdapter.js — Supabase-данные переживали "очистку"

@@ -15,7 +15,7 @@ const EDGE_PAD_PX = 8;
  *
  * @param {number} x
  * @param {number} y
- * @param {{label: string, onClick: () => void}[]} items
+ * @param {{label: string, onClick: () => void, onContextMenu?: () => void}[]} items
  * @returns {() => void} закрыть меню programmatically
  */
 export function openAnchoredMenu(x, y, items) {
@@ -30,6 +30,17 @@ export function openAnchoredMenu(x, y, items) {
       closeMenu();
       item.onClick();
     });
+    // Опционально — ПКМ на пункте (например "удалить" вместо "выбрать").
+    // Список после такого действия обычно устаревает, поэтому закрываем
+    // меню так же, как и по обычному клику, а не пытаемся перерисовать его
+    // на месте.
+    if (item.onContextMenu) {
+      btn.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        closeMenu();
+        item.onContextMenu();
+      });
+    }
     menu.appendChild(btn);
   });
   document.body.appendChild(menu);

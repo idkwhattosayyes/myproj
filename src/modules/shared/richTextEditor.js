@@ -1664,15 +1664,69 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     onChange(serializeEditor(contentEl));
   }
 
+  // Теги, уже стоящие хотя бы на одной из переданных строк — не через
+  // lines[0]: выделение может задевать границу двух РАЗНЫХ существующих
+  // блоков с разным набором тегов (attachTagToLines в этом случае объединяет
+  // теги обоих), значит исключать из списка нужно объединение по всем строкам.
+  function currentTagIds(lines) {
+    const ids = new Set();
+    lines.forEach((line) => getBlockTagIds(line).forEach((id) => ids.add(id)));
+    return ids;
+  }
+
+  // Зачищает тег из ВСЕХ блоков живого редактора (не одного blockId, как
+  // существующее "Delete tag" в openBlockTagContextMenu) — сужает гонку
+  // deleteTag'а с несохранённой правкой САМОЙ ЭТОЙ, сейчас открытой заметки
+  // до самого узкого случая (см. комментарий у blockTagsService.deleteTag).
+  function stripTagFromLiveEditor(tagId) {
+    let changed = false;
+    contentEl.querySelectorAll(".rte-page").forEach((page) => {
+      const blockIds = new Set([...page.querySelectorAll("[data-block-id]")].map((l) => l.dataset.blockId));
+      blockIds.forEach((blockId) => {
+        const blockLines = getBlockLines(page, blockId);
+        if (!blockLines.length) return;
+        const current = getBlockTagIds(blockLines[0]);
+        if (!current.includes(tagId)) return;
+        setBlockTagIds(page, blockId, current.filter((id) => id !== tagId));
+        changed = true;
+      });
+    });
+    if (changed) {
+      syncBlocks();
+      recordHistory();
+      onChange(serializeEditor(contentEl));
+    }
+  }
+
   function openTagAddMenu(x, y, lines, onApplied = () => {}) {
-    const items = [...tagRegistry.values()].map((tag) => ({
-      label: tag.name,
-      onClick: () => {
-        attachTagToLines(lines, tag);
-        focusActivePage();
-        onApplied();
-      },
-    }));
+    const excluded = currentTagIds(lines); // пусто для нового блока — фильтр не исключает ничего
+    const items = [...tagRegistry.values()]
+      .filter((tag) => !excluded.has(tag.id))
+      .map((tag) => ({
+        label: tag.name,
+        onClick: () => {
+          attachTagToLines(lines, tag);
+          focusActivePage();
+          onApplied();
+        },
+        onContextMenu: () => {
+          openAnchoredMenu(x, y, [
+            {
+              label: t("editor.tagDeleteForever"),
+              onClick: async () => {
+                const count = (await blockTagsService.findBlocks([tag.id])).length;
+                if (count > 0) {
+                  const ok = await openConfirm({ message: t("editor.tagDeleteForeverConfirm").replace("{n}", String(count)) });
+                  if (!ok) return;
+                }
+                await blockTagsService.deleteTag(tag.id);
+                stripTagFromLiveEditor(tag.id);
+                refreshTagRegistry();
+              },
+            },
+          ]);
+        },
+      }));
     openAnchoredMenu(x, y, items);
   }
 

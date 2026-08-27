@@ -38,6 +38,7 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {() => Promise<Object[]>} getBlockTags
  * @property {(tag: Object) => Promise<Object>} createBlockTag
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateBlockTag
+ * @property {(id: string) => Promise<void>} deleteBlockTag
  */
 
 // Заметки/папки, справочник тегов блоков и полная очистка данных — сущности,
@@ -62,7 +63,7 @@ const NOTES_AND_FOLDERS_METHODS = [
   "getTrashedItems",
 ];
 
-const BLOCK_TAG_METHODS = ["getBlockTags", "createBlockTag", "updateBlockTag"];
+const BLOCK_TAG_METHODS = ["getBlockTags", "createBlockTag", "updateBlockTag", "deleteBlockTag"];
 
 // Затрагивает notes/folders/tags/favorites/pins/images/drawings/Storage
 // разом — не укладывается в специализацию двух списков выше, отдельная запись.

@@ -271,4 +271,10 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.blockTags, tags);
     return tags[index];
   },
+  // Сам content заметок с data-tag-ids на этот тег вычищает
+  // blockTagsService.deleteTag ДО вызова этого метода — здесь только реестр.
+  async deleteBlockTag(id) {
+    const tags = readCollection(STORAGE_KEYS.blockTags).filter((tag) => tag.id !== id);
+    writeCollection(STORAGE_KEYS.blockTags, tags);
+  },
 };

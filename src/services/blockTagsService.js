@@ -126,3 +126,42 @@ export async function addTagToBlock(itemId, blockId, tag) {
     if (!current.includes(tag.id)) setBlockTagIds(page, blockId, [...current, tag.id]);
   });
 }
+
+// Удаление тега как сущности (не removeTagFromBlock — тот снимает тег с
+// ОДНОГО блока). Тег хранится в content каждой заметки как data-tag-ids —
+// таблицы tags/blocks/block_tags в Supabase лишь производный индекс, cascade
+// от deleteBlockTag почистит только его, не сам content, поэтому проходим по
+// всем заметкам, где тег реально встречается, и вычищаем его оттуда.
+//
+// Группировка по itemId — один read-modify-write на заметку, а не по одному
+// на блок: несколько блоков одного тега в одной заметке иначе гонялись бы
+// за одну и ту же запись параллельно (потерянная запись). Между РАЗНЫМИ
+// заметками — параллельно, они не пересекаются.
+async function stripTagFromItem(itemId, blockIds, tagId) {
+  const item = await itemsService.getItem(itemId);
+  if (!item) return;
+  const holder = document.createElement("div");
+  holder.innerHTML = item.content;
+  holder.querySelectorAll(".rte-page").forEach((page) => {
+    blockIds.forEach((blockId) => {
+      if (!getBlockLines(page, blockId).length) return;
+      const current = getBlockTagIds(getBlockLines(page, blockId)[0]);
+      setBlockTagIds(page, blockId, current.filter((id) => id !== tagId));
+    });
+  });
+  await itemsService.updateItem(itemId, { content: holder.innerHTML });
+}
+
+export async function deleteTag(tagId) {
+  const blocks = await findBlocks([tagId]);
+  const blockIdsByItem = new Map();
+  blocks.forEach((b) => {
+    if (!blockIdsByItem.has(b.itemId)) blockIdsByItem.set(b.itemId, []);
+    blockIdsByItem.get(b.itemId).push(b.blockId);
+  });
+  await Promise.all(
+    [...blockIdsByItem.entries()].map(([itemId, blockIds]) => stripTagFromItem(itemId, blockIds, tagId))
+  );
+  await storage.deleteBlockTag(tagId);
+  invalidateTagsCache();
+}

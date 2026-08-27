@@ -1,4 +1,5 @@
 import { t } from "../../i18n/i18n.js";
+import { openConfirm } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { escapeHtml, clamp } from "../../utils/dom.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
@@ -369,6 +370,26 @@ export function openBlockTagsBrowser(tagIds) {
         onClick: async () => {
           await blockTagsService.addTagToBlock(block.itemId, block.blockId, tag);
           reload();
+        },
+        onContextMenu: () => {
+          openAnchoredMenu(x, y, [
+            {
+              label: t("editor.tagDeleteForever"),
+              onClick: async () => {
+                const count = (await blockTagsService.findBlocks([tag.id])).length;
+                if (count > 0) {
+                  const ok = await openConfirm({ message: t("editor.tagDeleteForeverConfirm").replace("{n}", String(count)) });
+                  if (!ok) return;
+                }
+                await blockTagsService.deleteTag(tag.id);
+                // reload() не рефетчит теги сам, пока tagRegistry не пуст
+                // (guard "if (!tagRegistry.size)") — обновляем вручную, тем
+                // же приёмом, что уже используется рядом при edit (tagRegistry.set).
+                tagRegistry.delete(tag.id);
+                reload();
+              },
+            },
+          ]);
         },
       }));
     openAnchoredMenu(x, y, items);

@@ -216,6 +216,8 @@ export const translations = {
     "editor.tagPanelItem": "Block tags",
     "editor.tagDissolve": "Dissolve block",
     "editor.tagDissolveConfirm": "Dissolve this block? The tags will be removed and the text stays as it is.",
+    "editor.tagDeleteForever": "Delete everywhere",
+    "editor.tagDeleteForeverConfirm": "This tag is used in {n} blocks. Delete it everywhere?",
 
     "blockBrowser.count": "Blocks: {n}",
     "blockBrowser.empty": "No blocks match this filter",
@@ -447,6 +449,8 @@ export const translations = {
     "editor.tagPanelItem": "Теги блока",
     "editor.tagDissolve": "Распустить блок",
     "editor.tagDissolveConfirm": "Распустить этот блок? Теги будут сняты, текст останется как есть.",
+    "editor.tagDeleteForever": "Удалить везде",
+    "editor.tagDeleteForeverConfirm": "Тег используется в {n} блоках. Удалить его везде?",
 
     "blockBrowser.count": "Блоков: {n}",
     "blockBrowser.empty": "По этому набору тегов ничего не найдено",
@@ -661,6 +665,8 @@ export const translations = {
     "editor.tagPanelItem": "תגי הבלוק",
     "editor.tagDissolve": "פירוק הבלוק",
     "editor.tagDissolveConfirm": "לפרק את הבלוק הזה? התגים יוסרו והטקסט יישאר כפי שהוא.",
+    "editor.tagDeleteForever": "מחיקה מוחלטת",
+    "editor.tagDeleteForeverConfirm": "התג הזה נמצא ב-{n} בלוקים. למחוק אותו לגמרי?",
 
     "blockBrowser.count": "בלוקים: {n}",
     "blockBrowser.empty": "לא נמצאו בלוקים בסינון הזה",
