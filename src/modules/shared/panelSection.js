@@ -1623,6 +1623,23 @@ function renderTrashDetail(detailEl, container, config, state) {
     </div>
   `;
   wireActions("item", item.id, item.title);
+
+  // Content хранит протухающую signed-ссылку, не постоянный путь — без этого
+  // резолва (он есть в richTextEditor.js, но предпросмотр корзины строится
+  // мимо редактора) фото заметки, пролежавшей в корзине больше часа TTL,
+  // показалось бы битым, хотя файл в Storage цел и restore всё вернёт как надо.
+  const pendingPhotos = [...detailEl.querySelectorAll("img.rte-photo[data-storage-path]")];
+  if (pendingPhotos.length) {
+    photoStorageService
+      .resolvePhotoSources(pendingPhotos.map((img) => img.dataset.storagePath))
+      .then((urlByPath) => {
+        pendingPhotos.forEach((img) => {
+          const url = urlByPath.get(img.dataset.storagePath);
+          if (url) img.src = url;
+        });
+      })
+      .catch(() => {});
+  }
 }
 
 // Отцепка плавающего тулбара от предыдущей заметки. Деталь перерисовывается на
