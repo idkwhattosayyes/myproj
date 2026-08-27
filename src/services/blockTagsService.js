@@ -7,8 +7,27 @@ import * as itemsService from "./itemsService.js";
 
 const storage = getStorage();
 
+// Реестр тегов дёргается на КАЖДОЕ создание редактора (richTextEditor.js —
+// refreshTagRegistry, вызывается при любом открытии/переключении заметки) —
+// без кэша это отдельный SQL-запрос на каждое такое действие. Кэшируем
+// промис, не массив — конкурентные вызовы не плодят параллельные запросы.
+// Инвалидация по логауту/логину не нужна — оба всегда делают
+// location.reload() (settingsPanel.js), кэш и так обнулится на следующей
+// загрузке.
+let tagsCache = null; // Promise<Tag[]> | null
+
 export async function listTags() {
-  return storage.getBlockTags();
+  if (!tagsCache) {
+    tagsCache = storage.getBlockTags().catch((error) => {
+      tagsCache = null; // сбой — не запоминаем навсегда, следующий вызов повторит попытку
+      throw error;
+    });
+  }
+  return tagsCache;
+}
+
+function invalidateTagsCache() {
+  tagsCache = null;
 }
 
 // Регистронезависимый поиск: #yes, #Yes и #YES — один и тот же тег.
@@ -25,7 +44,9 @@ export async function createTag({ id, name, color }) {
   const existing = await findTagByName(name);
   if (existing) return { error: "taken", tag: existing };
   const tag = createBlockTagModel({ id, name, color });
-  return { tag: await storage.createBlockTag(tag) };
+  const created = await storage.createBlockTag(tag);
+  invalidateTagsCache();
+  return { tag: created };
 }
 
 export async function updateTag(id, { name, color }) {
@@ -34,6 +55,7 @@ export async function updateTag(id, { name, color }) {
   const trimmed = name.trim();
   const patch = { name: trimmed, nameKey: trimmed.toLowerCase(), color };
   const tag = await storage.updateBlockTag(id, patch);
+  invalidateTagsCache();
   return { tag };
 }
 
