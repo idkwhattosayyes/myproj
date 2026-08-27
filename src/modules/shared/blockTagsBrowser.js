@@ -1,5 +1,5 @@
 import { t } from "../../i18n/i18n.js";
-import { openConfirm } from "../../utils/modal.js";
+import { openConfirm, openAlert } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { escapeHtml, clamp } from "../../utils/dom.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
@@ -371,8 +371,11 @@ export function openBlockTagsBrowser(tagIds) {
           await blockTagsService.addTagToBlock(block.itemId, block.blockId, tag);
           reload();
         },
-        onContextMenu: () => {
-          openAnchoredMenu(x, y, [
+        // menuX/menuY — координаты реального ПКМ (anchoredMenu.js), не x/y
+        // всего списка "+"/Add — иначе вложенное меню открывалось бы не под
+        // курсором, а там, где стояла кнопка "+".
+        onContextMenu: (menuX, menuY) => {
+          openAnchoredMenu(menuX, menuY, [
             {
               label: t("editor.tagDeleteForever"),
               onClick: async () => {
@@ -381,7 +384,14 @@ export function openBlockTagsBrowser(tagIds) {
                   const ok = await openConfirm({ message: t("editor.tagDeleteForeverConfirm").replace("{n}", String(count)) });
                   if (!ok) return;
                 }
-                await blockTagsService.deleteTag(tag.id);
+                try {
+                  await blockTagsService.deleteTag(tag.id);
+                } catch {
+                  // Частичный сбой уже мог вычистить тег из части заметок —
+                  // не молчим, иначе тег останется "дырявым" незамеченным.
+                  await openAlert({ message: t("editor.tagDeleteForeverError") });
+                  return;
+                }
                 // reload() не рефетчит теги сам, пока tagRegistry не пуст
                 // (guard "if (!tagRegistry.size)") — обновляем вручную, тем
                 // же приёмом, что уже используется рядом при edit (tagRegistry.set).

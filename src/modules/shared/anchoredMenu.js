@@ -15,7 +15,7 @@ const EDGE_PAD_PX = 8;
  *
  * @param {number} x
  * @param {number} y
- * @param {{label: string, onClick: () => void, onContextMenu?: () => void}[]} items
+ * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void}[]} items
  * @returns {() => void} закрыть меню programmatically
  */
 export function openAnchoredMenu(x, y, items) {
@@ -38,7 +38,10 @@ export function openAnchoredMenu(x, y, items) {
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         closeMenu();
-        item.onContextMenu();
+        // Координаты реального клика, а не x/y этого меню — иначе вложенное
+        // меню (например "Delete everywhere") открывалось бы там, где стоял
+        // "+"/"Add", а не там, где пользователь кликнул по пункту списка.
+        item.onContextMenu(event.clientX, event.clientY);
       });
     }
     menu.appendChild(btn);

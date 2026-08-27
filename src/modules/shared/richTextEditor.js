@@ -1678,6 +1678,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // существующее "Delete tag" в openBlockTagContextMenu) — сужает гонку
   // deleteTag'а с несохранённой правкой САМОЙ ЭТОЙ, сейчас открытой заметки
   // до самого узкого случая (см. комментарий у blockTagsService.deleteTag).
+  // Остаточная лазейка: если несохранённая правка САМА только что убрала
+  // последнее вхождение тега (например распустила единственный помеченный
+  // блок) — changed ниже останется false, onChange не вызовется, и эта
+  // правка защищена уже не этой функцией, а только независимым debounce-
+  // таймером panelSection.js — если его запись прилетит раньше записи
+  // deleteTag'а по устаревшему content, правка молча потеряется. Узко по
+  // времени (нужно совпадение в те же ~400мс), не закрываем отдельно.
   function stripTagFromLiveEditor(tagId) {
     let changed = false;
     contentEl.querySelectorAll(".rte-page").forEach((page) => {
@@ -1709,8 +1716,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           focusActivePage();
           onApplied();
         },
-        onContextMenu: () => {
-          openAnchoredMenu(x, y, [
+        // menuX/menuY — координаты реального ПКМ по этому пункту (anchoredMenu.js),
+        // не x/y всего списка "+"/"Add" — иначе вложенное меню открывалось бы
+        // не под курсором, а там, где стояла кнопка "+".
+        onContextMenu: (menuX, menuY) => {
+          openAnchoredMenu(menuX, menuY, [
             {
               label: t("editor.tagDeleteForever"),
               onClick: async () => {
@@ -1719,7 +1729,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
                   const ok = await openConfirm({ message: t("editor.tagDeleteForeverConfirm").replace("{n}", String(count)) });
                   if (!ok) return;
                 }
-                await blockTagsService.deleteTag(tag.id);
+                try {
+                  await blockTagsService.deleteTag(tag.id);
+                } catch {
+                  // Частичный сбой (сеть и т.п.) уже мог вычистить тег из части
+                  // заметок — не молчим об этом, иначе пользователь решит, что
+                  // клик не сработал, а на деле тег остался "дырявым".
+                  await openAlert({ message: t("editor.tagDeleteForeverError") });
+                  return;
+                }
                 stripTagFromLiveEditor(tag.id);
                 refreshTagRegistry();
               },

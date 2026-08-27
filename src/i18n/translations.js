@@ -1,5 +1,6 @@
 export const translations = {
   en: {
+    "app.routeError": "Something went wrong loading this page. Try reloading.",
     "auth.loginRegister": "Login / Register",
     "auth.continueGuest": "Continue as a guest",
     "auth.email": "Email",
@@ -218,6 +219,7 @@ export const translations = {
     "editor.tagDissolveConfirm": "Dissolve this block? The tags will be removed and the text stays as it is.",
     "editor.tagDeleteForever": "Delete everywhere",
     "editor.tagDeleteForeverConfirm": "This tag is used in {n} blocks. Delete it everywhere?",
+    "editor.tagDeleteForeverError": "Couldn't delete the tag everywhere. Some notes may still have it — please try again.",
 
     "blockBrowser.count": "Blocks: {n}",
     "blockBrowser.empty": "No blocks match this filter",
@@ -234,6 +236,7 @@ export const translations = {
     "modal.ok": "OK",
   },
   ru: {
+    "app.routeError": "Не удалось загрузить раздел. Попробуйте перезагрузить страницу.",
     "auth.loginRegister": "Войти / Зарегистрироваться",
     "auth.continueGuest": "Продолжить как гость",
     "auth.email": "Email",
@@ -451,6 +454,7 @@ export const translations = {
     "editor.tagDissolveConfirm": "Распустить этот блок? Теги будут сняты, текст останется как есть.",
     "editor.tagDeleteForever": "Удалить везде",
     "editor.tagDeleteForeverConfirm": "Тег используется в {n} блоках. Удалить его везде?",
+    "editor.tagDeleteForeverError": "Не удалось удалить тег везде. Возможно, он остался в части заметок — попробуйте ещё раз.",
 
     "blockBrowser.count": "Блоков: {n}",
     "blockBrowser.empty": "По этому набору тегов ничего не найдено",
@@ -467,6 +471,7 @@ export const translations = {
     "modal.ok": "ОК",
   },
   he: {
+    "app.routeError": "טעינת הדף נכשלה. נסה/י לרענן את העמוד.",
     "settings.open": "הגדרות",
     "settings.title": "הגדרות",
     "settings.language": "שפה",
@@ -667,6 +672,7 @@ export const translations = {
     "editor.tagDissolveConfirm": "לפרק את הבלוק הזה? התגים יוסרו והטקסט יישאר כפי שהוא.",
     "editor.tagDeleteForever": "מחיקה מוחלטת",
     "editor.tagDeleteForeverConfirm": "התג הזה נמצא ב-{n} בלוקים. למחוק אותו לגמרי?",
+    "editor.tagDeleteForeverError": "מחיקת התג נכשלה. ייתכן שהוא עדיין נמצא בחלק מהפתקים — נסה/י שוב.",
 
     "blockBrowser.count": "בלוקים: {n}",
     "blockBrowser.empty": "לא נמצאו בלוקים בסינון הזה",

@@ -1,7 +1,7 @@
 import { renderHomeView } from "./modules/home/homeView.js";
 import { renderNotesView } from "./modules/notes/notesView.js";
 import { renderCalendarView } from "./modules/calendar/calendarView.js";
-import { getLang } from "./i18n/i18n.js";
+import { getLang, t } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { setNavigateHandler } from "./search/searchTarget.js";
@@ -49,7 +49,15 @@ async function renderRoute() {
   document.documentElement.lang = getLang();
   // Полоска поиска живёт вне маршрутов, но её охват зависит от раздела.
   refreshSearchScope(route);
-  await routes[route](view, param);
+  try {
+    await routes[route](view, param);
+  } catch (error) {
+    // Без этого сбой (обрыв сети и т.п.) оставлял бы висеть спиннер выше
+    // навсегда — хуже пустого экрана, который был здесь до него: спиннер
+    // лжёт, что что-то ещё происходит.
+    console.error(error);
+    view.innerHTML = `<p class="placeholder">${t("app.routeError")}</p>`;
+  }
 }
 
 // Esc сверху вниз: сначала открытые поверх страницы слои (меню, модалки,

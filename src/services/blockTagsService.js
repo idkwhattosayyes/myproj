@@ -159,9 +159,18 @@ export async function deleteTag(tagId) {
     if (!blockIdsByItem.has(b.itemId)) blockIdsByItem.set(b.itemId, []);
     blockIdsByItem.get(b.itemId).push(b.blockId);
   });
-  await Promise.all(
+  // allSettled, не all: заметки независимы, сбой одной не должен откатывать
+  // уже успешно вычищенные другие. Но если сбой всё же был — тег НЕ удаляем
+  // из реестра (он всё ещё где-то "дырявый") и пробрасываем ошибку выше,
+  // чтобы UI явно сказал пользователю "не получилось", а не тихо оставил
+  // наполовину удалённый тег как ни в чём не бывало. Повторный вызов
+  // idempotent — findBlocks заново найдёт только реально оставшиеся блоки.
+  const results = await Promise.allSettled(
     [...blockIdsByItem.entries()].map(([itemId, blockIds]) => stripTagFromItem(itemId, blockIds, tagId))
   );
+  if (results.some((r) => r.status === "rejected")) {
+    throw new Error("deleteTag: failed to strip the tag from some notes");
+  }
   await storage.deleteBlockTag(tagId);
   invalidateTagsCache();
 }
