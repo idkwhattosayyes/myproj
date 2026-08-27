@@ -431,6 +431,7 @@ function render(container, config, state) {
         <div class="panel-header">
           <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
           <span class="panel-title">${folderIcon()}${t("panel.folders")}</span>
+          <button type="button" class="btn btn-small" data-action="new-folder" title="${t("panel.newFolder")}">+</button>
         </div>
         ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
@@ -460,6 +461,24 @@ function render(container, config, state) {
   if (sameDetail && !state.detailScrolled) restorePageScroll(pageScrollY);
 }
 
+// Общая логика создания папки — переиспользуется и кнопкой "+" в шапке
+// панели Folders, и пунктом "New folder" в её контекстном меню (см. ниже).
+function createFolderFlow(container, config, state) {
+  return async () => {
+    const name = await openPrompt({ message: t("panel.folderNamePrompt") });
+    if (!name || !name.trim()) return;
+    const folder = createFolderModel({ name: name.trim(), section: config.section });
+    optimisticBulk(
+      state,
+      () => {
+        state.folders = [...state.folders, folder];
+      },
+      () => itemsService.createFolderFromModel(folder),
+      () => renderFolders(container, config, state)
+    );
+  };
+}
+
 function wireHeaderActions(container, config, state) {
   // Панель папок сворачивается в тонкую полоску у левого края. Нужен полный
   // render: если список тоже свёрнут, его индикатор при сворачивании папок
@@ -477,6 +496,8 @@ function wireHeaderActions(container, config, state) {
       render(container, config, state);
     });
   });
+
+  container.querySelector('[data-action="new-folder"]').addEventListener("click", createFolderFlow(container, config, state));
 
   container.querySelector('[data-action="new-item"]').addEventListener("click", () => {
     const folderIds = isRealFolderId(state.selectedFolderId) ? [state.selectedFolderId] : [];
@@ -1097,17 +1118,7 @@ function renderFolders(container, config, state) {
     showContextMenu(event.clientX, event.clientY, [
       {
         label: t("panel.newFolder"),
-        onClick: async () => {
-          const name = await openPrompt({ message: t("panel.folderNamePrompt") });
-          if (!name || !name.trim()) return;
-          const folder = createFolderModel({ name: name.trim(), section: config.section });
-          optimisticBulk(
-            state,
-            () => { state.folders = [...state.folders, folder]; },
-            () => itemsService.createFolderFromModel(folder),
-            () => renderFolders(container, config, state)
-          );
-        },
+        onClick: createFolderFlow(container, config, state),
       },
     ]);
   });
