@@ -629,10 +629,14 @@ button {
   }
 }
 
+/* Центрирован так же, как .loading-overlay ниже — иначе после импорта
+   (центральный оверлей) и последующего reload (этот спиннер) пользователь
+   видит, как индикатор "прыгает" из центра экрана наверх. */
 .route-loading {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 3rem;
+  min-height: 50vh;
 }
 
 .loading-overlay {
