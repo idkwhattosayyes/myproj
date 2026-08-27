@@ -402,7 +402,7 @@ export function openBlockTagsBrowser(tagIds) {
           ]);
         },
       }));
-    openAnchoredMenu(x, y, items);
+    openAnchoredMenu(x, y, items, t("editor.tagAddEmpty"));
   }
 
   async function openCreateForBlock(block) {

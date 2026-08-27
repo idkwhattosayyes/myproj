@@ -220,6 +220,7 @@ export const translations = {
     "editor.tagDeleteForever": "Delete everywhere",
     "editor.tagDeleteForeverConfirm": "This tag is used in {n} blocks. Delete it everywhere?",
     "editor.tagDeleteForeverError": "Couldn't delete the tag everywhere. Some notes may still have it — please try again.",
+    "editor.tagAddEmpty": "No more tags available",
 
     "blockBrowser.count": "Blocks: {n}",
     "blockBrowser.empty": "No blocks match this filter",
@@ -455,6 +456,7 @@ export const translations = {
     "editor.tagDeleteForever": "Удалить везде",
     "editor.tagDeleteForeverConfirm": "Тег используется в {n} блоках. Удалить его везде?",
     "editor.tagDeleteForeverError": "Не удалось удалить тег везде. Возможно, он остался в части заметок — попробуйте ещё раз.",
+    "editor.tagAddEmpty": "Больше нет доступных тегов",
 
     "blockBrowser.count": "Блоков: {n}",
     "blockBrowser.empty": "По этому набору тегов ничего не найдено",
@@ -673,6 +675,7 @@ export const translations = {
     "editor.tagDeleteForever": "מחיקה מוחלטת",
     "editor.tagDeleteForeverConfirm": "התג הזה נמצא ב-{n} בלוקים. למחוק אותו לגמרי?",
     "editor.tagDeleteForeverError": "מחיקת התג נכשלה. ייתכן שהוא עדיין נמצא בחלק מהפתקים — נסה/י שוב.",
+    "editor.tagAddEmpty": "אין עוד תגים זמינים",
 
     "blockBrowser.count": "בלוקים: {n}",
     "blockBrowser.empty": "לא נמצאו בלוקים בסינון הזה",

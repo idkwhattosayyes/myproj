@@ -16,11 +16,18 @@ const EDGE_PAD_PX = 8;
  * @param {number} x
  * @param {number} y
  * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void}[]} items
+ * @param {string} [emptyMessage] — показать вместо пустой полосы, если items пуст (например "нет доступных тегов")
  * @returns {() => void} закрыть меню programmatically
  */
-export function openAnchoredMenu(x, y, items) {
+export function openAnchoredMenu(x, y, items, emptyMessage) {
   const menu = document.createElement("div");
   menu.className = "context-menu";
+  if (!items.length && emptyMessage) {
+    const empty = document.createElement("div");
+    empty.className = "context-menu-empty";
+    empty.textContent = emptyMessage;
+    menu.appendChild(empty);
+  }
   items.forEach((item) => {
     const btn = document.createElement("button");
     btn.type = "button";

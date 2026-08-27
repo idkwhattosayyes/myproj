@@ -1745,7 +1745,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           ]);
         },
       }));
-    openAnchoredMenu(x, y, items);
+    openAnchoredMenu(x, y, items, t("editor.tagAddEmpty"));
   }
 
   async function openTagCreateEditor(lines, onApplied = () => {}) {

@@ -460,6 +460,15 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 
 .context-menu-item:hover { background: #f3f4f6; }
 
+/* Показывается вместо пустой полосы, когда openAnchoredMenu получает пустой
+   items — например список тегов "+" → Add, когда все теги уже на блоке. */
+.context-menu-empty {
+  padding: 0.45rem 0.6rem;
+  color: #8b95a1;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 @media (max-width: 780px) {
   .panel-layout { flex-direction: column; }
   .panel-folders,
