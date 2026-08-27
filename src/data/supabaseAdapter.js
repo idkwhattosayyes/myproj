@@ -516,6 +516,59 @@ export const supabaseAdapter = {
       return data ? mapTagRow(data) : null;
     });
   },
+
+  // Полная очистка данных залогиненного пользователя — кнопка "Clear all
+  // data" (settingsPanel.js). До этой правки метод не входил в гибридную
+  // маршрутизацию storageAdapter.js — Supabase-данные переживали "очистку"
+  // целиком.
+  //
+  // notes/folders/tags удаляются параллельно между собой: прямых FK друг на
+  // друга у них нет, а "on delete cascade" сам уносит note_folder_links,
+  // folder_folder_links, blocks, block_tags (от notes ИЛИ tags), images и
+  // drawings (от notes) — см. supabase/schema.sql. favorites/pins —
+  // полиморфная колонка item_id БЕЗ FK на notes/folders, Postgres их не
+  // каскадит, чистим вручную явным delete (тот же паттерн, что
+  // deleteItem/deleteFolder выше). Storage — отдельная подсистема, никаким
+  // SQL cascade не покрывается вообще; id заметок читаем ДО удаления строк
+  // notes (после каскада узнать, какие note-папки были в бакете, стало бы
+  // неоткуда).
+  async clearAll() {
+    await withSaveStatus(async () => {
+      const userId = getCachedSession().user.id;
+
+      const { data: noteRows, error: noteIdsError } = await supabaseClient
+        .from("notes")
+        .select("id")
+        .eq("user_id", userId);
+      if (noteIdsError) throw noteIdsError;
+
+      const deleteRows = async (table) => {
+        const { error } = await supabaseClient.from(table).delete().eq("user_id", userId);
+        if (error) throw error;
+      };
+
+      const clearStorage = async () => {
+        await Promise.all(
+          (noteRows || []).map(async ({ id: noteId }) => {
+            const { data: files } = await supabaseClient.storage.from("note-images").list(`${userId}/${noteId}`);
+            if (files?.length) {
+              const paths = files.map((f) => `${userId}/${noteId}/${f.name}`);
+              await supabaseClient.storage.from("note-images").remove(paths).catch(() => {});
+            }
+          })
+        );
+      };
+
+      await Promise.all([
+        deleteRows("notes"),
+        deleteRows("folders"),
+        deleteRows("tags"),
+        deleteRows("favorites"),
+        deleteRows("pins"),
+        clearStorage(),
+      ]);
+    });
+  },
 };
 
 // Производный индекс blocks/block_tags — полный снос-и-пересоздание строк
