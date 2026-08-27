@@ -17,12 +17,36 @@ export async function uploadPhoto(noteId, blob) {
   return uploadPhotoToStorage(noteId, blob);
 }
 
+// Кэш уже resolved signed URL по storage_path — без него каждое открытие/
+// переключение заметки с фото генерило бы новые подписанные ссылки заново,
+// даже для уже отрисованных в этой сессии. Реальный TTL ссылки — 3600с
+// (SIGNED_URL_TTL_SECONDS в supabaseAdapter.js), держим кэш валидным чуть
+// меньше, с запасом. Инвалидация при редактировании фото не нужна:
+// "Изменить" создаёт НОВЫЙ storage_path (attachBackgroundUpload в
+// richTextEditor.js), старая запись в кэше просто больше не запрашивается.
+const photoUrlCache = new Map(); // storagePath -> { url, expiresAt }
+const PHOTO_URL_TTL_MS = 3000 * 1000; // с запасом от реальных 3600с
+
 // Свежие signed URL для уже залитых фото — по путям, сохранённым в content
 // как data-storage-path. Гость — пустая карта (у него таких атрибутов не
 // бывает вообще, вызывающий код и не будет спрашивать).
 export async function resolvePhotoSources(paths) {
   if (!getCachedSession() || !paths.length) return new Map();
-  return createSignedUrlMap(paths);
+  const now = Date.now();
+  const result = new Map();
+  const missing = [];
+  for (const path of paths) {
+    const cached = photoUrlCache.get(path);
+    if (cached && cached.expiresAt > now) result.set(path, cached.url);
+    else missing.push(path);
+  }
+  if (!missing.length) return result;
+  const fetched = await createSignedUrlMap(missing);
+  fetched.forEach((url, path) => {
+    photoUrlCache.set(path, { url, expiresAt: now + PHOTO_URL_TTL_MS });
+    result.set(path, url);
+  });
+  return result;
 }
 
 // Точечное удаление файла (замена версии при "Изменить", или файл только что
