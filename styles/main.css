@@ -100,7 +100,10 @@ button {
   color: #1f2328;
 }
 
-/* Настройки: одна кнопка-шестерёнка в углу + выпадающая панель под ней */
+/* Настройки: одна кнопка-шестерёнка в углу + выпадающая панель под ней.
+   zoom: та же компенсация браузерного зума, что уже есть у .search-bar
+   (search.css) — оба position:fixed, координаты не пересчитываем (в отличие
+   от .panel, у которой position:sticky и своя система координат). */
 .settings-btn {
   position: fixed;
   top: 1rem;
@@ -108,6 +111,7 @@ button {
   z-index: 600;
   width: 2.2rem;
   height: 2.2rem;
+  zoom: var(--ui-scale, 1);
   border: 1px solid #d0d7de;
   border-radius: 50%;
   background: #ffffff;
@@ -128,6 +132,7 @@ button {
   right: 1rem;
   z-index: 600;
   width: 15rem;
+  zoom: var(--ui-scale, 1);
   padding: 0.9rem;
   border: 1px solid #d0d7de;
   border-radius: 10px;
