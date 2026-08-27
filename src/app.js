@@ -41,14 +41,19 @@ async function renderRoute() {
   // Обработчик Esc от предыдущего раздела не должен пережить переход.
   setViewEscape(null);
   view.classList.toggle("app-view--home", route === "home");
-  // Между этой строкой и await ниже — реальный сетевой round-trip
-  // (Supabase-адаптер): без плейсхолдера экран пуст без единого признака,
-  // что что-то происходит. routes[route] сам перезапишет это содержимым,
-  // когда данные будут готовы.
-  view.innerHTML = '<div class="route-loading"><div class="spinner"></div></div>';
   document.documentElement.lang = getLang();
   // Полоска поиска живёт вне маршрутов, но её охват зависит от раздела.
   refreshSearchScope(route);
+  // Спиннер — только если рендер реально затянется (плохая сеть и т.п.), а не
+  // на каждый переход: ни один из трёх роутов (renderPanelSection/
+  // renderHomeView/renderCalendarView) не чистит view до готовности своих
+  // данных, так что старое содержимое спокойно остаётся на экране, пока
+  // routes[route] не заменит его целиком — мгновенные переходы (гость, уже
+  // прогретый кэш) не мигают спиннером, которого никто не успел бы разглядеть.
+  // 150мс — порог "воспринимается как мгновенное" (Nielsen).
+  const spinnerTimer = setTimeout(() => {
+    view.innerHTML = '<div class="route-loading"><div class="spinner"></div></div>';
+  }, 150);
   try {
     await routes[route](view, param);
   } catch (error) {
@@ -57,6 +62,8 @@ async function renderRoute() {
     // лжёт, что что-то ещё происходит.
     console.error(error);
     view.innerHTML = `<p class="placeholder">${t("app.routeError")}</p>`;
+  } finally {
+    clearTimeout(spinnerTimer);
   }
 }
 
