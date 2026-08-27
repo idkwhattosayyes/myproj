@@ -38,7 +38,10 @@ create table public.notes (
 );
 
 create index notes_user_id_idx on public.notes(user_id);
-create index notes_sort_order_idx on public.notes(user_id, sort_order);
+-- partial-индексы под реальные запросы адаптера (активный список / Корзина,
+-- каждый со своей сортировкой) — см. 006_performance_indexes.sql
+create index notes_active_sort_idx on public.notes(user_id, sort_order) where deleted_at is null;
+create index notes_trashed_deleted_idx on public.notes(user_id, deleted_at desc) where deleted_at is not null;
 
 alter table public.notes enable row level security;
 
@@ -61,7 +64,9 @@ create table public.folders (
 );
 
 create index folders_user_id_idx on public.folders(user_id);
-create index folders_sort_order_idx on public.folders(user_id, sort_order);
+-- см. комментарий у notes выше — тот же партиальный паттерн
+create index folders_active_sort_idx on public.folders(user_id, sort_order) where deleted_at is null;
+create index folders_trashed_deleted_idx on public.folders(user_id, deleted_at desc) where deleted_at is not null;
 
 alter table public.folders enable row level security;
 
