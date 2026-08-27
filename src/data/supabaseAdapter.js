@@ -82,7 +82,21 @@ function mapFolderRow(row, parentFolderIds, isFavorite, pinned) {
 // Так проще и читаемее, чем PostgREST embed-синтаксис с двумя внешними ключами
 // folder_folder_links → folders (parent/child) — там пришлось бы явно называть
 // авто-сгенерированные имена констрейнтов.
-async function fetchFolderIdsByNoteId() {
+// In-flight дедупликация: getItems()+getTrashedItems() (или getFolders()+
+// getTrashedFolders()) внутри ОДНОЙ загрузки страницы просят одну и ту же
+// таблицу связей целиком дважды (теперь ещё и параллельно — см. Promise.all
+// в renderPanelSection, panelSection.js). Кэш НЕ постоянный: держит промис
+// только на время его выполнения, следующая отдельная загрузка снова бьёт
+// по сети.
+function dedupeInFlight(fetcher) {
+  let pending = null;
+  return () => {
+    if (!pending) pending = fetcher().finally(() => (pending = null));
+    return pending;
+  };
+}
+
+async function fetchFolderIdsByNoteIdRaw() {
   const { data, error } = await supabaseClient.from("note_folder_links").select("note_id, folder_id");
   if (error) throw error;
   const map = new Map();
@@ -93,6 +107,7 @@ async function fetchFolderIdsByNoteId() {
   }
   return map;
 }
+const fetchFolderIdsByNoteId = dedupeInFlight(fetchFolderIdsByNoteIdRaw);
 
 async function fetchFolderIdsForNote(noteId) {
   const { data, error } = await supabaseClient.from("note_folder_links").select("folder_id").eq("note_id", noteId);
@@ -109,7 +124,7 @@ async function replaceNoteFolderLinks(noteId, folderIds) {
   if (insError) throw insError;
 }
 
-async function fetchParentFolderIdsByFolderId() {
+async function fetchParentFolderIdsByFolderIdRaw() {
   const { data, error } = await supabaseClient.from("folder_folder_links").select("parent_folder_id, child_folder_id");
   if (error) throw error;
   const map = new Map();
@@ -120,6 +135,7 @@ async function fetchParentFolderIdsByFolderId() {
   }
   return map;
 }
+const fetchParentFolderIdsByFolderId = dedupeInFlight(fetchParentFolderIdsByFolderIdRaw);
 
 async function fetchParentFolderIdsFor(folderId) {
   const { data, error } = await supabaseClient.from("folder_folder_links").select("parent_folder_id").eq("child_folder_id", folderId);
