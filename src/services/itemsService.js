@@ -3,6 +3,7 @@ import { createFolderModel, createItemModel } from "../data/models.js";
 import { parentIdsOf, isAncestorOf } from "../data/folderTree.js";
 import * as blockTagsService from "./blockTagsService.js";
 import * as photoStorageService from "./photoStorageService.js";
+import { getCachedContent, setCachedContent } from "./noteContentCache.js";
 
 const storage = getStorage();
 
@@ -102,10 +103,39 @@ export async function listItems(section) {
   return storage.getItems(section);
 }
 
+// Полная выборка (с content) — только там, где нужен весь текст сразу по
+// всем заметкам: поиск (searchService.js), экспорт (settingsPanel.js).
+// Обычный listItems() выше отдаёт заметки без content.
+export async function listItemsWithContent(section) {
+  return storage.getItemsWithContent(section);
+}
+
 // Заметка по id, без фильтра по разделу — нужна для внутренних ссылок: ссылка
 // может вести на заметку из другого раздела (общий пул tasks/documents).
 export async function getItem(id) {
   return storage.getItem(id);
+}
+
+// Ленивая подгрузка content для заметки, которую список отдал урезанной (см.
+// listItems выше). Дедуп по noteId: два быстрых клика по одной ещё грузящейся
+// заметке не должны улететь двумя запросами — второй просто дожидается той
+// же заявки.
+const pendingContentFetches = new Map(); // noteId -> Promise<string>
+
+export async function getItemContent(id) {
+  const cached = getCachedContent(id);
+  if (cached !== undefined) return cached;
+  if (pendingContentFetches.has(id)) return pendingContentFetches.get(id);
+  const promise = storage
+    .getItem(id)
+    .then((full) => {
+      const content = full ? full.content : "";
+      setCachedContent(id, content);
+      return content;
+    })
+    .finally(() => pendingContentFetches.delete(id));
+  pendingContentFetches.set(id, promise);
+  return promise;
 }
 
 export async function createItem(section, { title, content, folderIds, isFavorite }) {
@@ -113,6 +143,7 @@ export async function createItem(section, { title, content, folderIds, isFavorit
   const created = await storage.createItem(item);
   await blockTagsService.syncBlocksIndex(created.id, created.content);
   await photoStorageService.syncPhotosIndex(created.id, created.content);
+  setCachedContent(created.id, created.content);
   return created;
 }
 
@@ -122,6 +153,7 @@ export async function createItemFromModel(model) {
   const created = await storage.createItem(model);
   await blockTagsService.syncBlocksIndex(created.id, created.content);
   await photoStorageService.syncPhotosIndex(created.id, created.content);
+  setCachedContent(created.id, created.content);
   return created;
 }
 
@@ -134,6 +166,10 @@ export async function updateItem(id, patch) {
   if ("content" in patch) {
     await blockTagsService.syncBlocksIndex(id, patch.content);
     await photoStorageService.syncPhotosIndex(id, patch.content);
+    // Кэш ленивой подгрузки (noteContentCache.js) должен оставаться
+    // актуальным после правки — иначе после ухода из раздела Notes и
+    // возврата отдаст старый текст.
+    setCachedContent(id, patch.content);
   }
   return updated;
 }

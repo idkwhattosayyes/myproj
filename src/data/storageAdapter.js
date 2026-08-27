@@ -15,6 +15,7 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {(id: string) => Promise<void>} deleteFolder
  * @property {(section: string) => Promise<Object[]>} getTrashedFolders
  * @property {(section: string) => Promise<Object[]>} getItems
+ * @property {(section: string) => Promise<Object[]>} getItemsWithContent
  * @property {(id: string) => Promise<Object|null>} getItem
  * @property {(item: Object) => Promise<Object>} createItem
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateItem
@@ -53,6 +54,7 @@ const NOTES_AND_FOLDERS_METHODS = [
   "deleteFolder",
   "getTrashedFolders",
   "getItems",
+  "getItemsWithContent",
   "getItem",
   "createItem",
   "updateItem",

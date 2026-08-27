@@ -161,7 +161,7 @@ async function runExport() {
   const storage = getStorage();
   const [folders, items, trashedFolders, trashedItems] = await Promise.all([
     storage.getFolders("notes"),
-    storage.getItems("notes"),
+    storage.getItemsWithContent("notes"), // экспорт должен унести полный текст заметок
     storage.getTrashedFolders("notes"),
     storage.getTrashedItems("notes"),
   ]);

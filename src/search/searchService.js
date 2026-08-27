@@ -45,7 +45,7 @@ export async function search(rawQuery, scope) {
 async function searchItems(query) {
   const [folders, items] = await Promise.all([
     itemsService.listFolders("notes"),
-    itemsService.listItems("notes"),
+    itemsService.listItemsWithContent("notes"), // поиск идёт по телу заметки — нужен полный content
   ]);
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const groups = [];

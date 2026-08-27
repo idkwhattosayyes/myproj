@@ -121,6 +121,11 @@ export const localStorageAdapter = {
       .map(normalizeItem)
       .sort(byDeletedAtDesc);
   },
+  // У гостя content и так никогда не обрезан — тот же метод под именем,
+  // которое ждут searchService.js/settingsPanel.js (см. supabaseAdapter.js).
+  async getItemsWithContent(section) {
+    return localStorageAdapter.getItems(section);
+  },
   async getItem(id) {
     const item = readCollection(STORAGE_KEYS.items).find((item) => item.id === id);
     return item ? normalizeItem(item) : null;

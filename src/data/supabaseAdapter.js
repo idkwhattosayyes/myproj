@@ -349,7 +349,32 @@ export const supabaseAdapter = {
   },
 
   // Items ----------------------------------------------------------------
+  // content сознательно не выбран — список показывает только title, а content
+  // заметок разом был самым тяжёлым полем в этом запросе. row.content
+  // отсутствует → mapItemRow положит сюда undefined — это СЕНТИНЕЛ "ещё не
+  // загружено" для panelSection.js (isItemEmpty, renderDetail), отличимый от
+  // пустой строки. Полную версию см. getItemsWithContent ниже.
   async getItems() {
+    const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
+      supabaseClient
+        .from("notes")
+        .select("id, title, page_mode, open_at_end, sort_order, created_at, updated_at, activity_at, deleted_at")
+        .is("deleted_at", null)
+        .order("sort_order"),
+      fetchFolderIdsByNoteId(),
+      fetchFavoriteIdSet("note"),
+      fetchPinsByItemId("note"),
+    ]);
+    if (itemsResult.error) throw itemsResult.error;
+    return itemsResult.data.map((row) =>
+      mapItemRow(row, folderIdsByNote.get(row.id) || [], favoriteIds.has(row.id), pinsByItem.get(row.id) || [])
+    );
+  },
+
+  // Полная выборка С content — не для списка (см. getItems выше), а для мест,
+  // которым реально нужен весь текст сразу по всем заметкам: полнотекстовый
+  // поиск (searchService.js) и экспорт данных (settingsPanel.js).
+  async getItemsWithContent() {
     const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
       supabaseClient.from("notes").select("*").is("deleted_at", null).order("sort_order"),
       fetchFolderIdsByNoteId(),

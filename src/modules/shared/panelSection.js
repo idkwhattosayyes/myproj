@@ -163,6 +163,11 @@ function saveNoteHistory(itemId, state) {
 // на заметке с фото в base64 один такой разбор стоил 38 мс, весь список — 60 мс,
 // и они целиком ложились в момент отпускания перетаскиваемой строки.
 function isItemEmpty(item) {
+  // Список отдаёт заметки без content, пока их не открыли в этой сессии
+  // (см. supabaseAdapter.getItems). Без content нельзя ДОКАЗАТЬ пустоту —
+  // считаем "не подтверждено", обычный флоу удаления с подтверждением, а не
+  // мгновенный крестик.
+  if (item.content === undefined) return false;
   const content = item.content || "";
   if (/<img\b/i.test(content)) return false;
   const text = content.replace(/<[^>]*>/g, "");
@@ -1672,6 +1677,35 @@ function renderDetail(container, config, state) {
 
   if (!item) {
     detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
+    return;
+  }
+
+  // Список отдал урезанный объект без content — первое открытие этой заметки
+  // за сессию (см. supabaseAdapter.getItems). Пока грузится один запрос —
+  // плейсхолдер вместо редактора: пересоздать редактор на полпути, когда
+  // content долетит, сложнее и рискованнее короткой паузы (createRichTextEditor
+  // не умеет подменить content на живой, уже отрисованной инстанции).
+  if (item.content === undefined) {
+    detailEl.innerHTML = `
+      <div class="item-detail">
+        <h2 class="trash-detail-title">${escapeHtml(item.title || t("panel.untitled"))}</h2>
+        <p class="placeholder">${t("panel.loadingItem")}</p>
+      </div>`;
+    const requestedId = item.id;
+    itemsService.getItemContent(requestedId).then((content) => {
+      // Ищем заметку в state.items ЗАНОВО, а не полагаемся на захваченную
+      // ссылку item — optimisticField/optimisticBulk (rename/favorite/pin
+      // на любой заметке) заменяют весь массив новыми объектами через spread,
+      // и мутация старой ссылки тогда осталась бы не видна нигде.
+      const current = state.items.find((i) => i.id === requestedId);
+      if (current) current.content = content;
+      // Гонка: пока грузилось, могли открыть другую заметку/корзину. Тогда не
+      // трогаем экран — полный рендер пересоздал бы чужой уже открытый
+      // редактор и вырвал бы курсор/прокрутку у заметки, которую сейчас
+      // реально читают или печатают.
+      if (state.selectedTrash || state.selectedItemId !== requestedId) return;
+      renderDetail(container, config, state);
+    });
     return;
   }
 
