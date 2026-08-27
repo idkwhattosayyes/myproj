@@ -155,8 +155,8 @@ button {
   z-index: 600;
   padding: 0.25rem 0.6rem;
   border-radius: 6px;
-  background: rgba(36, 41, 47, 0.55);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(36, 41, 47, 0.38);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 0.72rem;
   box-shadow: none;
   /* Не мешает кликам под собой — плашку саму никогда не кликают. */
