@@ -150,7 +150,12 @@ function renderPanel() {
   panelEl.querySelector('[data-action="login"]')?.addEventListener("click", async () => {
     closePanel();
     await openAuthModal();
-    if (getCachedSession()) location.reload();
+    if (getCachedSession()) {
+      // Владелец может залогиниться из любого раздела — после входа всегда
+      // должен оказаться на главной, а не там, где стояли настройки.
+      location.hash = "#/";
+      location.reload();
+    }
   });
 }
 
