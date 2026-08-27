@@ -431,7 +431,7 @@ function render(container, config, state) {
         <div class="panel-header">
           <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
           <span class="panel-title">${folderIcon()}${t("panel.folders")}</span>
-          <button type="button" class="btn btn-small" data-action="new-folder" title="${t("panel.newFolder")}">+</button>
+          <button type="button" class="btn btn-small panel-header-add" data-action="new-folder" title="${t("panel.newFolder")}">+</button>
         </div>
         ${listTab}
         <div class="panel-body" data-role="folder-body"></div>
@@ -441,7 +441,7 @@ function render(container, config, state) {
         <div class="panel-header">
           <button type="button" class="panel-toggle" data-action="toggle-list" title="${t("panel.togglePanel")}">☰</button>
           <span class="panel-title" data-role="list-title">${t("panel.all")}</span>
-          <button type="button" class="btn btn-small" data-action="new-item" title="${t("panel.newItem")}">+</button>
+          <button type="button" class="btn btn-small panel-header-add" data-action="new-item" title="${t("panel.newItem")}">+</button>
         </div>
         <div class="panel-body" data-role="list-body"></div>
       </section>
