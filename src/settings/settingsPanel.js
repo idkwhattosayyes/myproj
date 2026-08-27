@@ -9,6 +9,7 @@ import { escapeHtml } from "../utils/dom.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
 import { getState as getHomeCirclesState } from "../modules/home/customCircles.js";
+import { showLoadingOverlay } from "../utils/loadingOverlay.js";
 
 // Одна шестерёнка в углу вместо россыпи плавающих переключателей: язык,
 // обводка панелей и опасное действие "очистить данные" живут в одной панели.
@@ -232,9 +233,14 @@ async function runImport() {
       if (!folders.length && !items.length) return;
       // Дерево выбирает только папки и заметки — кружки, календарь и теги блоков
       // берём из файла как есть. Кружок на невыбранную заметку importData отбросит сам.
+      // transferPicker уже закрылся к этому моменту — без оверлея тяжёлый
+      // importData (последовательные записи по всем папкам/заметкам) крутится
+      // за голым пустым экраном без единого признака, что что-то происходит.
+      const hideLoading = showLoadingOverlay();
       try {
         await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar, blockTags: data.blockTags });
       } catch {
+        hideLoading();
         // Конфликт имени тега сам по себе больше не валит импорт (см.
         // uniqueTagName в dataTransfer.js) — сюда попадают только настоящие сбои
         // (сеть, квота и т.п.). Общий индикатор сохранения в углу в этот момент
@@ -243,6 +249,7 @@ async function runImport() {
         await openConfirm({ message: t("settings.importFailed") });
         return;
       }
+      // Оверлей нарочно не скрываем на успехе — reload и так сотрёт всё.
       location.reload();
     },
   });
