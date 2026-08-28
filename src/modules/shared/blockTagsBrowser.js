@@ -143,6 +143,11 @@ export function openBlockTagsBrowser(tagIds) {
     const addBtn = filterEl.querySelector('[data-role="add-filter"]');
     addBtn.addEventListener("click", () => {
       const rect = addBtn.getBoundingClientRect();
+      // Список закрывает openAnchoredMenu только после реального Edit/Delete,
+      // не сразу на ПКМ (см. keepOpenOnContextMenu ниже) — до этого момента
+      // closeList присвоится настоящей функцией, замыкания в items её видят
+      // по ссылке на let, а не по значению на момент создания.
+      let closeList = () => {};
       const items = [...tagRegistry.values()]
         .filter((tag) => !selectedTagIds.includes(tag.id))
         .map((tag) => ({
@@ -151,15 +156,35 @@ export function openBlockTagsBrowser(tagIds) {
             selectedTagIds.push(tag.id);
             reload();
           },
-          // ПКМ на теге в этом списке — удалить тег целиком. Изолировано
+          // ПКМ на теге в этом списке — Edit/Delete тега целиком. Изолировано
           // только здесь, в панели фильтров полноэкранного меню — ни мини-меню
           // на границе блока, ни раздел Notes эта функция не трогает. Тот же
-          // приём подсчёта/подтверждения/сноса, что уже есть у "Delete
-          // everywhere" в openAddExistingMenu ниже, просто отдельная копия —
-          // сознательно не тянем её сюда общей функцией, чтобы не привязывать
-          // два независимых места друг к другу.
+          // приём подсчёта/подтверждения/сноса для удаления, что уже есть у
+          // "Delete everywhere" в openAddExistingMenu ниже, просто отдельная
+          // копия — сознательно не тянем её сюда общей функцией, чтобы не
+          // привязывать два независимых места друг к другу.
+          keepOpenOnContextMenu: true,
           onContextMenu: (menuX, menuY) => {
             openAnchoredMenu(menuX, menuY, [
+              {
+                label: t("editor.tagEditItem"),
+                onClick: async () => {
+                  await openBlockTagEditor({
+                    mode: "edit",
+                    id: tag.id,
+                    name: tag.name,
+                    color: tag.color,
+                    onSubmit: async ({ name, color }) => {
+                      const result = await blockTagsService.updateTag(tag.id, { name, color });
+                      if (result.error === "taken") return { ok: false, message: t("editor.tagNameTaken") };
+                      tagRegistry.set(result.tag.id, result.tag);
+                      reload();
+                      return { ok: true };
+                    },
+                  });
+                  closeList();
+                },
+              },
               {
                 label: t("editor.tagDeleteForever"),
                 onClick: async () => {
@@ -178,12 +203,13 @@ export function openBlockTagsBrowser(tagIds) {
                   }
                   tagRegistry.delete(tag.id);
                   reload();
+                  closeList();
                 },
               },
             ]);
           },
         }));
-      openAnchoredMenu(rect.left, rect.bottom, items);
+      closeList = openAnchoredMenu(rect.left, rect.bottom, items);
     });
   }
 

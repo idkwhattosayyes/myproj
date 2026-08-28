@@ -15,7 +15,7 @@ const EDGE_PAD_PX = 8;
  *
  * @param {number} x
  * @param {number} y
- * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void}[]} items
+ * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void, keepOpenOnContextMenu?: boolean}[]} items
  * @param {string} [emptyMessage] — показать вместо пустой полосы, если items пуст (например "нет доступных тегов")
  * @returns {() => void} закрыть меню programmatically
  */
@@ -44,10 +44,14 @@ export function openAnchoredMenu(x, y, items, emptyMessage) {
     if (item.onContextMenu) {
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        closeMenu();
-        // Координаты реального клика, а не x/y этого меню — иначе вложенное
-        // меню (например "Delete everywhere") открывалось бы там, где стоял
-        // "+"/"Add", а не там, где пользователь кликнул по пункту списка.
+        // keepOpenOnContextMenu — список остаётся открытым под вложенным
+        // меню (например список тегов фильтра в blockTagsBrowser.js): ПКМ на
+        // пункте раскрывает Edit/Delete не теряя место в списке. По умолчанию
+        // выключено и ведёт себя как раньше — закрывается сразу, иначе
+        // вложенное меню (например "Delete everywhere") открывалось бы там,
+        // где стоял "+"/"Add".
+        if (!item.keepOpenOnContextMenu) closeMenu();
+        // Координаты реального клика, а не x/y этого меню.
         item.onContextMenu(event.clientX, event.clientY);
       });
     }
