@@ -787,16 +787,20 @@ button.rte-link-preview-row:hover {
   opacity: 0.7;
 }
 
-/* Всплывающее меню тегов блока — по наведению/клику на полоску (см.
-   showBlockTagsPanel в richTextEditor.js). position:absolute внутри .rte-page,
-   как и точки выше — координаты страничные, скролл двигает панель вместе с
-   текстом бесплатно, отдельного пересчёта на scroll/resize не нужно. Тот же
-   визуальный язык, что у .rte-selection-toolbar. contenteditable="false" +
-   user-select: none — панель нельзя "обвести" мышью как обычный текст (ТЗ). */
+/* Всплывающее меню тегов блока — по наведению/клику на полоску, ПКМ на
+   блоке (см. showBlockTagsPanel в richTextEditor.js). position:fixed,
+   left/top в координатах вьюпорта считаются в JS один раз при открытии (от
+   точки клика или от границ строки) — тот же принцип, что у .context-menu
+   (anchoredMenu.js) и .rte-selection-toolbar: скролл страницы положение НЕ
+   пересчитывает, панель остаётся на экране там, где её открыли.
+   contenteditable="false" + user-select: none — панель нельзя "обвести"
+   мышью как обычный текст (ТЗ). */
 .rte-block-panel {
-  position: absolute;
-  right: 8px;
-  z-index: 20;
+  position: fixed;
+  /* Как у .context-menu/.rte-selection-toolbar (1000) — раньше здесь стояло
+     20, на скролле пряталось под .rte-toolbar.is-floating (500). Теперь
+     панель — такой же fixed-попап, как и они. */
+  z-index: 1000;
   min-width: 160px;
   max-width: 240px;
   padding: 0.3rem;

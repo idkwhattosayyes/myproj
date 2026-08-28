@@ -1782,6 +1782,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   let blockTagsHoverTimer = null;
   const BLOCK_EDGE_BAND_PX = 6;
   const BLOCK_TAGS_HOVER_DELAY = 1000;
+  const BLOCK_PANEL_EDGE_PAD_PX = 8;
 
   function closeBlockTagsPanel() {
     clearTimeout(blockTagsHoverTimer);
@@ -1830,12 +1831,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   /**
    * @param {Element} line любая строка блока — по ней определяются блок и теги
-   * @param {Element | null} anchorLine у какой строки показать панель. По
-   *   умолчанию у начала блока (панель висит на его верхней границе, откуда её
-   *   и открывают). Из контекстного меню передаётся строка под курсором: у
-   *   блока выше экрана верхняя граница за кадром, и панель уехала бы туда же.
+   * @param {Element | null} anchorLine у какой строки показать панель, если
+   *   clickPoint не передан. По умолчанию у начала блока. Из контекстного
+   *   меню передаётся строка под курсором: у блока выше экрана верхняя
+   *   граница за кадром, и панель уехала бы туда же.
+   * @param {{x: number, y: number} | null} clickPoint точка реального клика
+   *   (ЛКМ по границе, ПКМ по блоку) — панель открывается прямо там и больше
+   *   не пересчитывается на скролл, тем же принципом, что openAnchoredMenu/
+   *   showSelectionToolbar. Без клика (триггер по наведению) точка берётся от
+   *   границ anchorLine.
    */
-  function showBlockTagsPanel(line, anchorLine = null) {
+  function showBlockTagsPanel(line, anchorLine = null, clickPoint = null) {
     closeBlockTagsPanel();
     const page = line.closest(".rte-page");
     const blockId = line.dataset.blockId;
@@ -1867,11 +1873,6 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       });
       row.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        // Без этого событие всплывает до contentEl — там свой contextmenu-
-        // обработчик находит тот же blockId (panel — тоже <div>, LINE_SELECTOR
-        // его пропускает) и тут же перекрывает это меню своим ("Dissolve
-        // block"/режим страницы).
-        event.stopPropagation();
         openBlockTagContextMenu(event.clientX, event.clientY, page, blockId, tagId);
       });
       panel.appendChild(row);
@@ -1887,13 +1888,25 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // и показать новый тег (ТЗ раунд 3 п.3). Своего частичного обновления у
       // панели нет — повторный showBlockTagsPanel и есть refresh, он сам
       // начинается с закрытия предыдущей.
-      openTagAddCreateMenu(rect.left, rect.bottom, blockLines, () => showBlockTagsPanel(line, anchorLine));
+      openTagAddCreateMenu(rect.left, rect.bottom, blockLines, () => showBlockTagsPanel(line, anchorLine, clickPoint));
     });
     panel.appendChild(addRow);
 
-    page.appendChild(panel);
+    // body, не page: панель — fixed-попап вроде openAnchoredMenu/
+    // showSelectionToolbar, а .rte-page может иметь transform:scale (зум,
+    // см. pageZoom() ниже) — трансформация на предке увела бы fixed-координаты
+    // от вьюпорта к заскейленной странице.
+    document.body.appendChild(panel);
     const anchor = anchorLine || topLine;
-    panel.style.top = `${clamp(anchor.offsetTop, 0, Math.max(0, page.offsetHeight - panel.offsetHeight))}px`;
+    const point = clickPoint || (() => {
+      const rect = anchor.getBoundingClientRect();
+      return { x: rect.right, y: rect.top };
+    })();
+    const box = panel.getBoundingClientRect();
+    const fitsBelow = point.y + box.height + BLOCK_PANEL_EDGE_PAD_PX <= window.innerHeight;
+    const top = fitsBelow ? point.y : point.y - box.height;
+    panel.style.left = `${clamp(point.x, BLOCK_PANEL_EDGE_PAD_PX, window.innerWidth - box.width - BLOCK_PANEL_EDGE_PAD_PX)}px`;
+    panel.style.top = `${clamp(top, BLOCK_PANEL_EDGE_PAD_PX, window.innerHeight - box.height - BLOCK_PANEL_EDGE_PAD_PX)}px`;
 
     document.addEventListener("mousedown", onBlockTagsPanelOutside, true);
     unregisterBlockTagsPanelLayer = pushLayer(closeBlockTagsPanel);
@@ -1963,7 +1976,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const line = blockEdgeLineAt(event);
     if (!line) return;
     clearTimeout(blockTagsHoverTimer);
-    showBlockTagsPanel(line);
+    showBlockTagsPanel(line, null, { x: event.clientX, y: event.clientY });
   });
   // ---------------------------------------------------------------------
 
