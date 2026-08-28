@@ -151,6 +151,37 @@ export function openBlockTagsBrowser(tagIds) {
             selectedTagIds.push(tag.id);
             reload();
           },
+          // ПКМ на теге в этом списке — удалить тег целиком. Изолировано
+          // только здесь, в панели фильтров полноэкранного меню — ни мини-меню
+          // на границе блока, ни раздел Notes эта функция не трогает. Тот же
+          // приём подсчёта/подтверждения/сноса, что уже есть у "Delete
+          // everywhere" в openAddExistingMenu ниже, просто отдельная копия —
+          // сознательно не тянем её сюда общей функцией, чтобы не привязывать
+          // два независимых места друг к другу.
+          onContextMenu: (menuX, menuY) => {
+            openAnchoredMenu(menuX, menuY, [
+              {
+                label: t("editor.tagDeleteForever"),
+                onClick: async () => {
+                  const count = (await blockTagsService.findBlocks([tag.id])).length;
+                  if (count > 0) {
+                    const ok = await openConfirm({ message: t("editor.tagDeleteForeverConfirm").replace("{n}", String(count)) });
+                    if (!ok) return;
+                  }
+                  try {
+                    await blockTagsService.deleteTag(tag.id);
+                  } catch {
+                    // Частичный сбой уже мог вычистить тег из части заметок —
+                    // не молчим, иначе тег останется "дырявым" незамеченным.
+                    await openAlert({ message: t("editor.tagDeleteForeverError") });
+                    return;
+                  }
+                  tagRegistry.delete(tag.id);
+                  reload();
+                },
+              },
+            ]);
+          },
         }));
       openAnchoredMenu(rect.left, rect.bottom, items);
     });
