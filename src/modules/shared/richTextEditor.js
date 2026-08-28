@@ -4313,26 +4313,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       return;
     }
 
-    const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
-
-    // Территория блока — сразу открывает панель тегов у точки клика, без
-    // промежуточного меню (тот же принцип, что и у showSelectionToolbar
-    // выше: полностью перехватывает событие, до общего меню очередь не
-    // доходит). Строку под курсором ищем так же, как getCaretLine, но от
-    // event.target, а не от текущего выделения — при ПКМ без выделения
-    // каретка могла остаться совсем в другом месте.
-    if (page) {
-      let line = event.target instanceof Element ? event.target : null;
-      while (line && line.parentElement !== page) line = line.parentElement;
-      const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
-      if (blockId) {
-        event.preventDefault();
-        showBlockTagsPanel(line, line, { x: event.clientX, y: event.clientY });
-        return;
-      }
-    }
-
     const items = getExtraMenuItems ? [...getExtraMenuItems()] : [];
+    const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
     if (page && currentPageMode === "paged" && getPages().length > 1) {
       items.push({
         label: t("editor.deletePage"),
@@ -4344,6 +4326,22 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           removePage(page);
         },
       });
+    }
+    // Быстрый доступ к панели тегов — пункт общего меню, не отдельная
+    // перехватывающая ветка (панель тегов открывается сама, только по
+    // выбору пункта). Строку под курсором ищем так же, как getCaretLine, но
+    // от event.target, а не от текущего выделения — при ПКМ без выделения
+    // каретка могла остаться совсем в другом месте.
+    if (page) {
+      let line = event.target instanceof Element ? event.target : null;
+      while (line && line.parentElement !== page) line = line.parentElement;
+      const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
+      if (blockId) {
+        items.push({
+          label: t("editor.tagPanelItem"),
+          onClick: () => showBlockTagsPanel(line, line, { x: event.clientX, y: event.clientY }),
+        });
+      }
     }
     if (!items.length) return;
     event.preventDefault();

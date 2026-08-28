@@ -256,6 +256,16 @@ export function openBlockTagsBrowser(tagIds) {
     listEl.querySelectorAll('[data-role="strip"]').forEach((strip) => {
       strip.addEventListener("click", () => showCardTagsPanel(strip, sorted[Number(strip.dataset.index)]));
     });
+    // ПКМ на любой части карточки (не только полоска) — та же панель, сразу
+    // у точки клика, без промежуточного меню.
+    listEl.querySelectorAll(".block-browser-card").forEach((card) => {
+      card.addEventListener("contextmenu", (event) => {
+        const strip = card.querySelector('[data-role="strip"]');
+        if (!strip) return;
+        event.preventDefault();
+        showCardTagsPanel(card, sorted[Number(strip.dataset.index)], { x: event.clientX, y: event.clientY });
+      });
+    });
     listEl.querySelectorAll('[data-role="body"]').forEach((body) => {
       // Двойной клик — открыть саму заметку на месте блока (ТЗ п.3), тем же
       // путём, что и клик по внутренней ссылке/кружку главной: setPendingTarget
@@ -310,7 +320,15 @@ export function openBlockTagsBrowser(tagIds) {
   }
 
   // --- Панель тегов карточки (та же, что в редакторе) ----------------------
-  function showCardTagsPanel(anchorEl, block) {
+  /**
+   * @param {Element} anchorEl полоска (клик) или сама карточка (ПКМ) — по
+   *   умолчанию, если clickPoint не передан, панель встаёт под её левым краем
+   * @param {object} block
+   * @param {{x: number, y: number} | null} [clickPoint] точка ПКМ — панель
+   *   открывается прямо там, тем же принципом, что и в редакторе
+   *   (showBlockTagsPanel/openAnchoredMenu)
+   */
+  function showCardTagsPanel(anchorEl, block, clickPoint = null) {
     if (closeCardPanel) closeCardPanel();
 
     const panel = document.createElement("div");
@@ -348,10 +366,15 @@ export function openBlockTagsBrowser(tagIds) {
     panel.appendChild(addRow);
 
     document.body.appendChild(panel);
-    const anchorRect = anchorEl.getBoundingClientRect();
     const box = panel.getBoundingClientRect();
-    panel.style.left = `${clamp(anchorRect.left, 8, window.innerWidth - box.width - 8)}px`;
-    panel.style.top = `${clamp(anchorRect.bottom + 4, 8, window.innerHeight - box.height - 8)}px`;
+    const point = clickPoint || (() => {
+      const rect = anchorEl.getBoundingClientRect();
+      return { x: rect.left, y: rect.bottom + 4 };
+    })();
+    const fitsBelow = point.y + box.height + 8 <= window.innerHeight;
+    const top = fitsBelow ? point.y : point.y - box.height;
+    panel.style.left = `${clamp(point.x, 8, window.innerWidth - box.width - 8)}px`;
+    panel.style.top = `${clamp(top, 8, window.innerHeight - box.height - 8)}px`;
 
     function onOutside(event) {
       if (!panel.contains(event.target)) closePanel();
