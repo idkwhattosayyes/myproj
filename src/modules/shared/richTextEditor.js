@@ -4313,8 +4313,26 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       return;
     }
 
-    const items = getExtraMenuItems ? [...getExtraMenuItems()] : [];
     const page = event.target instanceof Element ? event.target.closest(".rte-page") : null;
+
+    // Территория блока — сразу открывает панель тегов у точки клика, без
+    // промежуточного меню (тот же принцип, что и у showSelectionToolbar
+    // выше: полностью перехватывает событие, до общего меню очередь не
+    // доходит). Строку под курсором ищем так же, как getCaretLine, но от
+    // event.target, а не от текущего выделения — при ПКМ без выделения
+    // каретка могла остаться совсем в другом месте.
+    if (page) {
+      let line = event.target instanceof Element ? event.target : null;
+      while (line && line.parentElement !== page) line = line.parentElement;
+      const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
+      if (blockId) {
+        event.preventDefault();
+        showBlockTagsPanel(line, line, { x: event.clientX, y: event.clientY });
+        return;
+      }
+    }
+
+    const items = getExtraMenuItems ? [...getExtraMenuItems()] : [];
     if (page && currentPageMode === "paged" && getPages().length > 1) {
       items.push({
         label: t("editor.deletePage"),
@@ -4326,38 +4344,6 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
           removePage(page);
         },
       });
-    }
-    // Роспуск блока — ПКМ на пустом месте внутри его границ (выделение уже
-    // отфильтровано веткой showSelectionToolbar выше, значит сюда попадает
-    // именно "пустое место", ТЗ п.16). Строку под курсором ищем так же, как
-    // getCaretLine, но от event.target, а не от текущего выделения — при ПКМ
-    // без выделения каретка могла остаться совсем в другом месте.
-    if (page) {
-      let line = event.target instanceof Element ? event.target : null;
-      while (line && line.parentElement !== page) line = line.parentElement;
-      const blockId = line && line.matches(LINE_SELECTOR) ? line.dataset.blockId : null;
-      if (blockId) {
-        // Быстрый доступ к панели тегов: у большого блока полоска-граница может
-        // быть далеко за экраном, и кликать по ней неудобно (ТЗ раунд 5 п.5).
-        // Панель открываем у строки ПОД КУРСОРОМ, а не у начала блока — иначе
-        // она уехала бы туда же, за кадр. Выше роспуска: открывают часто,
-        // распускают редко.
-        items.push({
-          label: t("editor.tagPanelItem"),
-          onClick: () => showBlockTagsPanel(line, line),
-        });
-        items.push({
-          label: t("editor.tagDissolve"),
-          onClick: async () => {
-            const ok = await openConfirm({ message: t("editor.tagDissolveConfirm") });
-            if (!ok) return;
-            setBlockTagIds(page, blockId, []);
-            syncBlocks();
-            recordHistory();
-            onChange(serializeEditor(contentEl));
-          },
-        });
-      }
     }
     if (!items.length) return;
     event.preventDefault();
