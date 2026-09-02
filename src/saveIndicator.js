@@ -1,12 +1,14 @@
 import { t } from "./i18n/i18n.js";
 import { onSaveStatusChange } from "./utils/saveStatus.js";
 import { getCachedSession } from "./auth/authService.js";
+import { getSaveIndicatorEnabled } from "./settings/saveIndicatorSetting.js";
 
-// Плашка в углу. Гостю (localStorage) сам факт "saving"/"saved" не
-// показываем — запись мгновенная, это не несёт полезной информации. Но
-// "error" показываем и гостю тоже: единственный сигнал реального сбоя
-// записи (например переполнение квоты localStorage), см. saveStatus.js —
-// withSaveStatus вызывается в обоих адаптерах намеренно, не только ради сети.
+// Плашка в углу. "saving"/"saved" не показываем гостю (localStorage — запись
+// мгновенная, это не несёт полезной информации) и не показываем, если сам
+// индикатор выключен в настройках. Но "error" показываем всегда, независимо
+// от того и от другого: единственный сигнал реального сбоя записи (например
+// переполнение квоты localStorage), см. saveStatus.js — withSaveStatus
+// вызывается в обоих адаптерах намеренно, не только ради сети.
 let el = null;
 let hideTimer = null;
 
@@ -21,8 +23,9 @@ export function mountSaveIndicator() {
 function render(status) {
   clearTimeout(hideTimer);
   const loggedIn = !!getCachedSession();
+  const indicatorEnabled = getSaveIndicatorEnabled();
   if (status === "saving") {
-    if (!loggedIn) {
+    if (!loggedIn || !indicatorEnabled) {
       el.hidden = true;
       return;
     }
@@ -30,7 +33,7 @@ function render(status) {
     el.className = "save-indicator";
     el.hidden = false;
   } else if (status === "saved") {
-    if (!loggedIn) {
+    if (!loggedIn || !indicatorEnabled) {
       // Явно скрыть, а не просто выйти — иначе завершённая ошибка с
       // прошлого сохранения так и осталась бы висеть на экране.
       el.hidden = true;

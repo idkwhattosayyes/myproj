@@ -1,5 +1,6 @@
 import { getLang, setLang, t } from "../i18n/i18n.js";
 import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
+import { getSaveIndicatorEnabled, setSaveIndicatorEnabled } from "./saveIndicatorSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
@@ -97,6 +98,10 @@ function renderPanel() {
       <span class="settings-label">${t("settings.toggleBorders")}</span>
       <input type="checkbox" data-role="borders" ${getBorderEnabled() ? "checked" : ""}>
     </label>
+    <label class="settings-row">
+      <span class="settings-label">${t("settings.toggleSaveIndicator")}</span>
+      <input type="checkbox" data-role="save-indicator" ${getSaveIndicatorEnabled() ? "checked" : ""}>
+    </label>
     <div class="settings-row">
       <span class="settings-label">${t("settings.dataTransfer")}</span>
       <div class="settings-io">
@@ -125,6 +130,10 @@ function renderPanel() {
   panelEl.querySelector('[data-role="borders"]').addEventListener("change", (event) => {
     setBorderEnabled(event.target.checked);
     applyBorderSetting();
+  });
+
+  panelEl.querySelector('[data-role="save-indicator"]').addEventListener("change", (event) => {
+    setSaveIndicatorEnabled(event.target.checked);
   });
 
   panelEl.querySelector('[data-action="export"]').addEventListener("click", runExport);
