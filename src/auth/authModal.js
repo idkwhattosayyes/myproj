@@ -97,7 +97,13 @@ export function openAuthModal() {
         email = emailInput.value.trim();
         const { session, error } = await signInWithPassword(email, passwordInput.value);
         if (error || !session) {
-          errorEl.textContent = t("auth.errorInvalidCredentials");
+          // code "invalid_credentials" — Supabase реально отверг пару email/
+          // пароль, тут уместен свой понятный переведённый текст. Любая другая
+          // причина (сбой сети — AuthRetryableFetchError без code, недоступен
+          // сервер и т.д.) — показываем настоящее сообщение Supabase, а не
+          // один и тот же текст про пароль независимо от причины (ТЗ).
+          const isBadCredentials = !error || error.code === "invalid_credentials";
+          errorEl.textContent = isBadCredentials ? t("auth.errorInvalidCredentials") : error.message;
           errorEl.hidden = false;
           return;
         }
