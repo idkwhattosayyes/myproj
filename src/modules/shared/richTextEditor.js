@@ -4186,17 +4186,16 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (btn) bar.appendChild(btn);
     });
     document.body.appendChild(bar);
-    // Вся группа (эта панель форматирования + блок cut/copy ниже, см.
-    // showSelectionActions) держится ЛЕВЕЕ точки клика целиком, одним куском
-    // (ТЗ) — правый край панели форматирования в SIDE_GAP от клика, запас
-    // побольше GAP, чтобы курсор не оказывался вплотную к панели. По
-    // вертикали панель сперва пробует встать НАД точкой клика, а если сверху
-    // не хватает места (клик у самого верха экрана) — опускается на уровень
-    // самой точки. Клампинг по краям вьюпорта — через обычный GAP.
+    // Точка клика попадает внутрь панели, но ближе к её левому краю — на
+    // LEFT_FRACTION её ширины от левого края, а не строго у края и не целиком
+    // сбоку от панели (ТЗ): большая часть панели раскрывается вправо от
+    // клика, меньшая — влево. По вертикали панель сперва пробует встать НАД
+    // точкой клика, а если сверху не хватает места (клик у самого верха
+    // экрана) — опускается на уровень самой точки. Клампинг по краям вьюпорта.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
-    const SIDE_GAP = 24;
-    const left = anchor.x - rect.width - SIDE_GAP;
+    const LEFT_FRACTION = 0.25;
+    const left = anchor.x - rect.width * LEFT_FRACTION;
     let top = anchor.y - rect.height - GAP;
     if (top < GAP) top = anchor.y;
     bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
@@ -4211,9 +4210,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   // Блок cut/copy/paste/delete/open-as-link — прижат к правому краю панели
   // форматирования (см. showSelectionToolbar), чтобы вместе они выглядели
-  // одной группой левее точки клика, а не разъезжались по разные стороны от
-  // неё. По вертикали — сразу под панелью форматирования, если та встала на
-  // уровне клика (нет места сверху), иначе на уровне самой точки клика.
+  // одной группой, а не разъезжались по разные стороны от точки клика. По
+  // вертикали — сразу под панелью форматирования, если та встала на уровне
+  // клика (нет места сверху), иначе на уровне самой точки клика.
   function showSelectionActions(anchor, toolbarRect) {
     const el = document.createElement("div");
     el.className = "rte-selection-actions";
