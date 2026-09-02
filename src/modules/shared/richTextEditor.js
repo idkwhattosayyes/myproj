@@ -4162,11 +4162,16 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     }
   }
 
-  function showSelectionToolbar() {
+  function showSelectionToolbar(clickPoint) {
     closeSelectionToolbar();
     const selection = window.getSelection();
     if (!selection.rangeCount) return;
     const selRect = selection.getRangeAt(0).getBoundingClientRect();
+    // Точка ПКМ — если передана, панель встаёт у НЕЁ, а не у левого верхнего
+    // угла всего выделения: на длинном/многострочном выделении этот угол мог
+    // оказаться далеко от места клика (ТЗ). Без точки (страховка на случай
+    // вызова не из contextmenu) — прежнее поведение.
+    const anchor = clickPoint || { x: selRect.left, y: selRect.top };
 
     const bar = document.createElement("div");
     bar.className = "rte-selection-toolbar";
@@ -4181,17 +4186,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (btn) bar.appendChild(btn);
     });
     document.body.appendChild(bar);
-    // Панель не должна перекрывать сам выделенный текст: сперва пробуем встать
-    // над выделением, а если сверху не хватает места (выделение у самого верха
-    // экрана) — левее него. Клампинг по краям вьюпорта — позиция фиксированная.
+    // Панель не должна перекрывать текст под точкой клика: сперва пробуем
+    // встать над ней, а если сверху не хватает места (клик у самого верха
+    // экрана) — левее неё. Клампинг по краям вьюпорта — позиция фиксированная.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
-    let left = selRect.left;
-    let top = selRect.top - rect.height - GAP;
+    let left = anchor.x;
+    let top = anchor.y - rect.height - GAP;
     const above = top >= GAP;
     if (!above) {
-      left = selRect.left - rect.width - GAP;
-      top = selRect.top;
+      left = anchor.x - rect.width - GAP;
+      top = anchor.y;
     }
     bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
     bar.style.top = `${clamp(top, GAP, window.innerHeight - rect.height - GAP)}px`;
@@ -4200,18 +4205,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
     // панели с отпусканием снаружи не должно её схлопывать.
     document.addEventListener("mousedown", onSelectionToolbarOutside, true);
-    showSelectionActions(selRect, above ? bar.getBoundingClientRect() : null, bar);
+    showSelectionActions(anchor, above ? bar.getBoundingClientRect() : null);
   }
 
-  // Блок cut/copy/paste/delete/open-as-link — справа от выделенного текста, на
-  // одной строке с ним (панель форматирования выше уже не перекрывает текст,
-  // но стоит либо над, либо сбоку — не рядом с этим блоком). toolbarRect
-  // передаётся только когда панель форматирования встала НАД выделением
-  // (обычный случай) — тогда стрелка сворачивания тянется к её правому краю;
-  // если панель ушла влево (редкий случай нехватки места сверху), toolbarRect
-  // равен null и стрелка просто встаёт по правому краю самого этого блока.
-  // bar — сам элемент панели форматирования, нужен для сдвига (см. ниже).
-  function showSelectionActions(selRect, toolbarRect, bar) {
+  // Блок cut/copy/paste/delete/open-as-link — рядом с точкой клика, на той же
+  // высоте, что и она (панель форматирования уже встала либо над, либо сбоку
+  // от точки клика — см. above/below выше). toolbarRect передаётся только
+  // когда панель форматирования встала НАД точкой клика (обычный случай) —
+  // тогда этот блок прижимается к её правому краю, и вместе они выглядят одним
+  // целым; если панель ушла влево (редкий случай нехватки места сверху),
+  // toolbarRect равен null и блок просто встаёт правее самой точки клика.
+  function showSelectionActions(anchor, toolbarRect) {
     const el = document.createElement("div");
     el.className = "rte-selection-actions";
     const buttonsGroup = document.createElement("div");
@@ -4237,32 +4241,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // совпадать. Используем ту же базу и для сдвига панели ниже — иначе
     // расхождение просто переезжает в клампинг сдвига.
     const viewportWidth = document.documentElement.clientWidth;
-    const top = clamp(selRect.top, GAP, window.innerHeight - rect.height - GAP);
+    const top = clamp(anchor.y, GAP, window.innerHeight - rect.height - GAP);
     el.style.top = `${top}px`;
-    if (toolbarRect) {
-      let barLeft = toolbarRect.left;
-      let left = toolbarRect.right - rect.width;
-      const minLeft = selRect.right + GAP; // не наезжать на сам текст
-      if (left < minLeft) {
-        // На длинном выделении тексту не хватает места при выравнивании с
-        // панелью — сдвигаем ОБЕ панели вправо на одну и ту же величину, а не
-        // только блок действий: иначе они разъезжаются (ТЗ), панель остаётся
-        // на месте, а блок действий уезжает к правому краю выделения.
-        const shift = minLeft - left;
-        barLeft = clamp(barLeft + shift, GAP, viewportWidth - toolbarRect.width - GAP);
-        bar.style.left = `${barLeft}px`;
-        left = barLeft + toolbarRect.width - rect.width;
-      }
-      // Правый край — через CSS right, а не left: сворачивание блока (см.
-      // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
-      // стрелку на месте старого левого края — она "убегала" от текста и
-      // пропадала из виду при каждом сворачивании (ТЗ).
-      const right = clamp(viewportWidth - (left + rect.width), GAP, viewportWidth - rect.width - GAP);
-      el.style.right = `${right}px`;
-    } else {
-      const left = clamp(selRect.right + GAP, GAP, window.innerWidth - rect.width - GAP);
-      el.style.left = `${left}px`;
-    }
+    const left = toolbarRect ? toolbarRect.right - rect.width : anchor.x + GAP;
+    // Правый край — через CSS right, а не left: сворачивание блока (см.
+    // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
+    // стрелку на месте старого левого края — она "убегала" от точки клика и
+    // пропадала из виду при каждом сворачивании (ТЗ).
+    const right = clamp(viewportWidth - (left + rect.width), GAP, viewportWidth - rect.width - GAP);
+    el.style.right = `${right}px`;
     selectionActionsEl = el;
   }
 
@@ -4309,7 +4296,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       && contentEl.contains(selection.getRangeAt(0).commonAncestorContainer);
     if (hasTextSelection) {
       event.preventDefault();
-      showSelectionToolbar();
+      showSelectionToolbar({ x: event.clientX, y: event.clientY });
       return;
     }
 
