@@ -4186,15 +4186,18 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (btn) bar.appendChild(btn);
     });
     document.body.appendChild(bar);
-    // Панель форматирования встаёт СЛЕВА от точки клика (правый край — в GAP
-    // от неё), а блок cut/copy — справа (см. showSelectionActions): клик
-    // оказывается на стыке между ними, а не внутри одной из панелей (ТЗ).
-    // По вертикали панель форматирования сперва пробует встать НАД точкой
-    // клика, а если сверху не хватает места (клик у самого верха экрана) —
-    // опускается на уровень самой точки. Клампинг по краям вьюпорта.
+    // Панель форматирования встаёт СЛЕВА от точки клика (правый край — в
+    // SIDE_GAP от неё, с запасом побольше GAP — вплотную к клику палец/курсор
+    // визуально перекрывал бы саму точку клика), а блок cut/copy — справа
+    // (см. showSelectionActions): клик оказывается на стыке между ними, а не
+    // внутри одной из панелей (ТЗ). По вертикали панель форматирования сперва
+    // пробует встать НАД точкой клика, а если сверху не хватает места (клик у
+    // самого верха экрана) — опускается на уровень самой точки. Клампинг по
+    // краям вьюпорта — через обычный GAP.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
-    const left = anchor.x - rect.width - GAP;
+    const SIDE_GAP = 24;
+    const left = anchor.x - rect.width - SIDE_GAP;
     let top = anchor.y - rect.height - GAP;
     if (top < GAP) top = anchor.y;
     bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
