@@ -4190,16 +4190,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // LEFT_FRACTION её ширины от левого края, а не строго у края и не целиком
     // сбоку от панели (ТЗ): большая часть панели раскрывается вправо от
     // клика, меньшая — влево. По вертикали панель сперва пробует встать НАД
-    // точкой клика, ещё чуть выше обычного зазора — на полторы строки текста
-    // (ТЗ), чтобы не липнуть к строке клика; а если сверху не хватает места
-    // (клик у самого верха экрана) — опускается на уровень самой точки.
-    // Клампинг по краям вьюпорта.
+    // точкой клика, а если сверху не хватает места (клик у самого верха
+    // экрана) — опускается на уровень самой точки. Клампинг по краям вьюпорта.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
     const LEFT_FRACTION = 0.25;
-    const lineHeight = parseFloat(getComputedStyle(contentEl).lineHeight) || 24;
     const left = anchor.x - rect.width * LEFT_FRACTION;
-    let top = anchor.y - rect.height - GAP - lineHeight * 1.5;
+    let top = anchor.y - rect.height - GAP;
     if (top < GAP) top = anchor.y;
     bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
     bar.style.top = `${clamp(top, GAP, window.innerHeight - rect.height - GAP)}px`;
