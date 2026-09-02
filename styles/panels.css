@@ -117,7 +117,8 @@
 }
 
 .panel-folders.is-collapsed .panel-body,
-.panel-folders.is-collapsed .panel-title {
+.panel-folders.is-collapsed .panel-title,
+.panel-folders.is-collapsed .panel-header-add {
   display: none;
 }
 
