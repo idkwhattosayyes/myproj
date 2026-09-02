@@ -4186,14 +4186,13 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (btn) bar.appendChild(btn);
     });
     document.body.appendChild(bar);
-    // Панель форматирования встаёт СЛЕВА от точки клика (правый край — в
-    // SIDE_GAP от неё, с запасом побольше GAP — вплотную к клику палец/курсор
-    // визуально перекрывал бы саму точку клика), а блок cut/copy — справа
-    // (см. showSelectionActions): клик оказывается на стыке между ними, а не
-    // внутри одной из панелей (ТЗ). По вертикали панель форматирования сперва
-    // пробует встать НАД точкой клика, а если сверху не хватает места (клик у
-    // самого верха экрана) — опускается на уровень самой точки. Клампинг по
-    // краям вьюпорта — через обычный GAP.
+    // Вся группа (эта панель форматирования + блок cut/copy ниже, см.
+    // showSelectionActions) держится ЛЕВЕЕ точки клика целиком, одним куском
+    // (ТЗ) — правый край панели форматирования в SIDE_GAP от клика, запас
+    // побольше GAP, чтобы курсор не оказывался вплотную к панели. По
+    // вертикали панель сперва пробует встать НАД точкой клика, а если сверху
+    // не хватает места (клик у самого верха экрана) — опускается на уровень
+    // самой точки. Клампинг по краям вьюпорта — через обычный GAP.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
     const SIDE_GAP = 24;
@@ -4207,13 +4206,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
     // панели с отпусканием снаружи не должно её схлопывать.
     document.addEventListener("mousedown", onSelectionToolbarOutside, true);
-    showSelectionActions(anchor);
+    showSelectionActions(anchor, bar.getBoundingClientRect());
   }
 
-  // Блок cut/copy/paste/delete/open-as-link — справа от точки клика, на той
-  // же высоте, что и она (панель форматирования выше встаёт слева и сверху от
-  // неё — см. showSelectionToolbar). Клик остаётся на стыке между панелями.
-  function showSelectionActions(anchor) {
+  // Блок cut/copy/paste/delete/open-as-link — прижат к правому краю панели
+  // форматирования (см. showSelectionToolbar), чтобы вместе они выглядели
+  // одной группой левее точки клика, а не разъезжались по разные стороны от
+  // неё. По вертикали — сразу под панелью форматирования, если та встала на
+  // уровне клика (нет места сверху), иначе на уровне самой точки клика.
+  function showSelectionActions(anchor, toolbarRect) {
     const el = document.createElement("div");
     el.className = "rte-selection-actions";
     const buttonsGroup = document.createElement("div");
@@ -4236,9 +4237,17 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // БЕЗ вертикального скроллбара, а innerWidth его включает — на странице со
     // скроллбаром это давало систематический сдвиг вправо ровно на его ширину.
     const viewportWidth = document.documentElement.clientWidth;
-    const top = clamp(anchor.y, GAP, window.innerHeight - rect.height - GAP);
+    // Панель форматирования встала НАД точкой клика (обычный случай) — блок
+    // действий идёт на уровень самой точки, ниже панели, без наложения. Если
+    // же панели не хватило места сверху и она опустилась на уровень клика
+    // (см. showSelectionToolbar) — блок действий идёт сразу под ней, иначе
+    // они оказались бы друг на друге.
+    const top =
+      toolbarRect.bottom <= anchor.y
+        ? clamp(anchor.y, GAP, window.innerHeight - rect.height - GAP)
+        : clamp(toolbarRect.bottom + GAP, GAP, window.innerHeight - rect.height - GAP);
     el.style.top = `${top}px`;
-    const left = anchor.x + GAP;
+    const left = toolbarRect.right - rect.width;
     // Правый край — через CSS right, а не left: сворачивание блока (см.
     // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
     // стрелку на месте старого левого края — она "убегала" от точки клика и
