@@ -83,6 +83,44 @@
   opacity: 1;
 }
 
+/* Обёртка вокруг поля пароля — только здесь нужна кнопка-глаз поверх инпута.
+   .modal-input сам не трогаем: он общий (email тут же рядом,
+   .block-tag-editor-row .modal-input в другом месте). position: relative
+   даёт контекст для абсолютно спозиционированной кнопки. */
+.auth-password-wrap {
+  position: relative;
+  margin-bottom: 0.9rem;
+}
+
+.auth-password-wrap .modal-input {
+  margin-bottom: 0;
+  padding-right: 2.2rem; /* запас под иконку, чтобы текст пароля на неё не наезжал */
+}
+
+.auth-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  padding: 0.25rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: #57606a;
+  cursor: pointer;
+}
+
+.auth-password-toggle:hover {
+  color: #24292f;
+}
+
+.auth-password-toggle:focus-visible {
+  outline: 2px solid #33507e;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .auth-error {
   color: #b91c1c;
   font-size: 0.85rem;

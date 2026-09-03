@@ -3,6 +3,24 @@ import { pushLayer } from "../utils/escapeLayers.js";
 import { escapeAttr } from "../utils/dom.js";
 import { signInWithPassword, signUp, signInWithGoogle, setGuestChosen } from "./authService.js";
 
+// Переключатель показать/скрыть пароль — общий на все поля пароля модалки
+// (login, register password, confirmPassword), у каждого своя кнопка внутри
+// .auth-password-wrap. type="button", чтобы не участвовать в сабмите и не
+// мешать Enter-обработчику на passwordInput в renderLogin.
+function wirePasswordToggles(scope) {
+  scope.querySelectorAll(".auth-password-toggle").forEach((btn) => {
+    const input = btn.closest(".auth-password-wrap").querySelector(".modal-input");
+    btn.addEventListener("click", () => {
+      const reveal = input.type === "password";
+      input.type = reveal ? "text" : "password";
+      const key = reveal ? "auth.hidePassword" : "auth.showPassword";
+      btn.textContent = reveal ? "🙈" : "👁";
+      btn.setAttribute("aria-label", t(key));
+      btn.title = t(key);
+    });
+  });
+}
+
 /**
  * Экран входа — перед первым рендером раздела, если нет сессии и гость ещё
  * ни разу не выбирал "продолжить как гость" (см. hasChosenGuest), либо по
@@ -74,7 +92,10 @@ export function openAuthModal() {
         <div class="modal-box auth-box">
           <button type="button" class="auth-back-btn" data-action="back" aria-label="${t("auth.back")}">←</button>
           <input type="email" class="modal-input" data-role="email" placeholder="${t("auth.email")}" value="${escapeAttr(email)}">
-          <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
+          <div class="auth-password-wrap">
+            <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+          </div>
           <p class="auth-error" data-role="error" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="login">${t("auth.login")}</button>
           <div class="auth-split-row">
@@ -113,6 +134,7 @@ export function openAuthModal() {
       passwordInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") runLogin();
       });
+      wirePasswordToggles(overlay);
       emailInput.focus();
     }
 
@@ -121,8 +143,14 @@ export function openAuthModal() {
         <div class="modal-box auth-box">
           <button type="button" class="auth-back-btn" data-action="back" aria-label="${t("auth.back")}">←</button>
           <input type="email" class="modal-input" data-role="email" placeholder="${t("auth.email")}" value="${escapeAttr(email)}">
-          <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
-          <input type="password" class="modal-input" data-role="confirmPassword" placeholder="${t("auth.confirmPassword")}">
+          <div class="auth-password-wrap">
+            <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+          </div>
+          <div class="auth-password-wrap">
+            <input type="password" class="modal-input" data-role="confirmPassword" placeholder="${t("auth.confirmPassword")}">
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+          </div>
           <p class="auth-error" data-role="error" hidden></p>
           <p class="auth-hint" data-role="hint" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="register">${t("auth.register")}</button>
@@ -168,6 +196,7 @@ export function openAuthModal() {
         }
         finish();
       });
+      wirePasswordToggles(overlay);
       emailInput.focus();
     }
 
