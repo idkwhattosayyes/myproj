@@ -14,7 +14,9 @@ function wirePasswordToggles(scope) {
       const reveal = input.type === "password";
       input.type = reveal ? "text" : "password";
       const key = reveal ? "auth.hidePassword" : "auth.showPassword";
-      btn.textContent = reveal ? "🙈" : "👁";
+      // Иконка отражает ТЕКУЩЕЕ состояние поля, а не действие по клику:
+      // открытый глаз — пароль виден, закрытый — скрыт (ТЗ).
+      btn.textContent = reveal ? "👁" : "🙈";
       btn.setAttribute("aria-label", t(key));
       btn.title = t(key);
     });
@@ -94,7 +96,7 @@ export function openAuthModal() {
           <input type="email" class="modal-input" data-role="email" placeholder="${t("auth.email")}" value="${escapeAttr(email)}">
           <div class="auth-password-wrap">
             <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
-            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">🙈</button>
           </div>
           <p class="auth-error" data-role="error" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="login">${t("auth.login")}</button>
@@ -145,11 +147,11 @@ export function openAuthModal() {
           <input type="email" class="modal-input" data-role="email" placeholder="${t("auth.email")}" value="${escapeAttr(email)}">
           <div class="auth-password-wrap">
             <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
-            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">🙈</button>
           </div>
           <div class="auth-password-wrap">
             <input type="password" class="modal-input" data-role="confirmPassword" placeholder="${t("auth.confirmPassword")}">
-            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">👁</button>
+            <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}">🙈</button>
           </div>
           <p class="auth-error" data-role="error" hidden></p>
           <p class="auth-hint" data-role="hint" hidden></p>
