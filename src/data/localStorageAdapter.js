@@ -22,6 +22,27 @@ function touch(item) {
   return { ...item, updatedAt: new Date().toISOString() };
 }
 
+// Тот же ключ, что customCircles.js использует для pencilDismissed — оба
+// читают/пишут объект целиком, задевая только своё поле, чтобы не затирать
+// друг друга (customCircles.js трогает .pencilDismissed, эти методы — только
+// .circles). Форма объекта для гостя не меняется этой правкой вообще.
+const HOME_CIRCLES_KEY = "app:homeCircles";
+
+function readHomeCircleState() {
+  const raw = localStorage.getItem(HOME_CIRCLES_KEY);
+  if (!raw) return { circles: [] };
+  try {
+    const parsed = JSON.parse(raw);
+    return { ...parsed, circles: Array.isArray(parsed.circles) ? parsed.circles : [] };
+  } catch {
+    return { circles: [] };
+  }
+}
+
+function writeHomeCircleState(state) {
+  localStorage.setItem(HOME_CIRCLES_KEY, JSON.stringify(state));
+}
+
 // Разделы Задачи и Документы объединены в один раздел Notes (section: "notes").
 // "tasks"/"documents" — легаси-метки: записи, сохранённые ещё в старых разделах,
 // хранят их как есть, но при чтении все три метки считаются алиасами друг друга,
@@ -276,5 +297,34 @@ export const localStorageAdapter = {
   async deleteBlockTag(id) {
     const tags = readCollection(STORAGE_KEYS.blockTags).filter((tag) => tag.id !== id);
     writeCollection(STORAGE_KEYS.blockTags, tags);
+  },
+
+  // Кастомные кружки-ярлыки главного экрана — гостевая сторона. Форма кружка
+  // ({id, noteId, folderId, angle, radius}) та же, что была в customCircles.js
+  // до переноса на storageAdapter.js.
+  async getHomeCircles() {
+    return readHomeCircleState().circles;
+  },
+  async createHomeCircle(circle) {
+    const state = readHomeCircleState();
+    const row = { id: crypto.randomUUID(), noteId: circle.noteId, folderId: circle.folderId, angle: circle.angle, radius: circle.radius };
+    state.circles.push(row);
+    writeHomeCircleState(state);
+    return row;
+  },
+  async updateHomeCirclePositions(updates) {
+    if (!updates.length) return;
+    const state = readHomeCircleState();
+    const byId = new Map(updates.map((u) => [u.id, u]));
+    state.circles = state.circles.map((circle) => {
+      const update = byId.get(circle.id);
+      return update ? { ...circle, angle: update.angle, radius: update.radius } : circle;
+    });
+    writeHomeCircleState(state);
+  },
+  async deleteHomeCircle(id) {
+    const state = readHomeCircleState();
+    state.circles = state.circles.filter((circle) => circle.id !== id);
+    writeHomeCircleState(state);
   },
 };

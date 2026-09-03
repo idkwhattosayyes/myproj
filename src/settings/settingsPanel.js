@@ -211,7 +211,7 @@ async function runExport() {
         buildExportFrom({
           folders: pickedFolders,
           items: pickedItems,
-          homeCircles: circlesForItems(getHomeCirclesState().circles, pickedItems),
+          homeCircles: circlesForItems((await getHomeCirclesState()).circles, pickedItems),
           calendar: { entries: calendarEntries, tags: calendarTags },
           blockTags,
         }),

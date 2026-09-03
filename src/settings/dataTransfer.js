@@ -142,7 +142,7 @@ function uniqueName(name, takenKeys) {
 // невосстановленную заметку отбрасываем. Позицию переносим как есть — если
 // импортированный кружок сядет поверх существующего, раскладка главной разведёт
 // их сама (см. fitsAt/findPosition в homeView.js).
-function importHomeCircles(circles, folderIdMap, itemIdMap) {
+async function importHomeCircles(circles, folderIdMap, itemIdMap) {
   const restored = (circles || [])
     .map((circle) => ({
       noteId: itemIdMap.get(circle.noteId),
@@ -151,7 +151,7 @@ function importHomeCircles(circles, folderIdMap, itemIdMap) {
       radius: circle.radius,
     }))
     .filter((circle) => circle.noteId);
-  appendCircles(restored);
+  await appendCircles(restored);
   return restored.length;
 }
 
@@ -248,7 +248,7 @@ export async function importData(data) {
     await blockTagsService.syncBlocksIndex(newId, content);
   }
 
-  const circles = importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
+  const circles = await importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
   const calendarEntries = await importCalendar(data.calendar);
 
   return {

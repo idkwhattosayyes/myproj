@@ -64,6 +64,10 @@ function mapTagRow(row) {
   return { id: row.id, name: row.display_name, nameKey: row.name, color: row.color };
 }
 
+function mapHomeCircleRow(row) {
+  return { id: row.id, noteId: row.note_id, folderId: row.folder_id, angle: row.angle, radius: row.radius };
+}
+
 function mapFolderRow(row, parentFolderIds, isFavorite, pinned) {
   return {
     id: row.id,
@@ -524,6 +528,50 @@ export const supabaseAdapter = {
   async deleteBlockTag(id) {
     return withSaveStatus(async () => {
       const { error } = await supabaseClient.from("tags").delete().eq("id", id);
+      if (error) throw error;
+    });
+  },
+
+  // Кастомные кружки-ярлыки главного экрана (src/modules/home/customCircles.js).
+  // Без soft-delete и без sort_order — позиция это angle/radius (полярные
+  // координаты, circleLayout.js), не порядковый номер в списке.
+  async getHomeCircles() {
+    const { data, error } = await supabaseClient.from("home_circles").select("*").order("created_at");
+    if (error) throw error;
+    return data.map(mapHomeCircleRow);
+  },
+
+  async createHomeCircle(circle) {
+    return withSaveStatus(async () => {
+      const row = {
+        user_id: getCachedSession().user.id,
+        note_id: circle.noteId,
+        folder_id: circle.folderId,
+        angle: circle.angle,
+        radius: circle.radius,
+      };
+      const { data, error } = await supabaseClient.from("home_circles").insert(row).select().single();
+      if (error) throw error;
+      return mapHomeCircleRow(data);
+    });
+  },
+
+  // Тот же приём, что setFoldersOrder — bulk через Promise.all поштучных update.
+  async updateHomeCirclePositions(updates) {
+    if (!updates.length) return;
+    await withSaveStatus(() =>
+      Promise.all(
+        updates.map(async ({ id, angle, radius }) => {
+          const { error } = await supabaseClient.from("home_circles").update({ angle, radius }).eq("id", id);
+          if (error) throw error;
+        })
+      )
+    );
+  },
+
+  async deleteHomeCircle(id) {
+    return withSaveStatus(async () => {
+      const { error } = await supabaseClient.from("home_circles").delete().eq("id", id);
       if (error) throw error;
     });
   },

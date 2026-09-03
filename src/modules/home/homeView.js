@@ -19,7 +19,7 @@ export async function renderHomeView(container) {
     detachHomeResize = null;
   }
 
-  const { pencilDismissed } = customCircles.getState();
+  const { pencilDismissed } = await customCircles.getState();
   const customCirclesData = await loadCustomCirclesData();
 
   const pencilHtml = pencilDismissed
@@ -100,7 +100,7 @@ async function loadCustomCirclesData() {
 async function pickAndBindCircle(container, { dismissPencil = false } = {}) {
   const picked = await openNotePicker();
   if (!picked) return;
-  customCircles.addCircle(picked);
+  await customCircles.addCircle(picked);
   if (dismissPencil) customCircles.setPencilDismissed(true);
   renderHomeView(container);
 }
@@ -158,9 +158,9 @@ function wireCustomCircles(container, circles) {
       showContextMenu(event.clientX, event.clientY, [
         {
           label: t("home.deleteCircle"),
-          onClick: () => {
+          onClick: async () => {
             // Удаляется только ярлык — сама заметка не трогается (ТЗ, п.6).
-            customCircles.removeCircle(circle.id);
+            await customCircles.removeCircle(circle.id);
             renderHomeView(container);
           },
         },

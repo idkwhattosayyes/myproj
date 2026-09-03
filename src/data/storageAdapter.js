@@ -39,6 +39,10 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {(tag: Object) => Promise<Object>} createBlockTag
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateBlockTag
  * @property {(id: string) => Promise<void>} deleteBlockTag
+ * @property {() => Promise<Object[]>} getHomeCircles
+ * @property {(circle: Object) => Promise<Object>} createHomeCircle
+ * @property {(updates: Object[]) => Promise<void>} updateHomeCirclePositions
+ * @property {(id: string) => Promise<void>} deleteHomeCircle
  */
 
 // Заметки/папки, справочник тегов блоков и полная очистка данных — сущности,
@@ -65,12 +69,19 @@ const NOTES_AND_FOLDERS_METHODS = [
 
 const BLOCK_TAG_METHODS = ["getBlockTags", "createBlockTag", "updateBlockTag", "deleteBlockTag"];
 
+// Кастомные кружки-ярлыки главного экрана (src/modules/home/customCircles.js)
+// — до этой правки жили только в localStorage, в обход этого контракта.
+// pencilDismissed в маршрутизацию не входит: это локальная UI-настройка
+// устройства, а не данные пользователя, её customCircles.js по-прежнему
+// читает/пишет напрямую.
+const HOME_CIRCLES_METHODS = ["getHomeCircles", "createHomeCircle", "updateHomeCirclePositions", "deleteHomeCircle"];
+
 // Затрагивает notes/folders/tags/favorites/pins/images/drawings/Storage
 // разом — не укладывается в специализацию двух списков выше, отдельная запись.
 const CLEAR_ALL_METHODS = ["clearAll"];
 
 const hybridAdapter = { ...localStorageAdapter };
-[...NOTES_AND_FOLDERS_METHODS, ...BLOCK_TAG_METHODS, ...CLEAR_ALL_METHODS].forEach((method) => {
+[...NOTES_AND_FOLDERS_METHODS, ...BLOCK_TAG_METHODS, ...HOME_CIRCLES_METHODS, ...CLEAR_ALL_METHODS].forEach((method) => {
   hybridAdapter[method] = (...args) => {
     const adapter = getCachedSession() ? supabaseAdapter : localStorageAdapter;
     return adapter[method](...args);
