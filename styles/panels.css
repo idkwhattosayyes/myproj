@@ -445,10 +445,19 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   cursor: grabbing;
 }
 
-/* Контекстное меню (ПКМ по панели папок) */
+/* Контекстное меню (ПКМ по панели папок, и общий класс для любого другого
+   контекстного меню в приложении — блок, теги, фото и т.д.). 1100, а не 1000:
+   этот класс регулярно открывается ПОВЕРХ уже открытых попапов уровня 1000
+   (.rte-block-panel — 999, специально ниже; .block-browser-tags-panel —
+   1001; .modal-overlay/.rte-selection-toolbar — 1000) — контекстное меню по
+   смыслу всегда самый верхний временный слой, независимо от того, что именно
+   его породило, так что надёжнее держать его выше любого из них одним
+   числом, а не подгонять z-index каждой отдельной панели под 1000-с-хвостиком
+   вручную (тот же приём, что у .rte-color-popover в editor.css — 1100 выше
+   породившей его .rte-selection-toolbar). */
 .context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: 1100;
   background: #ffffff;
   border: 1px solid #d8dbdf;
   border-radius: 6px;
