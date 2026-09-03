@@ -174,3 +174,40 @@
 .home-circle--pencil:focus-visible .home-circle-overlay {
   opacity: 1;
 }
+
+/* Мини-кнопка "-" в углу онбординг-карандаша — второй, более явный способ
+   спрятать его навсегда (тот же эффект, что "Ignore" в ПКМ-меню). Контекст
+   .home-circle--pencil специально: у обычных кастомных кружков
+   (.home-circle--custom) этой кнопки в разметке нет вообще, их логика
+   удаления через ПКМ не меняется. .home-circle уже position: absolute — он и
+   есть контекст позиционирования, отдельный position: relative не нужен.
+   top/right отрицательные — кнопка выносится за пределы круга, физически не
+   пересекается с .home-circle-overlay (тот занимает ровно рамки круга).
+   Видна всегда (не hover-only), как остальные кнопки-крестики в проекте
+   (.link-editor-row-remove и т.д.) — самостоятельный способ убрать кружок, а
+   не деталь, которую сперва нужно найти наведением. */
+.home-circle--pencil .home-circle-dismiss {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.home-circle--pencil .home-circle-dismiss:hover {
+  color: #b91c1c;
+  border-color: #f3c4c4;
+}
+
+.home-circle--pencil .home-circle-dismiss:focus-visible {
+  outline: 2px solid #33507e;
+  outline-offset: 2px;
+}

@@ -28,6 +28,7 @@ export async function renderHomeView(container) {
         <div class="home-circle home-circle--pencil" tabindex="0" data-role="pencil">
           <span class="home-circle-label">✏️</span>
           <span class="home-circle-overlay">${t("home.pencilTooltip")}</span>
+          <button type="button" class="home-circle-dismiss" data-role="pencil-dismiss" aria-label="${escapeHtml(t("home.dismissPencil"))}" title="${escapeHtml(t("home.dismissPencil"))}">−</button>
         </div>`;
 
   const customCirclesHtml = customCirclesData
@@ -112,6 +113,17 @@ function wirePencil(container) {
   // либо реально выбрал заметку, либо явно нажал "Ignore" в ПКМ-меню (см. ТЗ,
   // п.1 и п.4) — отмена/Esc в меню выбора оставляет карандаш как есть.
   pencilEl.addEventListener("click", () => pickAndBindCircle(container, { dismissPencil: true }));
+
+  // Второй, более явный способ того же "Ignore" из ПКМ-меню ниже — тот же
+  // эффект, просто без контекстного меню. stopPropagation обязателен: кнопка
+  // лежит внутри pencilEl, у которого уже есть свой click (см. выше) — без
+  // остановки всплытия клик по минусу ещё и открыл бы note picker.
+  const dismissBtn = pencilEl.querySelector('[data-role="pencil-dismiss"]');
+  dismissBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    customCircles.setPencilDismissed(true);
+    renderHomeView(container);
+  });
 
   pencilEl.addEventListener("contextmenu", (event) => {
     event.preventDefault();
