@@ -1,7 +1,7 @@
 import * as itemsService from "../services/itemsService.js";
 import * as calendarEntriesService from "../services/calendarEntriesService.js";
 import * as calendarTagsService from "../services/calendarTagsService.js";
-import { htmlToText, extractPhotos } from "../utils/dom.js";
+import { htmlToSearchText, extractPhotos } from "../utils/dom.js";
 
 // Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
@@ -72,17 +72,18 @@ async function searchItems(query) {
     });
   });
 
+  // Фото нигде не показывается как текст (см. utils/dom.js), поэтому
+  // htmlToSearchText его не видит — ищем отдельно. Совпадение либо по
+  // собственному названию (подстрока, как раньше), либо любое фото вообще,
+  // если запрос — общее слово "photo"/"фото" (кириллица и латиница проверяются
+  // независимо от текущего языка интерфейса) — так находятся и фото без названия.
+  const isGenericPhotoQuery = ["photo", "фото"].includes(query.toLowerCase());
+
   items.forEach((item) => {
     const title = item.title || "";
-    const text = htmlToText(item.content);
+    const text = htmlToSearchText(item.content);
     const inTitle = findMatches(title, query, 1);
     const inText = findMatches(text, query, MATCH_FETCH_CAP);
-    // Фото нигде не показывается как текст (см. utils/dom.js), поэтому
-    // htmlToText его не видит — ищем отдельно. Совпадение либо по собственному
-    // названию (подстрока, как раньше), либо любое фото вообще, если запрос —
-    // общее слово "photo"/"фото" (кириллица и латиница проверяются независимо
-    // от текущего языка интерфейса) — так находятся и фото без названия.
-    const isGenericPhotoQuery = ["photo", "фото"].includes(query.trim().toLowerCase());
     const photoMatches = extractPhotos(item.content)
       .map((photo, photoIndex) => {
         if (photo.name) {
@@ -182,14 +183,38 @@ export function findMatches(text, query, limit) {
   return { matches, total };
 }
 
+// Граница абзаца — пустая строка редактора: в тексте заметки строки разделены
+// "\n" (см. htmlToSearchText в utils/dom.js), пустая строка даёт два "\n"
+// подряд. Контекст сниппета через неё не перескакивает: слово в начале абзаца
+// показывается без «хвоста» предыдущего, а «…» ставится только когда обрезан
+// текст ЭТОГО абзаца. Одиночный "\n" (мягкий перенос внутри абзаца) границей
+// не считается — контекст берётся с соседней строки, как и раньше.
+// У строк без "\n" (папки, названия, календарь, блоки) ничего не меняется.
+const PARAGRAPH_BREAK = "\n\n";
+
+function paragraphStart(text, at) {
+  // Ищем с at - 2: разрыв, стоящий вплотную перед совпадением (позиции at-2 и
+  // at-1), найтись должен, а начинающийся на самом at — уже нет.
+  const brk = at >= 2 ? text.lastIndexOf(PARAGRAPH_BREAK, at - 2) : -1;
+  return brk === -1 ? 0 : brk + PARAGRAPH_BREAK.length;
+}
+
+function paragraphEnd(text, at) {
+  const brk = text.indexOf(PARAGRAPH_BREAK, at);
+  return brk === -1 ? text.length : brk;
+}
+
 function cutBefore(text, at) {
-  const start = Math.max(0, at - SNIPPET_PADDING);
-  return (start > 0 ? "…" : "") + text.slice(start, at);
+  const floor = paragraphStart(text, at);
+  const start = Math.max(floor, at - SNIPPET_PADDING);
+  // Оставшиеся одиночные "\n" — мягкие переносы; строка результата одна.
+  return (start > floor ? "…" : "") + text.slice(start, at).replace(/\n/g, " ");
 }
 
 function cutAfter(text, at) {
-  const end = Math.min(text.length, at + SNIPPET_PADDING);
-  return text.slice(at, end) + (end < text.length ? "…" : "");
+  const ceiling = paragraphEnd(text, at);
+  const end = Math.min(ceiling, at + SNIPPET_PADDING);
+  return text.slice(at, end).replace(/\n/g, " ") + (end < ceiling ? "…" : "");
 }
 
 function formatDate(iso) {

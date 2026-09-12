@@ -29,14 +29,59 @@ export function clamp(value, min, max) {
 }
 
 /**
- * HTML заметки → плоский текст для поиска. Теги заменяются пробелом, иначе
- * слова из соседних абзацев слиплись бы в одно и находились бы там, где их нет.
- * Сущности (&nbsp; и подобные) раскрываются самим браузером при разборе.
+ * HTML заметки → текст для поиска, в котором строки редактора разделены "\n",
+ * а пустая строка редактора — пустая строка текста. Раньше все теги
+ * заменялись пробелом и пробелы схлопывались, то есть структура строк
+ * терялась целиком — и сниппет результата тянул «контекст» из соседнего
+ * абзаца через пустую строку (см. cutBefore/cutAfter в searchService.js).
+ *
+ * Шаги ЗЕРКАЛЯТ функцию note_search_text в supabase/010_notes_search.sql:
+ * у залогиненного тот же текст считает Postgres, и оба обязаны давать один
+ * результат, иначе сервер найдёт заметку, а клиент в её тексте — нет (или
+ * наоборот). Меняешь порядок или регулярку здесь — меняй и там.
+ *
+ * 1. Инлайн-теги (жирный, цвет, ссылка, заголовок-в-строке…) → пусто:
+ *    «hel<b>lo</b>» — это слово «hello», и найтись оно должно целиком.
+ *    Первым шагом — чтобы пустая строка вида <div><b><br></b></div>
+ *    (редактор переносит оформление на новую строку, см. restoreLineFormat
+ *    в richTextEditor.js) на следующем шаге выглядела как обычная пустая.
+ * 2. Пустая строка редактора — элемент строки (div/p/li/h1…h6), в котором
+ *    нет ничего, кроме <br>, пробелов и &nbsp; (Chrome держит высоту пустой
+ *    строки через <br>). Такой элемент целиком → метка EMPTY_LINE. Метка, а не
+ *    сразу "\n\n": шаг 6 схлопывает подряд идущие "\n", и без метки пустая
+ *    строка была бы неотличима от границы вложенных тегов. <hr>
+ *    (разделитель) — тоже явный разрыв абзаца, та же метка.
+ * 3. Концы строк редактора (</div>, </p>, </li>, </h1>…</h6>, </tr>), <br> и
+ *    НАЧАЛО списка/таблицы (<ul>, <ol>, <table>) → "\n". Начало нужно ради
+ *    вложенного списка: <li>y<ul><li>z — без него «z» оказался бы на одной
+ *    строке с «y». Лишние "\n" от закрывающихся один за другим тегов
+ *    (</li></ul></li>) схлопываются ниже в один.
+ * 4. Остальные теги → пробел: <img> с base64 внутри src и <svg> рисунка
+ *    уходят целиком, текста в них нет.
+ * 5. Сущности (&nbsp; и подобные) раскрывает сам браузер: тегов уже нет,
+ *    так что картинок он не создаст и грузить их не станет.
+ * 6. Пробелы внутри строки — в один (неразрывный тоже); серии "\n" с
+ *    пробелами между — в один "\n"; метка пустой строки → "\n" (вместе с
+ *    соседним "\n" даёт те самые два подряд); пробелы вокруг "\n" и по краям
+ *    — убрать.
  */
-export function htmlToText(html) {
+// Управляющий символ U+0001: в тексте заметки его не бывает. Через
+// fromCharCode, а не литералом — в файле он был бы невидим.
+const EMPTY_LINE = String.fromCharCode(1);
+
+export function htmlToSearchText(html) {
+  let text = String(html || "");
+  text = text.replace(/<\/?(?:a|b|i|u|s|em|strong|span|font|mark|sub|sup|code)(?:\s[^>]*)?>/gi, "");
+  text = text.replace(/<(div|p|li|h[1-6])(?:\s[^>]*)?>(?:\s|&nbsp;|<br[^>]*>)*<\/\1>/gi, EMPTY_LINE);
+  text = text.replace(/<hr[^>]*>/gi, EMPTY_LINE);
+  text = text.replace(/<\/(?:div|p|li|h[1-6]|tr)>|<br[^>]*>|<(?:ul|ol|table)(?:\s[^>]*)?>/gi, "\n");
+  text = text.replace(/<[^>]*>/g, " ");
   const holder = document.createElement("div");
-  holder.innerHTML = String(html || "").replace(/<[^>]+>/g, " ");
-  return holder.textContent.replace(/\s+/g, " ").trim();
+  holder.innerHTML = text;
+  text = holder.textContent;
+  text = text.replace(/[^\S\n]+/g, " ").replace(/[ \n]*\n[ \n]*/g, "\n");
+  text = text.replaceAll(EMPTY_LINE, "\n").replace(/ *\n */g, "\n");
+  return text.trim();
 }
 
 /**
@@ -44,14 +89,17 @@ export function htmlToText(html) {
  * заполнено название (data-name отсутствует — name будет null). Порядковый
  * номер элемента в возвращённом массиве — стабильный индекс фото внутри ЭТОЙ
  * заметки, используется для перехода к конкретному фото по результату поиска
- * (см. searchService.js/richTextEditor.js) — там же и htmlToText не годится:
- * он режет ВСЕ теги вместе с атрибутами, а название нигде не отображается как
- * текст (см. richTextEditor.js/photoEditor.js).
+ * (см. searchService.js/richTextEditor.js) — там же и htmlToSearchText не
+ * годится: он режет ВСЕ теги вместе с атрибутами, а название нигде не
+ * отображается как текст (см. richTextEditor.js/photoEditor.js).
+ *
+ * DOMParser, а не innerHTML в живой div: документ от него «инертный», <img>
+ * в нём не грузятся и не декодируются. Живой div заставлял браузер разбирать
+ * все base64-фото заметки на каждую букву запроса.
  */
 export function extractPhotos(html) {
-  const holder = document.createElement("div");
-  holder.innerHTML = String(html || "");
-  return [...holder.querySelectorAll("img.rte-photo")].map((img) => ({ name: img.dataset.name || null }));
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  return [...doc.querySelectorAll("img.rte-photo")].map((img) => ({ name: img.dataset.name || null }));
 }
 
 // Высота листа A4 в собственных координатах редактора — то же значение, что
