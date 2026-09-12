@@ -14,10 +14,57 @@
 -- ============================================================
 
 create extension if not exists pgcrypto;
+-- Триграммы под серверный поиск (ILIKE по notes.search_text) — см.
+-- 010_notes_search.sql, там же объяснено, почему не tsvector.
+create extension if not exists pg_trgm with schema extensions;
 
 -- ------------------------------------------------------------
 -- notes
 -- ------------------------------------------------------------
+
+-- Функции для генерируемых колонок notes.search_text / notes.photo_names
+-- (см. 010_notes_search.sql). note_search_text ЗЕРКАЛИТ htmlToSearchText в
+-- src/utils/dom.js шаг в шаг — менять только парой.
+create function public.note_search_text(title text, content text)
+returns text
+language plpgsql
+immutable
+as $$
+declare
+  t text := content;
+  empty_line constant text := chr(1);
+begin
+  t := regexp_replace(t, '</?(?:a|b|i|u|s|em|strong|span|font|mark|sub|sup|code)(?:\s[^>]*)?>', '', 'gi');
+  t := regexp_replace(t, '<(div|p|li|h[1-6])(?:\s[^>]*)?>(?:\s|&nbsp;|<br[^>]*>)*</\1>', empty_line, 'gi');
+  t := regexp_replace(t, '<hr[^>]*>', empty_line, 'gi');
+  t := regexp_replace(t, '</(?:div|p|li|h[1-6]|tr)>|<br[^>]*>|<(?:ul|ol|table)(?:\s[^>]*)?>', E'\n', 'gi');
+  t := regexp_replace(t, '<[^>]*>', ' ', 'g');
+  t := replace(t, '&nbsp;', ' ');
+  t := replace(t, '&quot;', '"');
+  t := replace(t, '&#39;', '''');
+  t := replace(t, '&lt;', '<');
+  t := replace(t, '&gt;', '>');
+  t := replace(t, '&amp;', '&');
+  t := regexp_replace(t, E'[ \t\r]+', ' ', 'g');
+  t := regexp_replace(t, E'[ \n]*\n[ \n]*', E'\n', 'g');
+  t := replace(t, empty_line, E'\n');
+  t := regexp_replace(t, E' *\n *', E'\n', 'g');
+  return title || E'\n' || btrim(t, E' \n');
+end
+$$;
+
+create function public.note_photo_names(content text)
+returns text[]
+language sql
+immutable
+as $$
+  select coalesce(array_agg(coalesce(substring(m[1] from 'data-name="([^"]*)"'), '') order by ord), '{}'::text[])
+  from regexp_matches(content, '<img[^>]*>', 'g') with ordinality as t(m, ord)
+  where m[1] ~ 'class="[^"]*\mrte-photo\M';
+$$;
+
+grant execute on function public.note_search_text(text, text), public.note_photo_names(text) to authenticated;
+
 create table public.notes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -34,7 +81,12 @@ create table public.notes (
   -- адаптером (src/data/supabaseAdapter.js), автотриггера на updated_at
   -- намеренно нет — иначе точечное обновление sort_order тоже трогало бы его.
   sort_order bigint not null default 0,
-  activity_at timestamptz not null default now()
+  activity_at timestamptz not null default now(),
+  -- Служебные колонки серверного поиска (см. 010_notes_search.sql): Postgres
+  -- пересчитывает их сам при каждой правке title/content. Адаптер их не
+  -- выбирает — см. NOTE_COLUMNS в supabaseAdapter.js.
+  search_text text generated always as (public.note_search_text(title, content)) stored,
+  photo_names text[] generated always as (public.note_photo_names(content)) stored
 );
 
 create index notes_user_id_idx on public.notes(user_id);
@@ -42,6 +94,8 @@ create index notes_user_id_idx on public.notes(user_id);
 -- каждый со своей сортировкой) — см. 006_performance_indexes.sql
 create index notes_active_sort_idx on public.notes(user_id, sort_order) where deleted_at is null;
 create index notes_trashed_deleted_idx on public.notes(user_id, deleted_at desc) where deleted_at is not null;
+-- триграммный индекс под ILIKE '%запрос%' в search_notes — см. 010_notes_search.sql
+create index notes_search_text_trgm_idx on public.notes using gin (search_text extensions.gin_trgm_ops) where deleted_at is null;
 
 alter table public.notes enable row level security;
 
@@ -311,3 +365,32 @@ grant select, insert, update, delete on
   public.images,
   public.drawings
 to authenticated;
+
+-- ------------------------------------------------------------
+-- Серверный поиск по заметкам — см. 010_notes_search.sql. security invoker:
+-- RLS notes_owner действует внутри, каждый ищет только по своим заметкам.
+-- ------------------------------------------------------------
+create function public.search_notes(q text, any_photo boolean default false, max_rows int default 40)
+returns table (id uuid, title text, sort_order bigint, body_text text, photo_names text[])
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with p as (
+    select '%' || replace(replace(replace(q, '\', '\\'), '%', '\%'), '_', '\_') || '%' as pat
+  )
+  select n.id, n.title, n.sort_order, substr(n.search_text, length(n.title) + 2), n.photo_names
+  from public.notes n, p
+  where n.deleted_at is null
+    and (
+      n.search_text ilike p.pat
+      or exists (select 1 from unnest(n.photo_names) as name where name ilike p.pat)
+      or (any_photo and cardinality(n.photo_names) > 0)
+    )
+  order by (n.title ilike p.pat) desc, n.sort_order
+  limit max_rows;
+$$;
+
+revoke execute on function public.search_notes(text, boolean, int) from public, anon;
+grant execute on function public.search_notes(text, boolean, int) to authenticated;
