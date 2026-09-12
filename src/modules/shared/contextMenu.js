@@ -7,11 +7,17 @@ const EDGE_PAD_PX = 8;
 
 let activeMenu = null;
 let unregisterLayer = null;
+let outsideClickTimer = null;
 
 function closeMenu() {
   if (!activeMenu) return;
   activeMenu.remove();
   activeMenu = null;
+  // Слушатель клика снаружи снимаем всегда, а не только когда он сам сработал:
+  // после закрытия по Esc он оставался висеть и первым же кликом гасил СЛЕДУЮЩЕЕ
+  // меню — то, что кнопка тулбара открывала в этом же клике.
+  clearTimeout(outsideClickTimer);
+  document.removeEventListener("click", closeMenu);
   if (unregisterLayer) {
     unregisterLayer();
     unregisterLayer = null;
@@ -62,5 +68,5 @@ export function showContextMenu(x, y, items) {
   unregisterLayer = pushLayer(closeMenu);
 
   // Закрыть по клику вне меню — навешиваем на следующий тик, иначе поймает текущий contextmenu-клик.
-  setTimeout(() => document.addEventListener("click", closeMenu, { once: true }), 0);
+  outsideClickTimer = setTimeout(() => document.addEventListener("click", closeMenu), 0);
 }
