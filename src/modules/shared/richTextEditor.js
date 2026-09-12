@@ -517,6 +517,50 @@ function markLinkStart(elements) {
   });
 }
 
+// Все фрагменты одной применённой ссылки. При оформлении выделение распадается
+// на несколько <a>, если пересекается с другим форматом (см. wrapSelection), и
+// снимать ссылку нужно со всех разом: снятие только с выделенных узлов оставляло
+// невыделенную букву «ссылкой». Группа — идущие подряд <a> того же типа с той
+// же целью; граница — data-link-start следующей ссылки (см. markLinkStart).
+function collectLinkGroup(editorEl, anchor) {
+  const format = anchor.dataset.linkType === "internal" ? FORMATS.linkInternal : FORMATS.linkExternal;
+  const all = [...editorEl.querySelectorAll(format.selector)];
+  const index = all.indexOf(anchor);
+  if (index === -1) return [anchor];
+
+  const key = linkTargetKey(anchor);
+  const group = [anchor];
+  for (let i = index - 1; i >= 0; i--) {
+    if (group[0].dataset.linkStart !== undefined || linkTargetKey(all[i]) !== key) break;
+    group.unshift(all[i]);
+  }
+  for (let i = index + 1; i < all.length; i++) {
+    if (all[i].dataset.linkStart !== undefined || linkTargetKey(all[i]) !== key) break;
+    group.push(all[i]);
+  }
+  return group;
+}
+
+// Цель ссылки одной строкой — по ней фрагменты опознаются как одна ссылка.
+function linkTargetKey(anchor) {
+  const data = anchor.dataset;
+  if (data.linkType === "internal") return [data.itemId, data.anchorQuery, data.anchorIndex].join("\n");
+  return data.links || "";
+}
+
+// Снимает ссылку целиком с каждой группы, в которую входят anchors; текст
+// остаётся на месте обычным текстом.
+function unwrapLinkGroups(editorEl, anchors) {
+  const seen = new Set();
+  anchors.forEach((anchor) => {
+    collectLinkGroup(editorEl, anchor).forEach((el) => {
+      if (seen.has(el)) return;
+      seen.add(el);
+      el.replaceWith(...el.childNodes);
+    });
+  });
+}
+
 // Проставляет данные внутренней ссылки на все обёртки сразу и нативный title
 // с заголовком целевой заметки — для превью при наведении (кастомный поповер
 // тут не нужен, ТЗ требует его только для внешних ссылок).
@@ -3723,7 +3767,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
             {
               label: t("editor.linkDelete"),
               onClick: () => {
-                unwrapSelection(contentEl, FORMATS.linkExternal, range);
+                unwrapLinkGroups(contentEl, wrappers);
                 recordHistory();
                 onChange(serializeEditor(contentEl));
                 onApplied();
@@ -3735,7 +3779,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
                 const links = await openLinkEditor(currentLinks);
                 if (links) {
                   if (!links.length) {
-                    unwrapSelection(contentEl, FORMATS.linkExternal, range);
+                    unwrapLinkGroups(contentEl, wrappers);
                   } else {
                     const targets = uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkExternal);
                     targets.forEach((el) => {
@@ -3780,7 +3824,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
             {
               label: t("editor.linkDelete"),
               onClick: () => {
-                unwrapSelection(contentEl, FORMATS.linkInternal, range);
+                unwrapLinkGroups(contentEl, uniqueAncestors(contentEl, collectTextNodes(range), FORMATS.linkInternal));
                 recordHistory();
                 onChange(serializeEditor(contentEl));
                 onApplied();
@@ -4300,6 +4344,25 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     if (hasTextSelection) {
       event.preventDefault();
       showSelectionToolbar({ x: event.clientX, y: event.clientY });
+      return;
+    }
+
+    // ПКМ по фразе-ссылке на заметку без выделения — только «Delete link»:
+    // общие пункты (режим отображения, открывать с конца, теги) тут не к месту.
+    // Снимается вся ссылка, а не фрагмент под курсором (см. collectLinkGroup).
+    const internalLink = event.target instanceof Element ? event.target.closest('a.rte-link[data-link-type="internal"]') : null;
+    if (internalLink) {
+      event.preventDefault();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: t("editor.linkDelete"),
+          onClick: () => {
+            unwrapLinkGroups(contentEl, [internalLink]);
+            recordHistory();
+            onChange(serializeEditor(contentEl));
+          },
+        },
+      ]);
       return;
     }
 
