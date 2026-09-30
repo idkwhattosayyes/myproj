@@ -13,6 +13,9 @@ export async function renderNotesView(container) {
       // направление и так определяется само, кнопка нужна только на промахах.
       "h1", "h2", "h3", "alignLeft", "alignCenter", "alignRight", "textDirection",
       "bulletList", "orderedList", "checklist", "table", "divider", "insertPhoto", "voice", "draw", "pageMode",
+      // Печать и выгрузка — в конце и только в развёрнутом наборе: действие
+      // редкое, а место в сокращённом тулбаре дорогое.
+      "printExport",
     ],
     // Свёрнутый тулбар (кнопка "+" справа) показывает только этот набор — бывший
     // тулбар Задач. Развёрнутый показывает toolbarButtons целиком.

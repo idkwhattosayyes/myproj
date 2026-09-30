@@ -1,0 +1,98 @@
+/* Стили документа с ОДНОЙ заметкой — для печати и для выгрузки в файл
+   (см. src/modules/shared/noteExport.js). В самом приложении этот файл не
+   подключается: он живёт только внутри собранного документа, рядом с
+   editor.css, и добавляет к нему то, чего в приложении не требуется.
+
+   Здесь нет ни одного правила про ВИД заметки — списки, заголовки, цвета,
+   рамки блоков остаются на editor.css, чтобы источник правды был один. */
+
+/* Печать фонов. Браузер по умолчанию их не печатает, и без этой просьбы с
+   листа пропали бы сразу четыре вещи: заливка текста (highlight), полоски
+   тегов у блоков, квадратики чек-листа и цветной разделитель — он нарисован
+   фоном, а не рамкой. Это не украшение: без него половина форматирования,
+   ради которого печать и затевалась, уходит в белое.
+
+   Гарантии всё равно нет: если в системном диалоге снят флажок «Фоновая
+   графика», принтер проигнорирует и это. */
+* {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Сброс из main.css. Тащить весь main.css нельзя — там разметка приложения,
+   фиксированные панели и переменные, которым в документе с заметкой делать
+   нечего. Но без этих четырёх вещей заметка поедет: у абзацев вернутся
+   браузерные поля (p { margin: 1em 0 }) и строки разъедутся, а все отступы
+   редактора считаются в rem от корневых 16px. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color: #1f2328;
+  background: #ffffff;
+  line-height: 1.5;
+}
+
+/* Название заметки над текстом — только в сплошном режиме (в постраничном
+   лист нарисован целиком, и заголовку там негде встать). */
+.note-print-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.8rem;
+}
+
+/* Редактор на экране — карточка со своей рамкой, тенью и минимальной высотой.
+   В документе он просто текст. */
+.note-print .rte-content {
+  border: none;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+/* На экране лист вписывается в ширину колонки зумом (--page-fit считает
+   updatePageFit в richTextEditor.js). В печать лист обязан уйти
+   полноразмерным, иначе он ужмётся ровно настолько, насколько было сужено
+   окно в момент печати. */
+.note-print .rte-content.is-paged .rte-page-frame {
+  zoom: 1;
+  margin: 0;
+  border: none;
+  padding: 0;
+}
+
+.note-print .rte-content.is-paged .rte-page {
+  box-shadow: none;
+}
+
+/* Каждый лист — со своей страницы. У последнего разрыв не ставим, иначе
+   печать закончится пустой страницей. */
+.note-print .rte-content.is-paged .rte-page-frame {
+  break-after: page;
+}
+
+.note-print .rte-content.is-paged .rte-page-frame:last-child {
+  break-after: auto;
+}
+
+/* Подстраховка к чистке в noteExport.js: если в редакторе появится новый
+   служебный узел, а снять его там забудут, в документ он всё равно не
+   попадёт. */
+.note-print .rte-interim,
+.note-print .rte-photo-handles,
+.note-print .rte-block-dots,
+.note-print .rte-block-panel,
+.note-print .rte-add-page,
+.note-print .rte-page-delete {
+  display: none !important;
+}

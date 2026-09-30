@@ -13,6 +13,7 @@ import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBl
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
+import { printNote } from "./noteExport.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   occurrenceRange,
@@ -266,6 +267,10 @@ function getButtonDefs() {
     // Не команда форматирования, а переключатель вида — обрабатывается отдельно
     // в createRichTextEditor (см. isPageMode).
     pageMode: { label: "▤", title: t("editor.pageMode"), isPageMode: true },
+    // Печать и выгрузка заметки в файл. Не команда форматирования: по клику
+    // открывается меню со способами (см. isPrintExport в createRichTextEditor),
+    // а сама сборка документа живёт в noteExport.js.
+    printExport: { label: "🖨", title: t("editor.printExport"), isPrintExport: true },
   };
 }
 
@@ -1454,10 +1459,15 @@ function isColorActive(editorEl, cssProp) {
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
  * сам решает, куда их поставить (тулбар сверху, название, затем текст).
  *
- * @param {{content: string, buttons: string[], basicButtons?: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], allowInternalLinks?: boolean, showWordCount?: boolean}} options
+ * getNoteTitle нужен только кнопке печати/выгрузки: сам редактор названия
+ * заметки не знает, а в файл и на лист оно попасть обязано. Раздел передаёт
+ * его тем же способом, что и getExtraMenuItems, — лезть за названием в DOM
+ * редактор не должен.
+ *
+ * @param {{content: string, buttons: string[], basicButtons?: string[], pageMode?: "flow" | "paged", onChange: (html: string) => void, onPageModeChange?: (mode: string) => void, getExtraMenuItems?: () => {label: string, onClick: () => void}[], getNoteTitle?: () => string, allowInternalLinks?: boolean, showWordCount?: boolean}} options
  * @returns {{toolbarEl: HTMLElement, contentEl: HTMLElement, getPageMode: () => string, togglePageMode: () => void, refreshLayout: () => void, focusContent: () => void}}
  */
-export function createRichTextEditor({ content, buttons, basicButtons = null, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false, uploadPhoto = null, resolvePhotoSources = null, removePhotoFromStorage = null }) {
+export function createRichTextEditor({ content, buttons, basicButtons = null, pageMode = "flow", onChange, onPageModeChange, getExtraMenuItems, getNoteTitle = null, initialHistory = null, onHistoryChange = null, allowInternalLinks = false, showWordCount = false, uploadPhoto = null, resolvePhotoSources = null, removePhotoFromStorage = null }) {
   const buttonDefs = getButtonDefs();
   // Просим браузер размечать команды тегами (<b>), а не инлайновым CSS: со
   // стилями Chrome складывает разные оформления в одно свойство и они
@@ -3762,6 +3772,20 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         toggleDrawPopover(btn, def);
+      });
+    } else if (def.isPrintExport) {
+      // Меню под кнопкой — та же схема, что у ссылки ниже: несколько способов
+      // отдать одну и ту же заметку, отдельной кнопки каждый не заслуживает.
+      btn.addEventListener("click", () => {
+        const rect = btn.getBoundingClientRect();
+        const noteOptions = () => ({
+          contentEl,
+          title: getNoteTitle ? getNoteTitle() : "",
+          pageMode: currentPageMode,
+        });
+        showContextMenu(rect.left, rect.bottom, [
+          { label: t("editor.print"), onClick: () => printNote(noteOptions()) },
+        ]);
       });
     } else if (def.isPhoto) {
       btn.addEventListener("click", () => {
