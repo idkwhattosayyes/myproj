@@ -548,6 +548,23 @@ function linkTargetKey(anchor) {
   return data.links || "";
 }
 
+// Фрагменты ссылок, которые пересекает удаляемый кусок текста. Собирать их
+// можно только ДО правки: после неё от фразы остаётся огрызок, и по нему уже
+// не понять, что стёртое было её частью.
+//
+// getTargetRanges даёт ровно тот диапазон, который браузер собирается стереть,
+// — он точнее выделения: Backspace без выделения стирает символ, которого в
+// выделении нет вовсе. Прилегающий символ за границей ссылки не считается:
+// intersectsNode на общей границе даёт false.
+function linksTouchedByDelete(editorEl, event) {
+  const target = typeof event.getTargetRanges === "function" ? event.getTargetRanges()[0] : null;
+  if (!target) return [];
+  const range = document.createRange();
+  range.setStart(target.startContainer, target.startOffset);
+  range.setEnd(target.endContainer, target.endOffset);
+  return [...editorEl.querySelectorAll("a.rte-link")].filter((el) => range.intersectsNode(el));
+}
+
 // Снимает ссылку целиком с каждой группы, в которую входят anchors; текст
 // остаётся на месте обычным текстом.
 function unwrapLinkGroups(editorEl, anchors) {
@@ -3997,6 +4014,25 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // строке — обнулили.
   let pendingLineFormat = null;
 
+  // Ссылки, задетые текущим удалением. Заполняется в beforeinput, разбирается
+  // в input — как и pendingLineFormat, значение живёт ровно одну правку.
+  let linksCutByDelete = [];
+
+  /**
+   * Кусок фразы, переживший удаление, перестаёт быть ссылкой.
+   *
+   * Стёрли середину фразы-ссылки — и от неё оставалась буква-огрызок, которая
+   * всё ещё вела на заметку и носила бейдж; убрать её можно было только
+   * отдельным «Delete link», да ещё и заметив. Раз часть фразы удалили, ссылкой
+   * она уже не та, поэтому снимаем её со всей группы разом (collectLinkGroup) —
+   * текст при этом остаётся на месте.
+   */
+  function dropCutLinks() {
+    const survivors = linksCutByDelete.filter((el) => el.isConnected);
+    linksCutByDelete = [];
+    if (survivors.length) unwrapLinkGroups(contentEl, survivors);
+  }
+
   // Снимаем ДО разрыва, а не после. К моменту input новая строка уже создана, и
   // разметку, которую Chrome на неё скопировал, тут же сносит clearEmptiedBlock —
   // спрашивать было бы уже не у кого. Здесь же каретка ещё стоит в старой строке,
@@ -4006,6 +4042,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // сдвинут смещение, а нужна точка, с которой правка стартовала. Забирает его
     // ближайший записанный снимок (см. recordHistory).
     if (pendingCaretBefore === null) pendingCaretBefore = getCaretOffset();
+
+    // Что удаление заденет из ссылок — узнаём здесь же: дальше будет поздно
+    // (см. linksTouchedByDelete и dropCutLinks).
+    if (event.inputType && event.inputType.startsWith("delete")) {
+      linksCutByDelete = linksTouchedByDelete(contentEl, event);
+    }
 
     if (event.inputType !== "insertParagraph") return;
     const selection = window.getSelection();
@@ -4102,6 +4144,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   contentEl.addEventListener("input", (event) => {
     // Чистим до пересчёта, чтобы в заметку ушла уже прибранная разметка.
     if (event.inputType && event.inputType.startsWith("delete")) {
+      dropCutLinks();
       clearEmptiedBlock();
       dissolveDeadEndBlockLine();
       // Удалили строку между двумя списками одного вида — списки стали соседями
