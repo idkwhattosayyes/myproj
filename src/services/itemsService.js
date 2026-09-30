@@ -103,11 +103,12 @@ export async function listItems(section) {
   return storage.getItems(section);
 }
 
-// Полная выборка (с content) — только там, где нужен весь текст сразу по
-// всем заметкам: поиск (searchService.js), экспорт (settingsPanel.js).
-// Обычный listItems() выше отдаёт заметки без content.
-export async function listItemsWithContent(section) {
-  return storage.getItemsWithContent(section);
+// Кандидаты поиска — с текстом без HTML и списком фото, но без content (см.
+// SearchCandidate в storageAdapter.js). У залогиненного их отбирает сервер,
+// у гостя — localStorageAdapter по тем же правилам. Экспорт (settingsPanel.js)
+// полный content по-прежнему берёт напрямую через storage.getItemsWithContent.
+export async function searchItems(section, query, options) {
+  return storage.searchItems(section, query, options);
 }
 
 // Заметка по id, без фильтра по разделу — нужна для внутренних ссылок: ссылка

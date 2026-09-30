@@ -31,6 +31,14 @@ const FOLDER_FIELD_MAP = {
   deletedAt: "deleted_at",
 };
 
+// Колонки заметки, которые адаптер читает, — вместо "*": с миграции 010 у
+// notes есть служебные search_text и photo_names (серверный поиск), и "*"
+// тащил бы копию текста заметки с каждой строкой. Список — без content (см.
+// getItems), полная версия — для одной заметки, Корзины и экспорта.
+const NOTE_LIST_COLUMN_NAMES = ["id", "title", "page_mode", "open_at_end", "sort_order", "created_at", "updated_at", "activity_at", "deleted_at"];
+const NOTE_LIST_COLUMNS = NOTE_LIST_COLUMN_NAMES.join(", ");
+const NOTE_COLUMNS = [...NOTE_LIST_COLUMN_NAMES, "content"].join(", ");
+
 function toRow(fieldMap, source) {
   const row = {};
   for (const [jsKey, column] of Object.entries(fieldMap)) {
@@ -362,7 +370,7 @@ export const supabaseAdapter = {
     const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
       supabaseClient
         .from("notes")
-        .select("id, title, page_mode, open_at_end, sort_order, created_at, updated_at, activity_at, deleted_at")
+        .select(NOTE_LIST_COLUMNS)
         .is("deleted_at", null)
         .order("sort_order"),
       fetchFolderIdsByNoteId(),
@@ -375,12 +383,12 @@ export const supabaseAdapter = {
     );
   },
 
-  // Полная выборка С content — не для списка (см. getItems выше), а для мест,
-  // которым реально нужен весь текст сразу по всем заметкам: полнотекстовый
-  // поиск (searchService.js) и экспорт данных (settingsPanel.js).
+  // Полная выборка С content — не для списка (см. getItems выше), а для
+  // экспорта данных (settingsPanel.js), которому нужен весь текст сразу по
+  // всем заметкам. Поиск её больше не использует — см. searchItems ниже.
   async getItemsWithContent() {
     const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
-      supabaseClient.from("notes").select("*").is("deleted_at", null).order("sort_order"),
+      supabaseClient.from("notes").select(NOTE_COLUMNS).is("deleted_at", null).order("sort_order"),
       fetchFolderIdsByNoteId(),
       fetchFavoriteIdSet("note"),
       fetchPinsByItemId("note"),
@@ -391,11 +399,38 @@ export const supabaseAdapter = {
     );
   },
 
+  // Кандидаты поиска — RPC search_notes (миграция 010): сервер отбирает
+  // заметки по подстроке запроса в search_text (название + текст без HTML) и
+  // в названиях фото и отдаёт уже очищенный текст (body_text) и названия фото
+  // в порядке документа. content сюда не ездит вовсе — раньше поиск скачивал
+  // его у ВСЕХ заметок на каждую букву, и одна заметка с base64-фото весила
+  // больше, чем весь текст аккаунта. Сниппеты и номера вхождений считает
+  // клиент по этому тексту (searchService.js). Папки нужны для подзаголовка
+  // результата; таблица связей — та же дедуплицированная выборка, что у
+  // getItems.
+  async searchItems(_section, query, { anyPhoto = false, limit = 40 } = {}) {
+    const [result, folderIdsByNote] = await Promise.all([
+      supabaseClient.rpc("search_notes", { q: query, any_photo: anyPhoto, max_rows: limit }),
+      fetchFolderIdsByNoteId(),
+    ]);
+    if (result.error) throw result.error;
+    return result.data.map((row) => ({
+      id: row.id,
+      title: row.title,
+      section: "notes",
+      folderIds: folderIdsByNote.get(row.id) || [],
+      text: row.body_text || "",
+      // Пустая строка в массиве — фото без названия (см. note_photo_names
+      // в миграции); на клиенте это null, как у extractPhotos.
+      photos: (row.photo_names || []).map((name) => ({ name: name || null })),
+    }));
+  },
+
   // См. комментарий у getTrashedFolders — тот же инвариант для заметок
   // (itemsService.moveItemToTrash).
   async getTrashedItems() {
     const [itemsResult, folderIdsByNote] = await Promise.all([
-      supabaseClient.from("notes").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+      supabaseClient.from("notes").select(NOTE_COLUMNS).not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
       fetchFolderIdsByNoteId(),
     ]);
     if (itemsResult.error) throw itemsResult.error;
@@ -403,7 +438,7 @@ export const supabaseAdapter = {
   },
 
   async getItem(id) {
-    const { data, error } = await supabaseClient.from("notes").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await supabaseClient.from("notes").select(NOTE_COLUMNS).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) return null;
     const [folderIds, isFavorite, pinnedIn] = await Promise.all([
@@ -419,7 +454,7 @@ export const supabaseAdapter = {
       const row = toRow(ITEM_FIELD_MAP, item);
       row.id = item.id;
       row.user_id = getCachedSession().user.id;
-      const { data, error } = await supabaseClient.from("notes").insert(row).select().single();
+      const { data, error } = await supabaseClient.from("notes").insert(row).select(NOTE_COLUMNS).single();
       if (error) throw error;
       const folderIds = item.folderIds || [];
       if (folderIds.length) await replaceNoteFolderLinks(data.id, folderIds);
@@ -437,7 +472,7 @@ export const supabaseAdapter = {
       const row = toRow(ITEM_FIELD_MAP, rest);
       let data = null;
       if (Object.keys(row).length) {
-        const result = await supabaseClient.from("notes").update(row).eq("id", id).select().maybeSingle();
+        const result = await supabaseClient.from("notes").update(row).eq("id", id).select(NOTE_COLUMNS).maybeSingle();
         if (result.error) throw result.error;
         data = result.data;
       }
@@ -445,7 +480,7 @@ export const supabaseAdapter = {
       if (isFavorite !== undefined) await setFavorite("note", id, isFavorite);
       if (pinnedIn !== undefined) await replacePins("note", id, pinnedIn);
       if (!data) {
-        const result = await supabaseClient.from("notes").select("*").eq("id", id).maybeSingle();
+        const result = await supabaseClient.from("notes").select(NOTE_COLUMNS).eq("id", id).maybeSingle();
         if (result.error) throw result.error;
         data = result.data;
       }

@@ -1,7 +1,6 @@
 import * as itemsService from "../services/itemsService.js";
 import * as calendarEntriesService from "../services/calendarEntriesService.js";
 import * as calendarTagsService from "../services/calendarTagsService.js";
-import { htmlToSearchText, extractPhotos } from "../utils/dom.js";
 
 // Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
@@ -36,16 +35,28 @@ export async function search(rawQuery, scope) {
   const query = rawQuery.trim();
   if (!query) return [];
 
-  const groups = [];
-  if (scope !== "calendar") groups.push(...(await searchItems(query)));
-  if (scope !== "items") groups.push(...(await searchCalendar(query)));
-  return groups.slice(0, MAX_GROUPS);
+  // Заметки и календарь — независимые источники (у залогиненного первый
+  // ходит на сервер, второй читает localStorage), ждать их по очереди незачем.
+  const [itemGroups, calendarGroups] = await Promise.all([
+    scope !== "calendar" ? searchItems(query) : [],
+    scope !== "items" ? searchCalendar(query) : [],
+  ]);
+  return [...itemGroups, ...calendarGroups].slice(0, MAX_GROUPS);
 }
 
 async function searchItems(query) {
-  const [folders, items] = await Promise.all([
+  // Общее слово "photo"/"фото" (кириллица и латиница проверяются независимо
+  // от текущего языка интерфейса) находит любое фото вообще — так находятся и
+  // фото без названия. Хранилище получает этот признак отдельно: по тексту
+  // такой запрос ничего бы не нашёл.
+  const isGenericPhotoQuery = ["photo", "фото"].includes(query.toLowerCase());
+  const [folders, candidates] = await Promise.all([
     itemsService.listFolders("notes"),
-    itemsService.listItemsWithContent("notes"), // поиск идёт по телу заметки — нужен полный content
+    // Кандидаты приходят уже с текстом без HTML и списком фото — content
+    // заметок поиску не нужен (у залогиненного он даже не скачивается, см.
+    // searchItems в supabaseAdapter.js). Лимит — тот же MAX_GROUPS: больше
+    // групп список всё равно не покажет.
+    itemsService.searchItems("notes", query, { anyPhoto: isGenericPhotoQuery, limit: MAX_GROUPS }),
   ]);
   const folderNames = new Map(folders.map((folder) => [folder.id, folder.name]));
   const groups = [];
@@ -72,19 +83,14 @@ async function searchItems(query) {
     });
   });
 
-  // Фото нигде не показывается как текст (см. utils/dom.js), поэтому
-  // htmlToSearchText его не видит — ищем отдельно. Совпадение либо по
-  // собственному названию (подстрока, как раньше), либо любое фото вообще,
-  // если запрос — общее слово "photo"/"фото" (кириллица и латиница проверяются
-  // независимо от текущего языка интерфейса) — так находятся и фото без названия.
-  const isGenericPhotoQuery = ["photo", "фото"].includes(query.toLowerCase());
-
-  items.forEach((item) => {
+  candidates.forEach((item) => {
     const title = item.title || "";
-    const text = htmlToSearchText(item.content);
     const inTitle = findMatches(title, query, 1);
-    const inText = findMatches(text, query, MATCH_FETCH_CAP);
-    const photoMatches = extractPhotos(item.content)
+    const inText = findMatches(item.text, query, MATCH_FETCH_CAP);
+    // Фото нигде не показывается как текст, поэтому в item.text его нет —
+    // ищем по названиям отдельно: совпадение либо по названию (подстрока, как
+    // раньше), либо любое фото, если запрос — общее слово.
+    const photoMatches = item.photos
       .map((photo, photoIndex) => {
         if (photo.name) {
           const found = findMatches(photo.name, query, 1);
@@ -98,6 +104,8 @@ async function searchItems(query) {
         return null;
       })
       .filter(Boolean);
+    // Хранилище отдало кандидата, а точных вхождений нет — бывает, если его
+    // очистка текста разошлась с клиентской на экзотике; такой просто выпадает.
     if (!inTitle.matches.length && !inText.matches.length && !photoMatches.length) return;
 
     // Группу не раздваиваем: заметка, у которой совпало и название, и текст,

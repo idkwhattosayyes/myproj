@@ -56,6 +56,10 @@ let allTags = null;
 
 // "Билет" последнего вызова renderTagSuggestions — см. комментарий внутри неё.
 let tagRenderToken = 0;
+// Тот же приём для обычного поиска (runSearch): у залогиненного он ходит на
+// сервер, и более ранний запрос может вернуться ПОСЛЕ более позднего — без
+// билета устаревший список лёг бы поверх актуального или поверх закрытого.
+let searchToken = 0;
 
 function hasHashToken(value) {
   return value.includes("#");
@@ -430,7 +434,10 @@ async function runSearch() {
     return;
   }
 
-  groups = await search(query, currentScopeKey());
+  const myToken = ++searchToken;
+  const found = await search(query, currentScopeKey());
+  if (myToken !== searchToken) return;
+  groups = found;
   if (pickerActive) {
     // Папка — не цель для ссылки; фото-совпадения не годятся в matchIndex
     // (findOccurrenceRange в richTextEditor.js ищет обычный текст, а не фото).
@@ -654,6 +661,8 @@ function openResults() {
 }
 
 function closeResults() {
+  // Ответ поиска, который ещё в пути, после закрытия уже никому не нужен.
+  searchToken += 1;
   groups = [];
   rows = [];
   // selectedViaPlus здесь НЕ сбрасываем: выбранные теги теперь чипы в самой

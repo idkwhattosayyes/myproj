@@ -1,4 +1,5 @@
 import { withSaveStatus } from "../utils/saveStatus.js";
+import { htmlToSearchText, extractPhotos } from "../utils/dom.js";
 
 const STORAGE_KEYS = {
   folders: "app:folders",
@@ -143,9 +144,40 @@ export const localStorageAdapter = {
       .sort(byDeletedAtDesc);
   },
   // У гостя content и так никогда не обрезан — тот же метод под именем,
-  // которое ждут searchService.js/settingsPanel.js (см. supabaseAdapter.js).
+  // которое ждёт экспорт в settingsPanel.js (см. supabaseAdapter.js).
   async getItemsWithContent(section) {
     return localStorageAdapter.getItems(section);
+  },
+  // Кандидаты поиска у гостя: content всех заметок и так в памяти, поэтому
+  // текст и фото считаются здесь же — тем же правилом, что search_notes на
+  // сервере (010_notes_search.sql): подстрока без учёта регистра в названии
+  // или тексте, либо в названии фото, либо любое фото при anyPhoto. Точные
+  // вхождения и сниппеты — дальше в searchService.js, как и для серверных
+  // кандидатов.
+  async searchItems(section, query, { anyPhoto = false, limit = 40 } = {}) {
+    const needle = query.toLowerCase();
+    const items = await localStorageAdapter.getItems(section);
+    const candidates = items
+      .map((item) => ({
+        id: item.id,
+        title: item.title || "",
+        section: item.section,
+        folderIds: item.folderIds,
+        text: htmlToSearchText(item.content),
+        photos: extractPhotos(item.content),
+      }))
+      .filter((candidate) =>
+        candidate.title.toLowerCase().includes(needle)
+        || candidate.text.toLowerCase().includes(needle)
+        || candidate.photos.some((photo) => photo.name && photo.name.toLowerCase().includes(needle))
+        || (anyPhoto && candidate.photos.length > 0)
+      );
+    // Как у search_notes: совпавшие названия первыми (sort стабильный, внутри
+    // порядок списка сохраняется), и только потом срез — чтобы лимит отрезал
+    // совпадения в тексте, а не в названиях.
+    const titleHit = (candidate) => candidate.title.toLowerCase().includes(needle);
+    candidates.sort((a, b) => Number(titleHit(b)) - Number(titleHit(a)));
+    return candidates.slice(0, limit);
   },
   async getItem(id) {
     const item = readCollection(STORAGE_KEYS.items).find((item) => item.id === id);

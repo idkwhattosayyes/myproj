@@ -3,6 +3,16 @@ import { supabaseAdapter } from "./supabaseAdapter.js";
 import { getCachedSession } from "../auth/authService.js";
 
 /**
+ * Кандидат поиска: заметка, в названии/тексте/фото которой хранилище нашло
+ * подстроку запроса (без учёта регистра). text — текст без HTML, строки
+ * редактора через "\n" (htmlToSearchText в utils/dom.js у гостя,
+ * note_search_text в Postgres у залогиненного — зеркала друг друга); photos —
+ * фото в порядке документа, name null у безымянного. content сюда не входит:
+ * точные вхождения и сниппеты считает searchService.js по text.
+ * @typedef {{id: string, title: string, section: string, folderIds: string[], text: string, photos: {name: string | null}[]}} SearchCandidate
+ */
+
+/**
  * Контракт слоя хранения данных. Любой адаптер (localStorage, позже Supabase)
  * должен реализовывать этот набор async-методов, чтобы остальной код
  * (services/*) не менялся при смене хранилища.
@@ -16,6 +26,7 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {(section: string) => Promise<Object[]>} getTrashedFolders
  * @property {(section: string) => Promise<Object[]>} getItems
  * @property {(section: string) => Promise<Object[]>} getItemsWithContent
+ * @property {(section: string, query: string, options: {anyPhoto: boolean, limit: number}) => Promise<SearchCandidate[]>} searchItems
  * @property {(id: string) => Promise<Object|null>} getItem
  * @property {(item: Object) => Promise<Object>} createItem
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateItem
@@ -59,6 +70,7 @@ const NOTES_AND_FOLDERS_METHODS = [
   "getTrashedFolders",
   "getItems",
   "getItemsWithContent",
+  "searchItems",
   "getItem",
   "createItem",
   "updateItem",
