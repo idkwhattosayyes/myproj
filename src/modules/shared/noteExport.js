@@ -399,6 +399,129 @@ function stripNonWordAttributes(clone) {
 }
 
 /**
+ * Рисунки — в картинки.
+ *
+ * Рисунок нарисован инлайновым <svg>, а его HTML-импортёр Word выбрасывает
+ * целиком: в документе не осталось бы ничего. Переводим в PNG.
+ *
+ * Обрезаем по самому штриху (getBBox), а не по слою: слой растянут на всю
+ * страницу и почти весь прозрачен — картинка размером с лист разнесла бы
+ * вёрстку. Рисуем в двойном разрешении, иначе линия выходит рваной.
+ *
+ * transform-box и transform-origin задаются в editor.css, то есть снаружи
+ * этого svg. В отдельной картинке их нет, поэтому переносим значениями: без
+ * них масштаб считался бы от центра и штрих уехал бы.
+ */
+const DRAWING_PADDING = 8;
+
+async function rasterizeDrawings(liveRoot, cloneRoot) {
+  const jobs = [];
+  walkPairs(liveRoot, cloneRoot, (live, copy) => {
+    if (live.matches("svg.rte-drawing-layer")) jobs.push({ live, copy });
+  });
+  await Promise.all(
+    jobs.map(async ({ live, copy }) => {
+      try {
+        const img = await drawingToImage(live);
+        if (img) copy.replaceWith(img);
+        else copy.remove();
+      } catch (error) {
+        console.error("rasterizeDrawings", error);
+        copy.remove();
+      }
+    })
+  );
+}
+
+async function drawingToImage(svg) {
+  const path = svg.querySelector("path");
+  if (!path) return null;
+  const box = path.getBBox();
+  const stroke = parseFloat(window.getComputedStyle(path).strokeWidth) || 0;
+  const pad = DRAWING_PADDING + stroke;
+  const x = box.x - pad;
+  const y = box.y - pad;
+  const width = Math.max(1, Math.ceil(box.width + pad * 2));
+  const height = Math.max(1, Math.ceil(box.height + pad * 2));
+
+  const copy = path.cloneNode(true);
+  copy.style.transformBox = "view-box";
+  copy.style.transformOrigin = "0 0";
+  const standalone =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${x} ${y} ${width} ${height}">${copy.outerHTML}</svg>`;
+
+  const bitmap = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(standalone)}`);
+  const canvas = document.createElement("canvas");
+  canvas.width = width * 2;
+  canvas.height = height * 2;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+  const out = document.createElement("img");
+  out.src = canvas.toDataURL("image/png");
+  out.style.width = `${width}px`;
+  out.style.height = `${height}px`;
+  // Рисунок уже не слой поверх страницы, а картинка в потоке — позицию ему
+  // дальше назначит groundFloatingObjects, по тому же якорю, что и фото.
+  out.dataset.layout = "float";
+  if (svg.dataset.anchor) out.dataset.anchor = svg.dataset.anchor;
+  if (svg.dataset.leftPct) out.dataset.leftPct = svg.dataset.leftPct;
+  return out;
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image decode failed"));
+    img.src = src;
+  });
+}
+
+/**
+ * Опускает объекты с абсолютной позицией в поток текста.
+ *
+ * В приложении фото и рисунки стоят поверх страницы по координатам. Word так
+ * не умеет: через HTML-импорт объект либо схлопывается в начало документа,
+ * либо уезжает за поле. Поэтому ставим его отдельным абзацем сразу за строкой,
+ * к которой он привязан (data-anchor), а от горизонтальной позиции оставляем
+ * только выравнивание. Точное место и порядок наложения при этом теряются —
+ * зато объект стоит там, где про него написано, и документ читается.
+ */
+function groundFloatingObjects(clone) {
+  const floats = [...clone.querySelectorAll('[data-layout="float"]')];
+  // Куда класть следующий объект этого якоря. Без этого каждый следующий
+  // вставлялся бы сразу за строкой и стопка переворачивалась бы задом наперёд.
+  const lastPlaced = new Map();
+  floats.forEach((el) => {
+    const anchorId = el.dataset.anchor;
+    const holder = document.createElement("p");
+    holder.style.textAlign = alignFromLeftPercent(el.dataset.leftPct);
+    holder.style.margin = "0.4rem 0";
+    // Абсолютные координаты вместе с наложением на текст больше не нужны —
+    // дальше объект живёт обычной картинкой в абзаце.
+    ["position", "left", "top", "transform", "zIndex", "float"].forEach((prop) => {
+      el.style.removeProperty(prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`));
+    });
+    el.replaceWith(holder);
+    holder.appendChild(el);
+
+    const anchorLine = anchorId ? clone.querySelector(`[data-anchor="${CSS.escape(anchorId)}"]:not([data-layout])`) : null;
+    const after = lastPlaced.get(anchorId) || anchorLine;
+    if (after && after !== holder) after.after(holder);
+    if (anchorId) lastPlaced.set(anchorId, holder);
+  });
+}
+
+/** Левее трети листа — по левому краю, правее двух третей — по правому. */
+function alignFromLeftPercent(leftPct) {
+  const value = parseFloat(leftPct);
+  if (Number.isNaN(value)) return "center";
+  if (value < 40) return "left";
+  if (value > 60) return "right";
+  return "center";
+}
+
+/**
  * Заголовки документа для Word.
  *
  * Без @page WordSection1 он открывает файл как веб-страницу — без листа A4 и
@@ -442,6 +565,10 @@ async function buildWordDocument({ contentEl, title }) {
   bakeComputedStyles(contentEl, clone);
   flattenBlockBars(contentEl, clone);
   flattenDivider(contentEl, clone);
+  // Рисунки — до опускания в поток: растеризация заменяет узел, и опускать
+  // нужно уже картинку. Обе функции читают живой DOM, поэтому идут парами.
+  await rasterizeDrawings(contentEl, clone);
+  groundFloatingObjects(clone);
   // Список правим после запекания: именно оно кладёт на пункт padding, который
   // сложился бы с местом под маркер.
   flattenLists(clone);
