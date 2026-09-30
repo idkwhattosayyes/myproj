@@ -1,6 +1,7 @@
 import { getStorage } from "../data/storageAdapter.js";
 import { appendCircles } from "../modules/home/customCircles.js";
 import * as blockTagsService from "../services/blockTagsService.js";
+import { downloadText } from "../utils/download.js";
 
 // Экспорт/импорт заметок и папок одним JSON-файлом. Форматирование хранится
 // прямо в item.content (HTML), поэтому выгрузка моделей сохраняет жирность,
@@ -40,15 +41,7 @@ export function circlesForItems(circles, items) {
 }
 
 export function downloadJson(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadText(JSON.stringify(data, null, 2), filename, "application/json");
 }
 
 // Открывает диалог выбора файла и возвращает разобранный JSON (или null, если

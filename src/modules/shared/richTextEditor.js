@@ -13,7 +13,7 @@ import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBl
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
-import { printNote } from "./noteExport.js";
+import { printNote, downloadNoteHtml } from "./noteExport.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
   occurrenceRange,
@@ -3785,6 +3785,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
         });
         showContextMenu(rect.left, rect.bottom, [
           { label: t("editor.print"), onClick: () => printNote(noteOptions()) },
+          { label: t("editor.downloadHtml"), onClick: () => downloadNoteHtml(noteOptions()) },
         ]);
       });
     } else if (def.isPhoto) {

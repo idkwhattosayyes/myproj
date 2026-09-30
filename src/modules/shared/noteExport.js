@@ -1,6 +1,7 @@
 import { t, getLang } from "../../i18n/i18n.js";
 import { openAlert } from "../../utils/modal.js";
 import { escapeHtml, escapeAttr } from "../../utils/dom.js";
+import { downloadText } from "../../utils/download.js";
 
 /**
  * Печать и выгрузка ОДНОЙ заметки.
@@ -67,39 +68,132 @@ function cloneNote(contentEl) {
 }
 
 /**
- * Готовый HTML-документ с заметкой.
+ * Правило страницы под режим заметки.
  *
- * Стили — те же самые, что в приложении: подключаем сам editor.css, чтобы у
- * вида заметки остался один источник правды. notePrint.css добавляет к нему
- * то, чего в приложении не требуется (печать фонов, размер страницы, снятие
- * экранного масштаба) — подробности в самом файле.
+ * В постраничном режиме лист уже нарисован как A4 со своими полями — поля
+ * печати обнуляем, иначе они сложатся с полями листа. В сплошном режиме
+ * страницу задаёт принтер, и поля нужны свои.
  */
-function buildPrintDocument({ contentEl, title, pageMode }) {
-  const clone = cloneNote(contentEl);
-  // В постраничном режиме лист уже нарисован как A4 со своими полями — поля
-  // печати обнуляем, иначе они сложатся с полями листа. В сплошном режиме
-  // страницу задаёт принтер, и поля нужны свои.
-  //
-  // Заголовок заметки печатаем только в сплошном режиме по той же причине:
-  // на готовом листе ему негде встать, не сдвинув всё остальное.
-  const paged = pageMode === "paged";
-  const pageRule = paged ? "@page { size: A4; margin: 0; }" : "@page { size: A4; margin: 15mm; }";
-  const heading = paged || !title ? "" : `<h1 class="note-print-title">${escapeHtml(title)}</h1>`;
+function pageRule(pageMode) {
+  return pageMode === "paged" ? "@page { size: A4; margin: 0; }" : "@page { size: A4; margin: 15mm; }";
+}
 
+/**
+ * Заголовок заметки над текстом — только в сплошном режиме: на готовом листе
+ * ему негде встать, не сдвинув всё остальное.
+ */
+function headingHtml(title, pageMode) {
+  if (pageMode === "paged" || !title) return "";
+  return `<h1 class="note-print-title">${escapeHtml(title)}</h1>`;
+}
+
+/** Склейка готового документа. Единственное место, где он собирается строкой. */
+function buildDocument({ clone, head, title, pageMode }) {
   return `<!doctype html>
 <html lang="${escapeAttr(getLang())}">
 <head>
 <meta charset="utf-8">
 <title>${escapeHtml(title || t("panel.untitled"))}</title>
-<link rel="stylesheet" href="${escapeAttr(EDITOR_CSS_URL)}">
-<link rel="stylesheet" href="${escapeAttr(PRINT_CSS_URL)}">
-<style>${pageRule}</style>
+${head}
 </head>
 <body class="note-print">
-${heading}
+${headingHtml(title, pageMode)}
 ${clone.outerHTML}
 </body>
 </html>`;
+}
+
+/**
+ * Документ для печати: стили подключаются ссылками. Путь относительный, но
+ * рамка печати того же происхождения, что и приложение, поэтому он резолвится
+ * как обычно, а браузер берёт файлы из своего кеша.
+ */
+function buildPrintDocument({ contentEl, title, pageMode }) {
+  const head = `<link rel="stylesheet" href="${escapeAttr(EDITOR_CSS_URL)}">
+<link rel="stylesheet" href="${escapeAttr(PRINT_CSS_URL)}">
+<style>${pageRule(pageMode)}</style>`;
+  return buildDocument({ clone: cloneNote(contentEl), head, title, pageMode });
+}
+
+// Тексты стилей, вшиваемые в файл. Читаются один раз за сессию: serve.json
+// отдаёт всё с Cache-Control: no-store, и без своего кеша каждая выгрузка
+// заново тянула бы оба файла по сети.
+const styleTextCache = new Map();
+
+async function loadStyleText(url) {
+  if (!styleTextCache.has(url)) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`style ${url}: ${response.status}`);
+    styleTextCache.set(url, await response.text());
+  }
+  return styleTextCache.get(url);
+}
+
+/** Blob → data:-адрес. FileReader, потому что он есть везде и без зависимостей. */
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Переводит картинки в сам файл.
+ *
+ * У гостя фото и так лежат в заметке как data: — их пропускаем. У
+ * залогиненного это ссылка на хранилище, которая протухнет: без вшивания файл
+ * через сутки покажет пустые рамки, а без сети — сразу.
+ *
+ * Неудачи не отменяют выгрузку: лучше отдать файл без одной картинки, чем не
+ * отдать ничего. Сколько их было — возвращаем, чтобы предупредить.
+ */
+async function inlinePhotos(clone) {
+  const remote = [...clone.querySelectorAll("img")].filter((img) => img.src && !img.src.startsWith("data:"));
+  let failed = 0;
+  await Promise.all(
+    remote.map(async (img) => {
+      try {
+        const response = await fetch(img.src);
+        if (!response.ok) throw new Error(String(response.status));
+        img.src = await blobToDataUrl(await response.blob());
+      } catch (error) {
+        console.error("inlinePhotos", error);
+        failed += 1;
+      }
+    })
+  );
+  return failed;
+}
+
+/**
+ * Автономный документ: стили вшиты текстом, картинки — в data:. Такой файл
+ * открывается двойным кликом и без сети.
+ */
+async function buildStandaloneDocument({ contentEl, title, pageMode }) {
+  const clone = cloneNote(contentEl);
+  // Обе задачи независимы, поэтому идут параллельно: стили читаются из кеша
+  // или сети, картинки скачиваются.
+  const [failed, editorCss, printCss] = await Promise.all([
+    inlinePhotos(clone),
+    loadStyleText(EDITOR_CSS_URL),
+    loadStyleText(PRINT_CSS_URL),
+  ]);
+  const head = `<style>${editorCss}</style>
+<style>${printCss}</style>
+<style>${pageRule(pageMode)}</style>`;
+  return { html: buildDocument({ clone, head, title, pageMode }), failed };
+}
+
+// Символы, запрещённые в именах файлов Windows. Плюс точки и пробелы по краям:
+// имя вида "заметка." Проводник не принимает.
+const UNSAFE_FILE_CHARS = /[\\/:*?"<>| -]/g;
+const FILE_NAME_LIMIT = 80;
+
+function safeFileName(title) {
+  const cleaned = String(title || "").replace(UNSAFE_FILE_CHARS, " ").replace(/\s+/g, " ").trim().replace(/^\.+|\.+$/g, "");
+  return (cleaned || t("panel.untitled")).slice(0, FILE_NAME_LIMIT);
 }
 
 /**
@@ -175,6 +269,23 @@ export async function printNote({ contentEl, title, pageMode }) {
     openPrintFrame(buildPrintDocument({ contentEl, title, pageMode }));
   } catch (error) {
     console.error("printNote", error);
+    await openAlert({ message: t("editor.exportFailed") });
+  }
+}
+
+/**
+ * Выгрузка заметки в автономный .html — он открывается и в браузере, и в
+ * Word, и импортом в Google Docs.
+ * @param {{contentEl: HTMLElement, title: string, pageMode: string}} options
+ */
+export async function downloadNoteHtml({ contentEl, title, pageMode }) {
+  try {
+    const { html, failed } = await buildStandaloneDocument({ contentEl, title, pageMode });
+    downloadText(html, `${safeFileName(title)}.html`, "text/html;charset=utf-8");
+    // Предупреждаем ПОСЛЕ выгрузки: файл уже у пользователя, просто неполный.
+    if (failed) await openAlert({ message: t("editor.exportPhotosFailed") });
+  } catch (error) {
+    console.error("downloadNoteHtml", error);
     await openAlert({ message: t("editor.exportFailed") });
   }
 }
