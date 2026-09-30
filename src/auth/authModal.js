@@ -23,6 +23,27 @@ function wirePasswordToggles(scope) {
   });
 }
 
+// Единственная точка показа ошибки в модалке. Просто перезаписать текст мало:
+// на повторной неудачной попытке он чаще всего тот же самый (тот же неверный
+// пароль), плашка уже показана, и на экране не менялось ни пикселя — выходило,
+// будто Enter не сработал и запрос завис. Поэтому каждый показ заново играет
+// вспышку.
+//
+// Перезапуск анимации — тем же приёмом, что подсветка найденной карточки в
+// blockTagsBrowser.js: снять класс, заставить браузер пересчитать раскладку
+// (чтение offsetWidth), навесить обратно. Без чтения снятие и добавление в
+// одной задаче схлопнутся, и анимация не пойдёт.
+//
+// Мигаем прозрачностью, а не атрибутом hidden: место под плашкой остаётся
+// занятым и кнопка входа не прыгает вверх-вниз на каждой попытке.
+function showAuthError(errorEl, text) {
+  errorEl.classList.remove("is-flash");
+  errorEl.textContent = text;
+  errorEl.hidden = false;
+  void errorEl.offsetWidth;
+  errorEl.classList.add("is-flash");
+}
+
 /**
  * Экран входа — перед первым рендером раздела, если нет сессии и гость ещё
  * ни разу не выбирал "продолжить как гость" (см. hasChosenGuest), либо по
@@ -126,8 +147,7 @@ export function openAuthModal() {
           // сервер и т.д.) — показываем настоящее сообщение Supabase, а не
           // один и тот же текст про пароль независимо от причины (ТЗ).
           const isBadCredentials = !error || error.code === "invalid_credentials";
-          errorEl.textContent = isBadCredentials ? t("auth.errorInvalidCredentials") : error.message;
-          errorEl.hidden = false;
+          showAuthError(errorEl, isBadCredentials ? t("auth.errorInvalidCredentials") : error.message);
           return;
         }
         finish();
@@ -178,15 +198,13 @@ export function openAuthModal() {
         errorEl.hidden = true;
         hintEl.hidden = true;
         if (passwordInput.value !== confirmInput.value) {
-          errorEl.textContent = t("auth.errorPasswordMismatch");
-          errorEl.hidden = false;
+          showAuthError(errorEl, t("auth.errorPasswordMismatch"));
           return;
         }
         email = emailInput.value.trim();
         const { session, error } = await signUp(email, passwordInput.value);
         if (error) {
-          errorEl.textContent = error.message;
-          errorEl.hidden = false;
+          showAuthError(errorEl, error.message);
           return;
         }
         if (!session) {
@@ -208,9 +226,7 @@ export function openAuthModal() {
     async function runGoogle() {
       const { error } = await signInWithGoogle();
       if (!error) return; // успех — браузер уже уходит на страницу Google
-      const errorEl = overlay.querySelector('[data-role="error"]');
-      errorEl.textContent = error.message;
-      errorEl.hidden = false;
+      showAuthError(overlay.querySelector('[data-role="error"]'), error.message);
     }
 
     function render() {
