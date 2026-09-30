@@ -522,8 +522,12 @@ function renderResults() {
   rows = [];
   const html = groups
     .map((group, groupIndex) => {
+      // isHead отличает строку-название от строки-совпадения. Без него они
+      // попадали в rows одинаково (у заголовка matchIndex тоже 0), и клик по
+      // названию открывал заметку так же, как клик по первой находке — с
+      // прыжком к слову (см. openRow).
       const head = `
-        <button type="button" class="search-row search-row--head" data-row="${rows.push({ groupIndex, matchIndex: 0 }) - 1}">
+        <button type="button" class="search-row search-row--head" data-row="${rows.push({ groupIndex, matchIndex: 0, isHead: true }) - 1}">
           <span class="search-kind">${kindLabel(group.kind)}</span>
           <span class="search-row-title">${escapeHtml(group.title || t("panel.untitled"))}</span>
           ${group.subtitle ? `<span class="search-row-sub">${escapeHtml(group.subtitle)}</span>` : ""}
@@ -631,19 +635,27 @@ function openRow(rowIndex) {
     return;
   }
 
-  // Заметка, у которой совпало только НАЗВАНИЕ (searchService.js кладёт такую
-  // в titleGroups с пустым matches — искать в теле нечего): тот же случай, что
-  // у blockNote выше. group.query здесь всё ещё непустой (это и есть найденное
-  // название), и без этой проверки applySearchTarget завёл бы pendingMatch на
-  // текст, которого в теле нет, — highlightMatch ничего не найдёт и не
-  // проскроллит, а до openAtEnd (заметки с "открывать с конца") очередь так и
-  // не дойдёт.
-  const titleOnlyMatch = group.kind === "item" && group.matches.length === 0;
+  // Открыть цель целиком, а не вести к слову, нужно в двух случаях.
+  //
+  // Первый — нажали строку с НАЗВАНИЕМ. К конкретному вхождению ведут строки
+  // совпадений, они для этого и нужны; название — это «просто открой её», как
+  // из списка Заметок.
+  //
+  // Второй — у заметки совпало только название (searchService.js кладёт такую в
+  // titleGroups с пустым matches — искать в теле нечего): тот же случай, что у
+  // blockNote выше.
+  //
+  // В обоих случаях query обязан уйти пустым. Он здесь непустой (это и есть
+  // найденное название), и с ним applySearchTarget завёл бы pendingMatch на
+  // текст, которого в теле может не быть, — highlightMatch ничего не найдёт и
+  // не проскроллит, а до openAtEnd (заметки с «открывать с конца») очередь так
+  // и не дойдёт.
+  const openWhole = row.isHead || (group.kind === "item" && group.matches.length === 0);
   setPendingTarget({
     kind: group.kind,
     id: group.id,
-    query: titleOnlyMatch ? "" : group.query,
-    matchIndex: titleOnlyMatch ? 0 : row.matchIndex,
+    query: openWhole ? "" : group.query,
+    matchIndex: openWhole ? 0 : row.matchIndex,
     photoIndex: row.photoIndex,
   });
   closeResults();
