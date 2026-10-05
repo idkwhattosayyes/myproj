@@ -49,80 +49,53 @@
   overflow: hidden;
 }
 
-/* Доля экрана, а не пиксели: 220px + 240px занимали треть ноутбучных 1366px и
-   тем сильнее давили на редактор, чем меньше экран. Теперь обе панели вместе —
-   20% ширины вьюпорта, поровну на каждую. Начинали с 15%, но на них не читались
-   названия — 10% на панель оказалось нижней рабочей границей.
+/* Доля экрана, а не пиксели: фиксированные 220px + 240px двух прежних панелей
+   занимали треть ноутбучных 1366px. Сейчас панель одна (Workspace) и уже, чем
+   были две вместе (20%): 13% — на глаз, чтобы названия ещё читались.
 
    Делить на --ui-scale обязательно: у .panel стоит zoom (см. выше), и без
-   компенсации панель заняла бы 10vw уже после зума — доля экрана плавала бы
+   компенсации панель заняла бы 13vw уже после зума — доля экрана плавала бы
    при Ctrl+колесо. Тот же приём, что у max-height и top. */
-.panel-folders { flex: 0 0 calc(10vw / var(--ui-scale, 1)); }
-.panel-list { flex: 0 0 calc(10vw / var(--ui-scale, 1)); }
-
-/* Названия папок/заметок в боковых панелях не должны выделяться мышью —
-   случайное выделение буквы во время перетаскивания создавало иллюзию, что
-   тащат сразу несколько строк. .panel-detail (сам редактор) не затронут —
-   там выделение текста должно работать как обычно. Переименование всё равно
-   идёт через настоящий <input> (startInlineRename) — на нём это не действует. */
-.panel-folders,
-.panel-list {
+.panel-workspace {
+  flex: 0 0 calc(13vw / var(--ui-scale, 1));
+  /* Названия папок/заметок не должны выделяться мышью — случайное выделение
+     буквы во время перетаскивания создавало иллюзию, что тащат сразу несколько
+     строк. Переименование идёт через настоящий <input> (startInlineRename) — на
+     нём это не действует. */
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* Свёрнутый список заметок не прячется совсем, а складывается в панель папок
-   вкладкой .panel-tab — сам блок при этом убирается из сетки. */
-.panel-list.is-collapsed { display: none; }
-
-/* Вкладка свёрнутого списка внутри панели папок. */
-.panel-tab {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  width: 100%;
-  padding: 0.45rem 0.35rem;
-  border: none;
-  border-bottom: 1px solid #eef1f4;
-  background: #f3f4f6;
-  /* Здесь и ниже размеры в em — считаются от font-size на .panel, чтобы весь
-     текст панелей уменьшался одним числом. Прежние rem указаны в скобках. */
-  font-size: 1em; /* 0.85rem */
-  font-weight: 600;
-  color: #374151;
-  text-align: left;
+/* Фиксированные разделы над разделителем. Не прокручиваются вместе с
+   содержимым: прокручивается только .panel-body под ними. Нижняя граница — та
+   самая разделительная полоска из ТЗ. */
+.workspace-sections {
+  list-style: none;
+  flex-shrink: 0;
+  padding: 0.4em 0.2em;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.panel-tab:hover { background: #e5e7eb; }
-
-.panel-tab-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.panel-tab-icon { color: #9ca3af; }
-
-/* Свёрнутая панель папок — тонкая полоска во всю высоту у левого края, сама
+/* Свёрнутая панель — тонкая полоска во всю высоту у левого края, сама
    являющаяся кнопкой разворачивания. Высота задаётся явно: всё содержимое
    скрыто, поэтому своей высоты у полоски нет и в неё нечем было бы попасть.
    Растянуть по родителю (align-self: stretch) нельзя — растянутому элементу
    некуда прилипать, и полоска уезжала бы при прокрутке. */
-.panel-folders.is-collapsed {
+.panel-workspace.is-collapsed {
   flex: 0 0 10px;
   height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
 }
 
-.panel-folders.is-collapsed .panel-body,
-.panel-folders.is-collapsed .panel-title,
-.panel-folders.is-collapsed .panel-header-add {
+.panel-workspace.is-collapsed .panel-body,
+.panel-workspace.is-collapsed .workspace-sections,
+.panel-workspace.is-collapsed .panel-title,
+.panel-workspace.is-collapsed .panel-header-add {
   display: none;
 }
 
-.panel-folders.is-collapsed .panel-header {
+.panel-workspace.is-collapsed .panel-header {
   flex: 1;
   padding: 0;
   border-bottom: none;
@@ -131,7 +104,7 @@
   align-items: stretch;
 }
 
-.panel-folders.is-collapsed .panel-toggle {
+.panel-workspace.is-collapsed .panel-toggle {
   flex: 1;
   padding: 0;
   font-size: 0;
@@ -139,7 +112,7 @@
   background: #d8dbdf;
 }
 
-.panel-folders.is-collapsed .panel-toggle:hover { background: #b6bcc4; }
+.panel-workspace.is-collapsed .panel-toggle:hover { background: #b6bcc4; }
 
 .panel-header {
   display: flex;
@@ -216,23 +189,34 @@
   list-style: none;
 }
 
+/* Размер строки = базовый размер × --row-scale своего уровня (см. ниже).
+   Отступы и зазоры — в em, а не в rem: тогда вместе с font-size растёт вся
+   плашка целиком — высота, отступы, значки, — а не только буквы. Значения в em
+   пересчитаны из прежних rem (0.4rem и 0.25rem при шрифте строки ~0.71rem). */
 .folder-item,
 .item-list-row {
+  --row-scale: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem;
+  gap: 0.57em;
   /* Вертикаль прежняя — от неё зависит высота строки и попадание курсором.
      Горизонталь ужата: она складывалась с отступом .panel-body, и до названия
      от стенки набегало вдвое больше пустоты, чем нужно. */
-  padding: 0.4rem 0.25rem;
+  padding: 0.57em 0.35em;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1.04em; /* 0.88rem */
-  /* На случай появления/ухода is-drop-into-zone (см. ниже) — сдвиг значков
-     плавный в обе стороны, а не скачком. */
-  transition: padding-right 0.2s ease;
+  font-size: calc(1.04em * var(--row-scale)); /* 0.88rem при scale 1 */
+  /* font-size — смена выделения: одна строка плавно растёт, другая сжимается.
+     padding-right — появление/уход is-drop-into-zone (см. ниже), чтобы значки
+     сдвигались плавно, а не скачком. */
+  transition: font-size 0.2s ease, padding-right 0.2s ease;
 }
+
+/* Иерархия уровней читается без кликов: разделы крупнее всего, папки и
+   плоские списки заметок — средние, заметки внутри раскрытой папки — мельче. */
+.workspace-section { --row-scale: 1.15; }
+.item-list-row.is-nested { --row-scale: 0.9; }
 
 /* Настоящие папки можно тащить — курсор "открытая рука", пока строка просто
    наведена, "сжатая рука" — пока сам перенос идёт (см. mousedown-обработчик в
@@ -249,7 +233,7 @@ body.is-dragging-row .folder-item.is-draggable,
 body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 
 /* Закреплённые строки — лёгкий зеленоватый оттенок (в тон булавке #C2D1C9),
-   чтобы отличались от обычных. Правило стоит ДО :hover и .is-active, поэтому
+   чтобы отличались от обычных. Правило стоит ДО :hover и .is-selected, поэтому
    наведение и выделение перекрывают оттенок. */
 .folder-item.is-pinned,
 .item-list-row.is-pinned {
@@ -261,17 +245,12 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   background: #f3f4f6;
 }
 
-.folder-item.is-active,
-.item-list-row.is-active {
+/* Выбранная строка: подсветка фоном и на 10% крупнее соседей своего уровня. */
+.folder-item.is-selected,
+.item-list-row.is-selected {
   background: #dbeafe;
   font-weight: 600;
-}
-
-/* Та же выбранная папка, показанная как дочерняя строка в чьём-то поддереве —
-   заметно мягче основной подсветки, чтобы сразу было видно, где главный
-   раздел, а где вложенный. */
-.folder-item.is-active-nested {
-  background: #eef3fb;
+  font-size: calc(1.04em * var(--row-scale) * 1.1);
 }
 
 .folder-name,
@@ -332,8 +311,51 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  margin-right: 0.35rem;
+  /* Значок папки стоит в строке первым, и gap строки уже отделяет его от
+     названия — свой отступ лишний. */
   color: #A9B4C2;
+}
+
+/* Размер значков — в em, чтобы они росли вместе с выбранной строкой. CSS
+   перебивает атрибуты width/height самого <svg>. */
+.folder-icon svg { width: 1.05em; height: 1.05em; }
+.pin-badge svg { width: 0.97em; height: 0.97em; }
+
+/* Пустой аккаунт: вместо подсказки — кнопка создания первой заметки по центру
+   поля редактора. Квадрат со скруглёнными углами (ТЗ). */
+.empty-create {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.empty-create-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 9rem;
+  height: 9rem;
+  border: 1px solid #d8dbdf;
+  border-radius: 18px;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.empty-create-btn:hover {
+  background: #eef2ff;
+  border-color: #33507e;
+}
+
+.empty-create-plus {
+  font-size: 2.2rem;
+  line-height: 1;
+  color: #33507e;
 }
 
 .folder-delete,
@@ -424,7 +446,7 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 .item-list-row.is-drag-source { opacity: 0.35; }
 
 /* "Призрак" — клон перетаскиваемой строки, следует за курсором во время
-   кастомного drag (см. startRowDrag в panelSection.js). Один на обе панели:
+   кастомного drag (см. startRowDrag в panelSection.js). Один на всю панель:
    и папка, и заметка едут своим настоящим DOM-узлом с теми же классами —
    скруглённые углы, шрифт и раскладка сохраняются как есть, без "скриншотных"
    браузерных артефактов и курсора "запрещено".
@@ -436,7 +458,7 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
      крупнее оригинала, и длинный заголовок заметки переносился бы на вторую
      строку внутри жёстко заданной ширины. Множитель --ui-scale повторяет то, что
      zoom делает с текстом внутри панели (см. .panel). */
-  font-size: calc(var(--panel-font) * var(--ui-scale, 1));
+  font-size: calc(var(--panel-font) * var(--ui-scale, 1) * 1.04 * var(--row-scale, 1));
   pointer-events: none;
   z-index: 2000;
   background: #ffffff;
@@ -496,15 +518,14 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 
 @media (max-width: 780px) {
   .panel-layout { flex-direction: column; }
-  .panel-folders,
-  .panel-list {
+  .panel-workspace {
     flex: 0 0 auto;
     width: 100%;
   }
   .panel-detail { width: 100%; }
   /* В одну колонку полоска у левого края смысла не имеет — свёрнутая панель
-     папок остаётся во всю ширину и сворачивается только по высоте. */
-  .panel-folders.is-collapsed {
+     остаётся во всю ширину и сворачивается только по высоте. */
+  .panel-workspace.is-collapsed {
     flex: 0 0 auto;
     width: 100%;
     height: auto;
@@ -514,5 +535,5 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
     position: static;
     max-height: none;
   }
-  .panel-folders.is-collapsed .panel-header { min-height: 10px; }
+  .panel-workspace.is-collapsed .panel-header { min-height: 10px; }
 }

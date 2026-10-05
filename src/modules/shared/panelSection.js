@@ -4,9 +4,10 @@ import { createRichTextEditor } from "./richTextEditor.js";
 import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
-import { escapeHtml } from "../../utils/dom.js";
+import { escapeHtml, htmlToSearchText } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
+import { setNoteSearchSource } from "../../search/noteScope.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { createFolderModel, createItemModel } from "../../data/models.js";
 import { parentIdsOf, isAncestorOf } from "../../data/folderTree.js";
@@ -251,13 +252,42 @@ function startInlineRename(rowEl, currentValue, onCommit) {
 }
 
 /**
- * Переиспользуемый каркас "папки слева + список заметок + редактор справа",
- * используется разделом Notes (config.section всегда "notes").
+ * Память панели Workspace между перемонтированиями раздела ВНУТРИ него самого.
+ * Переход по результату поиска при уже открытом #/notes заново вызывает
+ * renderPanelSection с новым state — без этой памяти выбранный раздел и
+ * раскрытые папки сбрасывались бы на каждый такой переход. Из другого раздела
+ * (главная, календарь) входим всегда с чистого листа: по ТЗ выбран Notes.
+ */
+const panelMemory = {
+  section: "all",
+  selectedFolderId: null,
+  selectedFolderContext: null,
+  expandedFolderIds: new Set(),
+  collapsed: false,
+};
+
+function rememberPanel(state) {
+  panelMemory.section = state.section;
+  panelMemory.selectedFolderId = state.selectedFolderId;
+  panelMemory.selectedFolderContext = state.selectedFolderContext;
+  panelMemory.expandedFolderIds = state.expandedFolderIds;
+  panelMemory.collapsed = state.panelCollapsed;
+}
+
+/**
+ * Раздел заметок: панель Workspace слева + редактор справа. Используется
+ * разделом Notes (config.section всегда "notes").
  *
  * @param {HTMLElement} container
  * @param {{section: string, toolbarButtons: string[], basicToolbarButtons?: string[], pageModeInContextMenu?: boolean}} config
  */
 export async function renderPanelSection(container, config) {
+  // Роутер не чистит #app-view до готовности нового раздела, поэтому старая
+  // панель ещё на месте, если перемонтируемся изнутри Notes. Проверяем ДО
+  // await: после него разметку уже может заменить кто-то другой.
+  const remounting = Boolean(container.querySelector('[data-role="workspace-body"]'));
+  const memory = remounting ? panelMemory : null;
+
   // Три волны независимы друг от друга — были последовательными await
   // (3 RTT подряд), переводим на Promise.all.
   const [folders, items, trash] = await Promise.all([
@@ -269,19 +299,35 @@ export async function renderPanelSection(container, config) {
     folders,
     items,
     trash,
-    selectedFolderId: "all", // "all" | "unfiled" | "trash" | id папки
+    // Уровень 1 — фиксированный раздел: "trash" | "favorites" | "all" | "folders" | "unfiled".
+    // Раздел Notes внутри называется "all": под этим ключом в данных уже лежат
+    // закрепления заметок (pinnedIn) и кружки главной, менять его — значит
+    // мигрировать данные ради одного слова.
+    section: memory ? memory.section : "all",
+    // Уровень 2 — выбранная папка. Одна папка может показываться несколькими
+    // строками (у неё бывает несколько родителей), поэтому помним ещё и контекст
+    // строки, по которой кликнули: "root" или id родителя. null — подходит любая.
+    selectedFolderId: memory ? memory.selectedFolderId : null,
+    selectedFolderContext: memory ? memory.selectedFolderContext : null,
+    // Уровень 3 — открытая заметка и контекст её строки (id папки, внутри
+    // которой кликнули). null — заметку открыли из плоского списка или из поиска.
     selectedItemId: null,
+    selectedItemContext: null,
     // Что показано в детали справа, если это удалённый элемент — { kind, id }.
     // Приоритетнее selectedItemId (см. renderDetail), сбрасывается при выборе
-    // обычной заметки. Раздел "Корзина" в списке слева можно просто открыть, не
-    // трогая деталь — как и обычные папки; конкретную строку внутри выбирают отдельно.
+    // обычной заметки.
     selectedTrash: null,
-    foldersCollapsed: false,
-    listCollapsed: false,
+    panelCollapsed: memory ? memory.collapsed : false,
     pendingMatch: null, // {query, index} — куда прокрутить открытую заметку
     flashFolderId: null, // папка, найденная поиском, — мигнуть ею один раз
-    expandedFolderIds: new Set(), // какие папки сейчас раскрыты деревом дочерних
+    revealSelection: false, // пришли из поиска — прокрутить панель к выбранной строке
+    expandedFolderIds: memory ? memory.expandedFolderIds : new Set(), // раскрытые папки
+    // Выделение, которое сейчас нарисовано на экране (см. syncSelection).
+    shownSelection: null,
   };
+
+  // Корзину могли опустошить, пока нас не было, — раздела больше нет.
+  if (state.section === "trash" && countTrash(state) === 0) state.section = "all";
 
   applySearchTarget(state);
   activePanel = { container, config, state };
@@ -290,38 +336,74 @@ export async function renderPanelSection(container, config) {
 
 // Просьба извне (быстрая заметка) обновить список открытого раздела, не трогая
 // открытую справа заметку. Если раздел Notes сейчас не смонтирован
-// (открыта главная/календарь) — тихо ничего не делаем (guard по наличию списка в
+// (открыта главная/календарь) — тихо ничего не делаем (guard по наличию панели в
 // DOM), заметка просто останется сохранённой в фоне.
 export async function refreshActivePanelItems() {
   if (!activePanel) return;
   const { container, config, state } = activePanel;
-  if (!container.querySelector('[data-role="list-body"]')) return;
+  if (!container.querySelector('[data-role="workspace-body"]')) return;
   [state.items, state.folders] = await Promise.all([
     itemsService.listItems(config.section),
     itemsService.listFolders(config.section),
   ]);
-  renderFolders(container, config, state);
-  renderList(container, config, state);
+  renderPanel(container, config, state);
+  // Первая заметка появилась у пустого аккаунта — кнопка «Create note» в детали
+  // должна смениться обычной подсказкой.
+  renderDetailIfIdle(container, config, state);
+}
+
+// Раскрыть цепочку родителей папки, чтобы она стала видна в дереве Folders. У
+// папки может быть несколько родителей — идём по первому существующему, этого
+// достаточно, чтобы строка появилась на экране. visited — защита от цикла в
+// данных, испорченных в обход itemsService.
+function expandAncestors(state, folderId) {
+  const visited = new Set();
+  let currentId = folderId;
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const folder = state.folders.find((f) => f.id === currentId);
+    if (!folder) return;
+    const parentId = parentIdsOf(folder).find((id) => state.folders.some((f) => f.id === id));
+    if (!parentId) return;
+    state.expandedFolderIds.add(parentId);
+    currentId = parentId;
+  }
 }
 
 // Пришли по результату поиска (или по кастомному кружку главной страницы):
-// открываем нужную папку или заметку. Заметку без явного target.folderId
-// показываем из "Все" — она может лежать в папке, которая сейчас не выбрана.
-// target.folderId (кружок главной знает, через какой раздел — обычную папку
-// или Favorites/All/Unfiled — заметку открыли) используем, только если это
-// один из псевдо-разделов или папка ещё существует — иначе тоже "Все".
+// открываем нужную папку или заметку. target.folderId (кружок главной знает,
+// через какое место — обычную папку или Favorites/Notes/Unfiled — заметку
+// открыли) превращаем в раздел панели; без него или с исчезнувшей папкой —
+// раздел Notes, там видна любая заметка.
 function applySearchTarget(state) {
   const target = consumePendingTarget("item", "folder");
   if (!target) return;
+  state.revealSelection = true;
 
   if (target.kind === "folder") {
+    state.section = "folders";
     state.selectedFolderId = target.id;
+    state.selectedFolderContext = null;
     state.flashFolderId = target.id;
+    // Показываем саму папку вместе с содержимым: за ней и пришли.
+    expandAncestors(state, target.id);
+    state.expandedFolderIds.add(target.id);
     return;
   }
-  const PSEUDO_FOLDER_IDS = ["all", "favorites", "unfiled"];
-  const folderIsValid = PSEUDO_FOLDER_IDS.includes(target.folderId) || state.folders.some((f) => f.id === target.folderId);
-  state.selectedFolderId = folderIsValid ? target.folderId : "all";
+
+  const PSEUDO_SECTIONS = ["all", "favorites", "unfiled"];
+  if (PSEUDO_SECTIONS.includes(target.folderId)) {
+    state.section = target.folderId;
+    state.selectedItemContext = null;
+  } else if (state.folders.some((f) => f.id === target.folderId)) {
+    state.section = "folders";
+    expandAncestors(state, target.folderId);
+    state.expandedFolderIds.add(target.folderId);
+    state.selectedItemContext = target.folderId;
+  } else {
+    state.section = "all";
+    state.selectedItemContext = null;
+  }
   state.selectedItemId = target.id;
   // pendingMatch должен нести РЕАЛЬНУЮ цель (текст, найденный блок или фото), а
   // не просто маршрут "в какую заметку идти" — иначе он безусловно перехватывал
@@ -335,6 +417,7 @@ function applySearchTarget(state) {
     ? { query: target.query, index: target.matchIndex, photoIndex: target.photoIndex, blockId: target.blockId }
     : null;
 }
+
 
 /**
  * Прокрутка обеих панелей, снятая перед перерисовкой. Перерисовка идёт через
@@ -404,65 +487,56 @@ function render(container, config, state) {
   // она отменила бы прыжок. Флаг одноразовый, как pendingMatch рядом с ним.
   state.detailScrolled = false;
 
-  // Свёрнутый список заметок не исчезает: пока панель папок развёрнута, он
-  // складывается в неё горизонтальной вкладкой.
-  //
-  // Когда свёрнуты обе панели, слева остаётся ровно ОДНА полоска — папок. Своей
-  // полоски у списка нет намеренно: две вертикальные полоски рядом невозможно
-  // различить, и порядок сворачивания менял их местами. Список из этого
-  // состояния достаётся в два шага — полоска разворачивает папки, а вкладка
-  // внутри них (она появится сама, listCollapsed ведь ещё true) — список.
-  //
-  // Условие с !foldersCollapsed обязательно: внутри 10-пиксельной полоски
-  // вкладке места нет, её содержимое скрыто вместе с телом папок.
-  const listAsTab = state.listCollapsed && !state.foldersCollapsed;
-
-  const listTab = listAsTab
-    ? `<button type="button" class="panel-tab" data-action="toggle-list" title="${t("panel.togglePanel")}">
-         <span class="panel-tab-title">${escapeHtml(getListTitle(state))}</span>
-         <span class="panel-tab-icon">›</span>
-       </button>`
-    : "";
-
   container.innerHTML = `
     <a href="#/" class="back-link">${t("nav.backHome")}</a>
     <div class="panel-layout">
-      <aside class="panel panel-folders ${state.foldersCollapsed ? "is-collapsed" : ""}">
+      <aside class="panel panel-workspace ${state.panelCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-folders" title="${t("panel.togglePanel")}">☰</button>
-          <span class="panel-title">${folderIcon()}${t("panel.folders")}</span>
-          <button type="button" class="btn btn-small panel-header-add" data-action="new-folder" title="${t("panel.newFolder")}">+</button>
+          <button type="button" class="panel-toggle" data-action="toggle-panel" title="${t("panel.togglePanel")}">☰</button>
+          <span class="panel-title">${t("panel.workspace")}</span>
+          <button type="button" class="btn btn-small panel-header-add" data-action="new-entry">+</button>
         </div>
-        ${listTab}
-        <div class="panel-body" data-role="folder-body"></div>
+        <ul class="workspace-sections" data-role="workspace-sections"></ul>
+        <div class="panel-body" data-role="workspace-body"></div>
       </aside>
-
-      <section class="panel panel-list ${state.listCollapsed ? "is-collapsed" : ""}">
-        <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-list" title="${t("panel.togglePanel")}">☰</button>
-          <span class="panel-title" data-role="list-title">${t("panel.all")}</span>
-          <button type="button" class="btn btn-small panel-header-add" data-action="new-item" title="${t("panel.newItem")}">+</button>
-        </div>
-        <div class="panel-body" data-role="list-body"></div>
-      </section>
 
       <section class="panel-detail" data-role="detail"></section>
     </div>
   `;
 
-  renderFolders(container, config, state);
-  renderList(container, config, state);
+  // Строки панели только что созданы заново — анимировать выделение не от чего,
+  // оно сразу рисуется на месте (см. syncSelection).
+  state.shownSelection = null;
+  renderPanel(container, config, state);
   renderDetail(container, config, state);
   wireHeaderActions(container, config, state);
+  wireBodyMenu(container, config, state);
   // После renderDetail: он пересоздаёт редактор и может увести окно к концу
   // текста (scrollIntoView), а панели должны встать на место уже поверх этого.
   applyPanelScrollTops(container, scrollTops);
+  revealSelectedRow(container, state);
   state.renderedDetailKey = detailKey(state);
   if (sameDetail && !state.detailScrolled) restorePageScroll(pageScrollY);
 }
 
+// Пришли из поиска или с кружка главной — выбранная строка может оказаться
+// ниже видимой части панели. Прокручиваем только саму панель: scrollIntoView
+// двигал бы ещё и окно, а окно принадлежит открытой заметке.
+function revealSelectedRow(container, state) {
+  if (!state.revealSelection) return;
+  state.revealSelection = false;
+  const bodyEl = container.querySelector('[data-role="workspace-body"]');
+  const rowEl = bodyEl.querySelector(".is-selected");
+  if (!rowEl) return;
+  const bodyRect = bodyEl.getBoundingClientRect();
+  const rowRect = rowEl.getBoundingClientRect();
+  if (rowRect.top < bodyRect.top || rowRect.bottom > bodyRect.bottom) {
+    bodyEl.scrollTop += rowRect.top - bodyRect.top - bodyRect.height / 3;
+  }
+}
+
 // Общая логика создания папки — переиспользуется и кнопкой "+" в шапке
-// панели Folders, и пунктом "New folder" в её контекстном меню (см. ниже).
+// (в разделе Folders), и пунктом "New folder" контекстного меню панели.
 function createFolderFlow(container, config, state) {
   return async () => {
     const name = await openPrompt({ message: t("panel.folderNamePrompt") });
@@ -472,58 +546,83 @@ function createFolderFlow(container, config, state) {
       state,
       () => {
         state.folders = [...state.folders, folder];
+        // Новая папка видна только в разделе Folders — уводим туда, иначе
+        // создание выглядело бы так, будто ничего не произошло.
+        state.section = "folders";
       },
       () => itemsService.createFolderFromModel(folder),
-      () => renderFolders(container, config, state)
+      () => renderPanel(container, config, state)
     );
   };
 }
 
+/**
+ * Новая заметка: кнопка "+" (во всех разделах, кроме Folders), пункт
+ * "New note" в меню папки и панели, кнопка "Create note" пустого аккаунта.
+ * folderId — создать сразу внутри этой папки.
+ */
+function createNoteFlow(container, config, state, folderId = null) {
+  const folderIds = folderId ? [folderId] : [];
+  // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
+  const isFavorite = !folderId && state.section === "favorites";
+  // id уже готов на этом месте (createItemModel генерирует его сам) — экран
+  // красим ЭТИМ ЖЕ объектом, persist ниже сохраняет его же, не строит заново.
+  const item = createItemModel({ title: t("panel.untitled"), content: "", folderIds, section: config.section, isFavorite });
+  optimisticBulk(
+    state,
+    () => {
+      state.items = [...state.items, item];
+      state.selectedItemId = item.id;
+      state.selectedItemContext = folderId;
+      state.selectedTrash = null;
+      // Заметку должно быть видно в панели сразу: папку раскрываем, из Корзины
+      // (где новой заметке не место) уходим в Notes.
+      if (folderId) state.expandedFolderIds.add(folderId);
+      if (state.section === "trash") state.section = "all";
+      // Разово попросить деталь поставить курсор в поле названия — чтобы
+      // печатать сразу, без клика мышкой.
+      state.focusTitleOnCreate = true;
+    },
+    () => itemsService.createItemFromModel(item),
+    () => render(container, config, state)
+  );
+}
+
 function wireHeaderActions(container, config, state) {
-  // Панель папок сворачивается в тонкую полоску у левого края. Нужен полный
-  // render: если список тоже свёрнут, его индикатор при сворачивании папок
-  // переезжает из вкладки внутри папок в отдельную полоску рядом (и обратно).
-  container.querySelector('[data-action="toggle-folders"]').addEventListener("click", () => {
-    state.foldersCollapsed = !state.foldersCollapsed;
-    render(container, config, state);
+  // Панель сворачивается в тонкую полоску у левого края. Перерисовывать ничего не
+  // нужно — содержимое просто прячется стилями.
+  container.querySelector('[data-action="toggle-panel"]').addEventListener("click", () => {
+    state.panelCollapsed = !state.panelCollapsed;
+    container.querySelector(".panel-workspace").classList.toggle("is-collapsed", state.panelCollapsed);
+    rememberPanel(state);
   });
 
-  // Список заметок переезжает в панель папок и обратно, поэтому здесь нужен
-  // полный render. Кнопок две: в шапке самого списка и вкладка внутри папок.
-  container.querySelectorAll('[data-action="toggle-list"]').forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.listCollapsed = !state.listCollapsed;
-      render(container, config, state);
-    });
-  });
-
-  container.querySelector('[data-action="new-folder"]').addEventListener("click", createFolderFlow(container, config, state));
-
-  container.querySelector('[data-action="new-item"]').addEventListener("click", () => {
-    const folderIds = isRealFolderId(state.selectedFolderId) ? [state.selectedFolderId] : [];
-    // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
-    const inFavorites = state.selectedFolderId === "favorites";
-    // id уже готов на этом месте (createItemModel генерирует его сам) — экран
-    // красим ЭТИМ ЖЕ объектом, persist ниже сохраняет его же, не строит заново.
-    const item = createItemModel({ title: t("panel.untitled"), content: "", folderIds, section: config.section, isFavorite: inFavorites });
-    optimisticBulk(
-      state,
-      () => {
-        state.items = [...state.items, item];
-        state.selectedItemId = item.id;
-        state.selectedTrash = null;
-        // Разово попросить деталь поставить курсор в поле названия — чтобы
-        // печатать сразу, без клика мышкой.
-        state.focusTitleOnCreate = true;
-      },
-      () => itemsService.createItemFromModel(item),
-      () => render(container, config, state)
-    );
+  // Одна кнопка "+" на всю панель: в разделе Folders создаёт папку, в остальных —
+  // заметку (решение владельца, две кнопки в узкой шапке не помещаются).
+  container.querySelector('[data-action="new-entry"]').addEventListener("click", () => {
+    if (state.section === "folders") createFolderFlow(container, config, state)();
+    else createNoteFlow(container, config, state);
   });
 }
 
+// ПКМ по пустому месту панели — создать папку или заметку. Вешаем один раз на
+// каждую отрисовку каркаса: тело панели живёт до следующего render(), и подписка
+// внутри renderPanel копилась бы с каждой перерисовкой списка.
+function wireBodyMenu(container, config, state) {
+  const bodyEl = container.querySelector('[data-role="workspace-body"]');
+  bodyEl.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    showContextMenu(event.clientX, event.clientY, [
+      { label: t("panel.newFolder"), onClick: createFolderFlow(container, config, state) },
+      { label: t("panel.newItem"), onClick: () => createNoteFlow(container, config, state) },
+    ]);
+  });
+}
+
+// id настоящей папки, а не одного из служебных ключей: разделов панели и
+// контекстов строк ("root" — строка папки на верхнем уровне дерева).
 function isRealFolderId(id) {
-  return id && id !== "all" && id !== "unfiled" && id !== "favorites" && id !== "trash";
+  return Boolean(id) && !["all", "unfiled", "favorites", "trash", "folders", "root"].includes(id);
 }
 
 function countTrash(state) {
@@ -534,13 +633,14 @@ function countTrash(state) {
 // восстановление, удаление навсегда, массовая очистка) — полный render
 // (детали корзины не жалко пересоздавать, там нет открытого редактора с
 // курсором). Корзина опустела, пока была открыта, — раздел исчезнет из
-// списка слева, самим собой оставаться в нём было бы некуда.
+// панели, самим собой оставаться в нём было бы некуда.
 function renderAfterTrashChange(container, config, state) {
-  if (state.selectedFolderId === "trash" && countTrash(state) === 0) {
-    state.selectedFolderId = "all";
+  if (state.section === "trash" && countTrash(state) === 0) {
+    state.section = "all";
   }
   render(container, config, state);
 }
+
 
 // Ниже или выше строки встанет перетаскиваемый элемент — по тому, в какую
 // половину строки указывает курсор. Без этого вставка всегда шла ПЕРЕД целью и
@@ -629,7 +729,7 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
     // выделение, вспышка поиска и метка самого источника.
     ghost.classList.remove(
       "is-drop-into-zone", "is-drop-into", "is-drop-before", "is-drop-after",
-      "is-active", "is-active-nested", "is-drag-source", "is-search-flash"
+      "is-active", "is-selected", "is-drag-source", "is-search-flash"
     );
     if (prepareGhost) prepareGhost(ghost);
     ghost.style.position = "fixed";
@@ -809,66 +909,250 @@ function indentForDepth(depth) {
   for (let i = 0; i < depth; i++) total += INDENT_STEPS[Math.min(i, INDENT_STEPS.length - 1)];
   return total;
 }
+// ------------------------------------------------------------------
+// Панель Workspace: фиксированные разделы сверху, под разделителем — содержимое
+// выбранного раздела.
+// ------------------------------------------------------------------
 
-// Строка папки + (если раскрыта) рекурсивно отрисованные дети сразу под ней, в
-// том же плоском <ul> — существующий querySelectorAll("[data-folder-id]")
-// после рендера продолжает находить все строки одним проходом. parentContext —
-// id родителя, ПОД которым сейчас показана эта строка (для строк дерева), null
-// для строки из обычного плоского списка. chain — цепочка предков текущей
-// ветки рендера, защита от бесконечной рекурсии при данных, испорченных в
-// обход itemsService (например, вручную через localStorage).
-function renderFolderRow(folder, state, depth, parentContext, chain) {
-  const count = countFolderContents(state, folder.id);
-  const isExpanded = state.expandedFolderIds.has(folder.id);
-  // Одна и та же папка может отрендериться несколько раз (в общем списке и в
-  // поддеревьях разных родителей) — в поддереве подсветка выбора должна быть
-  // заметно мягче, иначе непонятно, где основной раздел, а где подраздел.
-  const isSelected = state.selectedFolderId === folder.id;
-  const activeClass = isSelected ? (parentContext ? "is-active-nested" : "is-active") : "";
-  const row = `
-    <li class="folder-item is-draggable ${activeClass} ${folder.pinned ? "is-pinned" : ""}"
-        data-folder-id="${folder.id}"
-        ${parentContext ? `data-parent-context="${parentContext}"` : ""}
+// Порядок разделов сверху вниз — по ТЗ. Корзина показывается, только когда в ней
+// что-то есть.
+const SECTIONS = [
+  { key: "trash", labelKey: "panel.trash" },
+  { key: "favorites", labelKey: "panel.favorites" },
+  { key: "all", labelKey: "panel.all" },
+  { key: "folders", labelKey: "panel.folders" },
+  { key: "unfiled", labelKey: "panel.unfiled" },
+];
+
+// Сколько ждать над целью, пока перетаскивание само откроет раздел Folders или
+// раскроет свёрнутую папку (см. createSpringLoader).
+const SPRING_DELAY = 600;
+
+// Что сейчас перетаскивают — { kind: "folder" | "item", id } или null. Нужно
+// отрисовке: пружинка перерисовывает панель посреди переноса, и новые строки
+// должны получить ту же подсветку, что успели получить старые.
+let activeDrag = null;
+
+// Корневые папки — без родителя, который всё ещё существует. Папка, у которой
+// единственный родитель удалён или потерян, иначе пропала бы из дерева совсем.
+function rootFolders(state) {
+  return state.folders.filter((folder) =>
+    parentIdsOf(folder).every((parentId) => !state.folders.some((f) => f.id === parentId))
+  );
+}
+
+/**
+ * Что показать в теле панели — плоский список описаний строк, без разметки.
+ * Отдельно от отрисовки, потому что тот же список нужен для сравнения «что-то
+ * поменялось или нет» при наборе текста (см. refreshPanelAfterEdit).
+ *
+ * Строка заметки несёт context — место показа: "all" / "unfiled" / "favorites"
+ * для плоских списков, id папки — для заметки внутри раскрытой папки. От него
+ * зависят закрепление (у каждого места своё) и пункт «Убрать из папки».
+ */
+function buildBodyRows(state) {
+  const rows = [];
+  if (state.section === "trash") {
+    getTrashRows(state).forEach((entry) => rows.push({ kind: "trash", entry }));
+  } else if (state.section === "all") {
+    pushNoteRows(rows, state.items, "all", 0, true);
+  } else if (state.section === "unfiled") {
+    pushNoteRows(rows, state.items.filter((item) => item.folderIds.length === 0), "unfiled", 0, true);
+  } else if (state.section === "favorites") {
+    sortPinnedFirst(state.folders.filter((f) => f.isFavorite)).forEach((folder) =>
+      pushFolderRows(rows, state, folder, 0, "root", [folder.id])
+    );
+    pushNoteRows(rows, state.items.filter((item) => item.isFavorite), "favorites", 0, true);
+  } else if (state.section === "folders") {
+    sortPinnedFirst(rootFolders(state)).forEach((folder) => pushFolderRows(rows, state, folder, 0, "root", [folder.id]));
+  }
+  return rows;
+}
+
+function pushNoteRows(rows, list, context, depth, flat) {
+  sortItemsByPin(list, context).forEach((item) => {
+    rows.push({ kind: "note", item, context, depth, flat, pinned: isPinnedIn(item, context), empty: isItemEmpty(item) });
+  });
+}
+
+// Строка папки и — если она раскрыта — её содержимое сразу под ней: сначала
+// дочерние папки, потом заметки, на шаг глубже. chain — папки текущей ветки,
+// защита от бесконечной рекурсии при данных, испорченных в обход itemsService
+// (например, вручную через localStorage).
+function pushFolderRows(rows, state, folder, depth, context, chain) {
+  const expanded = state.expandedFolderIds.has(folder.id);
+  rows.push({ kind: "folder", folder, depth, context, expanded, count: countFolderContents(state, folder.id) });
+  if (!expanded) return;
+  childFoldersOf(state, folder.id)
+    .filter((child) => !chain.includes(child.id))
+    .forEach((child) => pushFolderRows(rows, state, child, depth + 1, folder.id, [...chain, child.id]));
+  pushNoteRows(rows, state.items.filter((item) => item.folderIds.includes(folder.id)), folder.id, depth + 1, false);
+}
+
+// «Отпечаток» тела панели: порядок строк и всё, что меняет их разметку, кроме
+// названия заметки — его при наборе правим прямо в строке.
+function bodySignature(rows) {
+  return rows
+    .map((row) => {
+      if (row.kind === "trash") return `t:${row.entry.kind}:${row.entry.id}`;
+      if (row.kind === "folder") {
+        const f = row.folder;
+        return `f:${f.id}:${row.context}:${row.expanded}:${row.count}:${f.name}:${f.isFavorite}:${f.pinned}`;
+      }
+      return `n:${row.item.id}:${row.context}:${row.empty}:${row.pinned}:${row.item.isFavorite}`;
+    })
+    .join("|");
+}
+
+function isDragSource(kind, id) {
+  return activeDrag !== null && activeDrag.kind === kind && activeDrag.id === id;
+}
+
+function folderRowHtml(row) {
+  const { folder, depth, context, count } = row;
+  // Пока тащат другую папку, у каждой папки видна зона «вложить» (правые 20%).
+  const zone = activeDrag && activeDrag.kind === "folder" && activeDrag.id !== folder.id ? "is-drop-into-zone" : "";
+  const source = isDragSource("folder", folder.id) ? "is-drag-source" : "";
+  return `
+    <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
+        data-folder-id="${folder.id}" data-context="${context}"
         style="padding-left: ${indentForDepth(depth)}px">
+      ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
       <span class="folder-count">(${count})</span>
       ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
     </li>`;
-  const childrenHtml = isExpanded
-    ? childFoldersOf(state, folder.id)
-        .filter((child) => !chain.includes(child.id))
-        .map((child) => renderFolderRow(child, state, depth + 1, folder.id, [...chain, folder.id]))
-        .join("")
-    : "";
-  return row + childrenHtml;
 }
 
-function renderFolders(container, config, state) {
-  const bodyEl = container.querySelector('[data-role="folder-body"]');
-  // Панель перерисовывают и в обход render() — например при клике по папке.
-  // Там узел остаётся прежним, но innerHTML всё равно сбрасывает прокрутку.
-  const scrollTop = bodyEl.scrollTop;
+function noteRowHtml(row) {
+  const { item, depth, context } = row;
+  const source = isDragSource("item", item.id) ? "is-drag-source" : "";
+  // Отступ — только у заметок внутри папок; у плоских списков остаётся обычный
+  // внутренний отступ строки из CSS.
+  const indent = depth > 0 ? `style="padding-left: ${indentForDepth(depth)}px"` : "";
+  return `
+    <li class="item-list-row ${row.flat ? "" : "is-nested"} ${row.pinned ? "is-pinned" : ""} ${source}"
+        data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
+      <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
+      ${rowBadges(item, row.pinned)}
+      ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
+    </li>`;
+}
 
+// Содержимое Корзины — тот же визуальный стиль строки, что у заметок, но без
+// перетаскивания и с другим контекстным меню (Восстановить / Удалить навсегда).
+function trashRowHtml(row) {
+  const { entry } = row;
+  const title = entry.kind === "folder" ? entry.name : entry.title || t("panel.untitled");
+  return `
+    <li class="item-list-row" data-trash-kind="${entry.kind}" data-trash-id="${entry.id}">
+      ${entry.kind === "folder" ? folderIcon() : ""}
+      <span class="item-title">${escapeHtml(title)}</span>
+    </li>`;
+}
+
+function bodyRowHtml(row) {
+  if (row.kind === "trash") return trashRowHtml(row);
+  if (row.kind === "folder") return folderRowHtml(row);
+  return noteRowHtml(row);
+}
+
+/**
+ * Перерисовать панель целиком: разделы, тело, подпись кнопки "+" и выделение.
+ * Редактор справа не трогается — для этого есть render().
+ * @param {{resetScroll?: boolean}} [options] resetScroll — сменился раздел, его
+ *   содержимое показываем с начала, а не с позиции прежнего.
+ */
+function renderPanel(container, config, state, options = {}) {
+  if (!container.querySelector('[data-role="workspace-body"]')) return;
+  renderSections(container, config, state);
+  renderWorkspaceBody(container, config, state, options.resetScroll);
+  const addBtn = container.querySelector('[data-action="new-entry"]');
+  addBtn.title = state.section === "folders" ? t("panel.newFolder") : t("panel.newItem");
+  syncSelection(container, state);
+  rememberPanel(state);
+}
+
+function renderSections(container, config, state) {
+  const listEl = container.querySelector('[data-role="workspace-sections"]');
   const trashCount = countTrash(state);
+  const counts = { trash: trashCount, favorites: countFavorites(state) };
 
-  bodyEl.innerHTML = `
-    <ul class="folder-list">
-      ${trashCount > 0
-        ? `<li class="folder-item ${state.selectedFolderId === "trash" ? "is-active" : ""}" data-folder-id="trash">
-        <span class="folder-name">${t("panel.trash")}</span>
-        <span class="folder-count">(${trashCount})</span>
+  listEl.innerHTML = SECTIONS.filter((section) => section.key !== "trash" || trashCount > 0)
+    .map(
+      (section) => `
+      <li class="folder-item workspace-section" data-section="${section.key}">
+        <span class="folder-name">${t(section.labelKey)}</span>
+        ${section.key in counts ? `<span class="folder-count">(${counts[section.key]})</span>` : ""}
       </li>`
-        : ""}
-      <li class="folder-item ${state.selectedFolderId === "favorites" ? "is-active" : ""}" data-folder-id="favorites">
-        <span class="folder-name">${t("panel.favorites")}</span>
-        <span class="folder-count">(${countFavorites(state)})</span>
-      </li>
-      <li class="folder-item ${state.selectedFolderId === "all" ? "is-active" : ""}" data-folder-id="all">${t("panel.all")}</li>
-      <li class="folder-item ${state.selectedFolderId === "unfiled" ? "is-active" : ""}" data-folder-id="unfiled">${t("panel.unfiled")}</li>
-      ${sortPinnedFirst(state.folders)
-        .map((folder) => renderFolderRow(folder, state, 0, null, [folder.id]))
-        .join("")}
+    )
+    .join("");
+
+  listEl.querySelectorAll("[data-section]").forEach((el) => {
+    const key = el.dataset.section;
+    el.addEventListener("click", () => selectSection(container, config, state, key));
+  });
+
+  // ПКМ на самом разделе "Корзина" (не на элементе внутри неё) — массовые операции.
+  const trashEl = listEl.querySelector('[data-section="trash"]');
+  if (trashEl) {
+    trashEl.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showContextMenu(event.clientX, event.clientY, [
+        {
+          label: t("panel.restoreAll"),
+          onClick: () => {
+            const folderIds = state.trash.folders.map((f) => f.id);
+            const itemIds = state.trash.items.map((i) => i.id);
+            optimisticBulk(
+              state,
+              () => {
+                folderIds.forEach((id) => localRestoreFolder(state, id));
+                itemIds.forEach((id) => localRestoreItem(state, id));
+                state.selectedTrash = null;
+              },
+              () => itemsService.restoreAllTrash(config.section),
+              () => renderAfterTrashChange(container, config, state)
+            );
+          },
+        },
+        {
+          label: t("panel.emptyTrash"),
+          onClick: async () => {
+            const ok = await openConfirm({ message: t("panel.emptyTrashConfirm") });
+            if (!ok) return;
+            const folderIds = state.trash.folders.map((f) => f.id);
+            const itemIds = state.trash.items.map((i) => i.id);
+            optimisticBulk(
+              state,
+              () => {
+                folderIds.forEach((id) => localDeleteFolderForever(state, id));
+                itemIds.forEach((id) => localDeleteItemForever(state, id));
+                state.selectedTrash = null;
+              },
+              () => itemsService.emptyTrash(config.section),
+              () => renderAfterTrashChange(container, config, state)
+            );
+          },
+        },
+      ]);
+    });
+  }
+}
+
+function renderWorkspaceBody(container, config, state, resetScroll) {
+  const bodyEl = container.querySelector('[data-role="workspace-body"]');
+  // Тело перерисовывают и в обход render() — при клике по папке, при наборе
+  // названия. Узел остаётся прежним, но innerHTML всё равно сбрасывает прокрутку.
+  const scrollTop = resetScroll ? 0 : bodyEl.scrollTop;
+
+  const rows = buildBodyRows(state);
+  state.bodySignature = bodySignature(rows);
+  bodyEl.innerHTML = `
+    <ul class="folder-list workspace-list">
+      ${rows.map(bodyRowHtml).join("")}
+      ${!rows.length ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
     </ul>
   `;
   bodyEl.scrollTop = scrollTop;
@@ -880,249 +1164,661 @@ function renderFolders(container, config, state) {
     state.flashFolderId = null;
   }
 
-  bodyEl.querySelectorAll("[data-folder-id]").forEach((el) => {
-    const folderId = el.dataset.folderId;
+  bodyEl.querySelectorAll("[data-folder-id]").forEach((el) => wireFolderRow(el, container, config, state));
+  bodyEl.querySelectorAll("[data-item-id]").forEach((el) => wireNoteRow(el, container, config, state));
+  bodyEl.querySelectorAll("[data-trash-id]").forEach((el) => wireTrashRow(el, container, config, state));
 
-    el.addEventListener("click", () => {
-      // Клик по папке меняет только список заметок; открытую справа заметку не
-      // закрываем. Перерисовываем лишь панели папок и списка — полный render()
-      // пересоздал бы редактор и сбросил каретку/прокрутку.
-      const folderChanged = state.selectedFolderId !== folderId;
-      state.selectedFolderId = folderId;
-      // Если у папки есть дети — тот же клик тоглит раскрытие её поддерева
-      // (отдельной кнопки-шеврона нет, выбор и раскрытие совмещены).
-      const hasChildren = isRealFolderId(folderId) && childFoldersOf(state, folderId).length > 0;
-      if (hasChildren) {
-        if (state.expandedFolderIds.has(folderId)) state.expandedFolderIds.delete(folderId);
-        else state.expandedFolderIds.add(folderId);
-      }
-      renderFolders(container, config, state);
-      // Раскрытие/сворачивание не должно трогать notes/documents и открытый
-      // редактор — список справа перерисовываем только если реально сменилась
-      // выбранная папка, а не просто её раскрытое состояние (повторный клик).
-      if (folderChanged) renderList(container, config, state);
-    });
-
-    // Настоящие папки можно тащить; псевдо-папки — нет. Механика переноса общая
-    // с заметками (см. startRowDrag) — здесь только поиск цели и само действие.
-    if (isRealFolderId(folderId)) {
-      el.addEventListener("mousedown", (event) => {
-        startRowDrag(event, {
-          sourceEl: el,
-          prepareGhost: (ghost) => {
-            ghost.removeAttribute("data-folder-id");
-            ghost.removeAttribute("data-parent-context");
-            // Крестик мгновенного удаления на "призраке" не нужен: он ничего не
-            // делает (pointer-events: none), но выглядел бы рабочей кнопкой.
-            const ghostDelete = ghost.querySelector(".folder-delete");
-            if (ghostDelete) ghostDelete.remove();
-          },
-          onBeginDrag: () => {
-            // Сразу показываем зону вложения у ВСЕХ папок — не только у той, что
-            // окажется под курсором, — чтобы было видно, куда вообще можно "закинуть".
-            bodyEl.querySelectorAll("[data-folder-id]").forEach((rowEl) => {
-              const id = rowEl.dataset.folderId;
-              if (isRealFolderId(id) && id !== folderId) rowEl.classList.add("is-drop-into-zone");
-            });
-          },
-          onCleanup: () => {
-            bodyEl
-              .querySelectorAll(".is-drop-into-zone, .is-drop-into, .is-drop-target")
-              .forEach((rowEl) => rowEl.classList.remove("is-drop-into-zone", "is-drop-into", "is-drop-target"));
-          },
-          findTarget: (clientX, clientY) => {
-            const hit = document.elementFromPoint(clientX, clientY);
-            const hitEl = hit ? hit.closest("[data-folder-id]") : null;
-            if (!hitEl) return null;
-            const hitId = hitEl.dataset.folderId;
-            if (hitId === folderId) return null; // сам на себя
-
-            if (isRealFolderId(hitId)) {
-              const into = isDropInto(hitEl, { clientX });
-              const after = isDropAfter(hitEl, { clientY });
-              if (into) hitEl.classList.add("is-drop-into");
-              else markDropSide(hitEl, after);
-              return { el: hitEl, folderId: hitId, into, after };
-            }
-            if (hitId === "favorites" || hitId === "unfiled") {
-              hitEl.classList.add("is-drop-target");
-              return { el: hitEl, folderId: hitId, into: false, after: false };
-            }
-            return null;
-          },
-          onDrop: (target) => {
-            if (target.folderId === "favorites") {
-              optimisticField(
-                state, "folders", folderId, { isFavorite: true },
-                () => itemsService.updateFolder(folderId, { isFavorite: true }),
-                () => renderFoldersAndList(container, config, state)
-              );
-            } else if (target.folderId === "unfiled") {
-              optimisticField(
-                state, "folders", folderId, { parentFolderIds: [] },
-                () => itemsService.updateFolder(folderId, { parentFolderIds: [] }),
-                () => renderFolders(container, config, state)
-              );
-            } else if (target.into) {
-              // itemsService.moveFolderInto тихо резолвится null на невалидном
-              // переносе (не бросает) — без локальной проверки .catch()-откат
-              // не сработал бы вовсе, см. canMoveFolderInto.
-              if (canMoveFolderInto(state, folderId, target.folderId)) {
-                optimisticBulk(
-                  state,
-                  () => applyMoveFolderInto(state, folderId, target.folderId),
-                  () => itemsService.moveFolderInto(config.section, folderId, target.folderId),
-                  () => renderFolders(container, config, state)
-                );
-              }
-            } else {
-              const result = reorderedFolders(state.folders, folderId, target.folderId, target.after);
-              if (result) {
-                optimisticBulk(
-                  state,
-                  () => { state.folders = result.entries; },
-                  () => itemsService.setFoldersOrder(result.orderById),
-                  () => renderFolders(container, config, state)
-                );
-              }
-            }
-          },
-        });
-      });
-    }
-
-    // Приёмником брошенной заметки папка становится без отдельной подписки:
-    // цель ищет findTarget самой заметки (см. renderList) по data-folder-id.
-
-    // ПКМ по настоящей папке: избранное + удаление (для непустых — единственный способ).
-    if (isRealFolderId(folderId)) {
-      el.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const folder = state.folders.find((f) => f.id === folderId);
-        const parentContext = el.dataset.parentContext || null;
-        showContextMenu(event.clientX, event.clientY, [
-          {
-            label: t("panel.rename"),
-            onClick: () => {
-              startInlineRename(el, folder.name, (name) => {
-                optimisticField(
-                  state, "folders", folder.id, { name },
-                  () => itemsService.updateFolder(folder.id, { name }),
-                  () => renderFolders(container, config, state)
-                );
-              });
-            },
-          },
-          {
-            label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
-            onClick: () => {
-              optimisticField(
-                state, "folders", folder.id, { isFavorite: !folder.isFavorite },
-                () => itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite }),
-                () => renderFoldersAndList(container, config, state)
-              );
-            },
-          },
-          {
-            label: folder.pinned ? t("panel.unpin") : t("panel.pin"),
-            onClick: () => {
-              optimisticField(
-                state, "folders", folder.id, { pinned: !folder.pinned },
-                () => itemsService.updateFolder(folder.id, { pinned: !folder.pinned }),
-                () => renderFolders(container, config, state)
-              );
-            },
-          },
-          // Показана как дочерняя строка дерева под конкретным родителем — можно
-          // отвязать только от НЕГО, не удаляя папку целиком (она останется в
-          // общем списке и в остальных родителях, если есть).
-          ...(parentContext
-            ? [
-                {
-                  label: t("panel.removeFromFolder"),
-                  onClick: () => {
-                    optimisticBulk(
-                      state,
-                      () => localRemoveFolderFromParent(state, folder.id, parentContext),
-                      () => itemsService.removeFolderFromParent(config.section, folder.id, parentContext),
-                      () => renderFolders(container, config, state)
-                    );
-                  },
-                },
-              ]
-            : []),
-          {
-            label: t("panel.delete"),
-            onClick: () => deleteFolderFlow(folder.id, container, config, state, true),
-          },
-        ]);
-      });
-    }
-
-    // ПКМ на самом разделе "Корзина" (не на элементе внутри неё) — массовые операции.
-    if (folderId === "trash") {
-      el.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        showContextMenu(event.clientX, event.clientY, [
-          {
-            label: t("panel.restoreAll"),
-            onClick: () => {
-              const folderIds = state.trash.folders.map((f) => f.id);
-              const itemIds = state.trash.items.map((i) => i.id);
-              optimisticBulk(
-                state,
-                () => {
-                  folderIds.forEach((id) => localRestoreFolder(state, id));
-                  itemIds.forEach((id) => localRestoreItem(state, id));
-                },
-                () => itemsService.restoreAllTrash(config.section),
-                () => renderAfterTrashChange(container, config, state)
-              );
-            },
-          },
-          {
-            label: t("panel.emptyTrash"),
-            onClick: async () => {
-              const ok = await openConfirm({ message: t("panel.emptyTrashConfirm") });
-              if (!ok) return;
-              const folderIds = state.trash.folders.map((f) => f.id);
-              const itemIds = state.trash.items.map((i) => i.id);
-              optimisticBulk(
-                state,
-                () => {
-                  folderIds.forEach((id) => localDeleteFolderForever(state, id));
-                  itemIds.forEach((id) => localDeleteItemForever(state, id));
-                },
-                () => itemsService.emptyTrash(config.section),
-                () => renderAfterTrashChange(container, config, state)
-              );
-            },
-          },
-        ]);
-      });
-    }
-  });
-
-  // Крестик виден только у пустой папки — удаляет мгновенно, без подтверждения.
+  // Крестик виден только у пустой папки/заметки — удаляет мгновенно, без подтверждения.
   bodyEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
       await deleteFolderFlow(btn.dataset.deleteFolder, container, config, state, false);
     });
   });
+  bodyEl.querySelectorAll("[data-delete-item]").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await deleteItemFlow(btn.dataset.deleteItem, container, config, state, false);
+    });
+  });
+}
 
-  bodyEl.addEventListener("contextmenu", (event) => {
+// ------------------------------------------------------------------
+// Выделение. Три уровня — раздел, папка, заметка — живут независимо: выбор
+// заметки не снимает выделение с её папки, а то — с раздела. Выбранная строка
+// крупнее соседей на 10% (класс is-selected, см. panels.css), и смена выбора
+// анимируется CSS-переходом.
+// ------------------------------------------------------------------
+
+function currentSelection(state) {
+  return {
+    section: state.section,
+    folderId: state.selectedFolderId,
+    folderContext: state.selectedFolderContext,
+    itemId: state.selectedItemId,
+    itemContext: state.selectedItemContext,
+    trash: state.selectedTrash ? `${state.selectedTrash.kind}:${state.selectedTrash.id}` : null,
+  };
+}
+
+function sameSelection(a, b) {
+  return (
+    a.section === b.section &&
+    a.folderId === b.folderId &&
+    a.folderContext === b.folderContext &&
+    a.itemId === b.itemId &&
+    a.itemContext === b.itemContext &&
+    a.trash === b.trash
+  );
+}
+
+// Одна и та же папка или заметка может стоять в панели несколькими строками
+// (несколько родителей, несколько папок). Выделяем ту, по которой кликнули, —
+// контекст строки должен совпасть. Контекст null (открыли из плоского списка
+// или из поиска) подходит к любой строке. В плоских списках сущность встречается
+// один раз, там контекст не сверяем.
+function rowIsSelected(el, sel) {
+  const data = el.dataset;
+  if (data.section) return data.section === sel.section;
+  if (data.trashId) return sel.trash === `${data.trashKind}:${data.trashId}`;
+  if (data.folderId) {
+    if (data.folderId !== sel.folderId) return false;
+    return sel.folderContext === null || sel.folderContext === data.context;
+  }
+  if (data.itemId) {
+    if (data.itemId !== sel.itemId) return false;
+    if (data.flat) return true;
+    return sel.itemContext === null || sel.itemContext === data.context;
+  }
+  return false;
+}
+
+function paintSelection(panelEl, sel) {
+  panelEl.querySelectorAll("[data-section], [data-folder-id], [data-item-id], [data-trash-id]").forEach((el) => {
+    el.classList.toggle("is-selected", rowIsSelected(el, sel));
+  });
+}
+
+/**
+ * Привести выделение на экране к state — с анимацией, если оно поменялось.
+ *
+ * CSS-переход играет, только если браузер успел увидеть элемент в СТАРОМ
+ * состоянии. Строки, только что созданные через innerHTML, браузер ещё не видел:
+ * поставь им сразу новый класс — и они просто появятся уже увеличенными. Поэтому
+ * сначала рисуем прежнее выделение, затем заставляем браузер посчитать раскладку
+ * (чтение offsetHeight) — тем самым он «запоминает» старые размеры, — и только
+ * потом ставим новое. requestAnimationFrame здесь не помог бы: его колбэк
+ * выполняется ДО того, как браузер считает стили кадра.
+ */
+function syncSelection(container, state) {
+  const panelEl = container.querySelector(".panel-workspace");
+  if (!panelEl) return;
+  const next = currentSelection(state);
+  const previous = state.shownSelection;
+  if (previous && !sameSelection(previous, next)) {
+    paintSelection(panelEl, previous);
+    void panelEl.offsetHeight;
+  }
+  paintSelection(panelEl, next);
+  state.shownSelection = next;
+}
+
+function selectSection(container, config, state, key) {
+  if (state.section === key) return;
+  state.section = key;
+  renderPanel(container, config, state, { resetScroll: true });
+  // Пустой аккаунт: кнопка «Create note» живёт только в разделе Notes.
+  renderDetailIfIdle(container, config, state);
+}
+
+// Открыть заметку: перерисовываем только деталь, строки панели остаются теми же
+// узлами — поэтому увеличение выбранной строки анимируется.
+function selectNote(container, config, state, itemId, context) {
+  state.selectedItemId = itemId;
+  state.selectedItemContext = context;
+  state.selectedTrash = null;
+  syncSelection(container, state);
+  renderDetail(container, config, state);
+  state.renderedDetailKey = detailKey(state);
+}
+
+function selectTrashEntry(container, config, state, kind, id) {
+  state.selectedTrash = { kind, id };
+  syncSelection(container, state);
+  renderDetail(container, config, state);
+  state.renderedDetailKey = detailKey(state);
+}
+
+// Деталь показывает подсказку или кнопку «Create note» (ничего не открыто) —
+// после смены раздела или числа заметок она могла устареть. Открытый редактор
+// не трогаем: его пересоздание сбило бы каретку.
+function renderDetailIfIdle(container, config, state) {
+  if (state.selectedTrash) return;
+  if (state.items.some((item) => item.id === state.selectedItemId)) return;
+  renderDetail(container, config, state);
+}
+
+/**
+ * Перетаскивание само открывает то, что скрыто: заметка, задержанная над
+ * разделом Folders, переключает панель на него (в Notes и Unfiled папок не
+ * видно, класть заметку некуда), а над свёрнутой папкой — раскрывает её (иначе
+ * до вложенных папок не дотянуться).
+ *
+ * hover(key, action) зовётся на каждом кадре движения; таймер заводится, только
+ * когда цель сменилась, и срабатывает один раз, пока курсор на ней.
+ */
+function createSpringLoader() {
+  let currentKey = null;
+  let timer = 0;
+  return {
+    hover(key, action) {
+      if (key === currentKey) return;
+      clearTimeout(timer);
+      timer = 0;
+      currentKey = key;
+      if (key && action) {
+        timer = setTimeout(() => {
+          timer = 0;
+          action();
+        }, SPRING_DELAY);
+      }
+    },
+    cancel() {
+      clearTimeout(timer);
+      timer = 0;
+      currentKey = null;
+    },
+  };
+}
+
+// Действия пружинки. Перерисовываем только панель — редактор с открытой
+// заметкой посреди переноса пересоздавать незачем.
+function springToSection(container, config, state, key) {
+  state.section = key;
+  renderPanel(container, config, state, { resetScroll: true });
+}
+
+function springExpandFolder(container, config, state, folderId) {
+  state.expandedFolderIds.add(folderId);
+  renderPanel(container, config, state);
+}
+
+function wireFolderRow(el, container, config, state) {
+  const folderId = el.dataset.folderId;
+  const context = el.dataset.context;
+
+  // Клик выбирает папку и раскрывает/сворачивает её содержимое. Открытую справа
+  // заметку не трогаем — перерисовываем только панель.
+  el.addEventListener("click", () => {
+    state.selectedFolderId = folderId;
+    state.selectedFolderContext = context;
+    if (state.expandedFolderIds.has(folderId)) state.expandedFolderIds.delete(folderId);
+    else state.expandedFolderIds.add(folderId);
+    renderPanel(container, config, state);
+  });
+
+  // Механика переноса общая с заметками (см. startRowDrag) — здесь только поиск
+  // цели и само действие.
+  el.addEventListener("mousedown", (event) => {
+    const spring = createSpringLoader();
+    startRowDrag(event, {
+      sourceEl: el,
+      prepareGhost: (ghost) => {
+        ghost.removeAttribute("data-folder-id");
+        ghost.removeAttribute("data-context");
+        // Крестик мгновенного удаления на "призраке" не нужен: он ничего не
+        // делает (pointer-events: none), но выглядел бы рабочей кнопкой.
+        const ghostDelete = ghost.querySelector(".folder-delete");
+        if (ghostDelete) ghostDelete.remove();
+      },
+      onBeginDrag: () => {
+        activeDrag = { kind: "folder", id: folderId };
+        // Сразу показываем зону вложения у ВСЕХ папок — не только у той, что
+        // окажется под курсором, — чтобы было видно, куда вообще можно "закинуть".
+        // Строки, которые нарисует пружинка, получат её из folderRowHtml.
+        container.querySelectorAll(".panel-workspace [data-folder-id]").forEach((rowEl) => {
+          if (rowEl.dataset.folderId !== folderId) rowEl.classList.add("is-drop-into-zone");
+        });
+      },
+      onCleanup: () => {
+        activeDrag = null;
+        spring.cancel();
+        container
+          .querySelectorAll(".panel-workspace .is-drop-into-zone, .panel-workspace .is-drop-into, .panel-workspace .is-drop-target, .panel-workspace .is-drag-source")
+          .forEach((rowEl) => rowEl.classList.remove("is-drop-into-zone", "is-drop-into", "is-drop-target", "is-drag-source"));
+      },
+      findTarget: (clientX, clientY) => {
+        const hit = document.elementFromPoint(clientX, clientY);
+        const hitEl = hit ? hit.closest("[data-item-id], [data-folder-id], [data-section]") : null;
+        if (!hitEl || hitEl.dataset.itemId) {
+          spring.hover(null);
+          return null;
+        }
+
+        const sectionKey = hitEl.dataset.section;
+        if (sectionKey) {
+          if (sectionKey === "favorites" || sectionKey === "unfiled") {
+            spring.hover(null);
+            hitEl.classList.add("is-drop-target");
+            return { el: hitEl, folderId: sectionKey, into: false, after: false };
+          }
+          // Папку тащат из Избранного — над разделом Folders панель переключится
+          // на него, и папку можно будет вложить в любую другую.
+          if (sectionKey === "folders" && state.section !== "folders") {
+            spring.hover("section:folders", () => springToSection(container, config, state, "folders"));
+            hitEl.classList.add("is-drop-target");
+            return { el: hitEl, folderId: null };
+          }
+          spring.hover(null);
+          return null;
+        }
+
+        const hitId = hitEl.dataset.folderId;
+        if (hitId === folderId) {
+          spring.hover(null);
+          return null; // сам на себя
+        }
+        const into = isDropInto(hitEl, { clientX });
+        const after = isDropAfter(hitEl, { clientY });
+        // Раскрываем только когда курсор в зоне «вложить»: при обычной
+        // перестановке раскрывшаяся папка сдвигала бы строки из-под курсора.
+        const canSpring = into && !state.expandedFolderIds.has(hitId);
+        spring.hover(canSpring ? `folder:${hitId}` : null, () => springExpandFolder(container, config, state, hitId));
+        if (into) hitEl.classList.add("is-drop-into");
+        else markDropSide(hitEl, after);
+        return { el: hitEl, folderId: hitId, into, after };
+      },
+      onDrop: (target) => {
+        if (!target.folderId) return; // раздел Folders — только пружинка, не цель
+        if (target.folderId === "favorites") {
+          optimisticField(
+            state, "folders", folderId, { isFavorite: true },
+            () => itemsService.updateFolder(folderId, { isFavorite: true }),
+            () => renderPanel(container, config, state)
+          );
+        } else if (target.folderId === "unfiled") {
+          optimisticField(
+            state, "folders", folderId, { parentFolderIds: [] },
+            () => itemsService.updateFolder(folderId, { parentFolderIds: [] }),
+            () => renderPanel(container, config, state)
+          );
+        } else if (target.into) {
+          // itemsService.moveFolderInto тихо резолвится null на невалидном
+          // переносе (не бросает) — без локальной проверки .catch()-откат
+          // не сработал бы вовсе, см. canMoveFolderInto.
+          if (canMoveFolderInto(state, folderId, target.folderId)) {
+            optimisticBulk(
+              state,
+              () => applyMoveFolderInto(state, folderId, target.folderId),
+              () => itemsService.moveFolderInto(config.section, folderId, target.folderId),
+              () => renderPanel(container, config, state)
+            );
+          }
+        } else {
+          const result = reorderedFolders(state.folders, folderId, target.folderId, target.after);
+          if (result) {
+            optimisticBulk(
+              state,
+              () => { state.folders = result.entries; },
+              () => itemsService.setFoldersOrder(result.orderById),
+              () => renderPanel(container, config, state)
+            );
+          }
+        }
+      },
+    });
+  });
+
+  // ПКМ по папке: переименовать, избранное, закрепить, убрать из родителя,
+  // новая заметка внутри, удаление (для непустых — единственный способ).
+  el.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+    event.stopPropagation();
+    const folder = state.folders.find((f) => f.id === folderId);
+    // Строка показана внутри конкретного родителя — от НЕГО можно отвязать, не
+    // удаляя папку (она останется у остальных родителей или станет корневой).
+    const parentId = isRealFolderId(context) ? context : null;
     showContextMenu(event.clientX, event.clientY, [
       {
-        label: t("panel.newFolder"),
-        onClick: createFolderFlow(container, config, state),
+        label: t("panel.rename"),
+        onClick: () => {
+          startInlineRename(el, folder.name, (name) => {
+            optimisticField(
+              state, "folders", folder.id, { name },
+              () => itemsService.updateFolder(folder.id, { name }),
+              () => renderPanel(container, config, state)
+            );
+          });
+        },
+      },
+      {
+        label: folder.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
+        onClick: () => {
+          optimisticField(
+            state, "folders", folder.id, { isFavorite: !folder.isFavorite },
+            () => itemsService.updateFolder(folder.id, { isFavorite: !folder.isFavorite }),
+            () => renderPanel(container, config, state)
+          );
+        },
+      },
+      {
+        label: folder.pinned ? t("panel.unpin") : t("panel.pin"),
+        onClick: () => {
+          optimisticField(
+            state, "folders", folder.id, { pinned: !folder.pinned },
+            () => itemsService.updateFolder(folder.id, { pinned: !folder.pinned }),
+            () => renderPanel(container, config, state)
+          );
+        },
+      },
+      ...(parentId
+        ? [
+            {
+              label: t("panel.removeFromFolder"),
+              onClick: () => {
+                optimisticBulk(
+                  state,
+                  () => localRemoveFolderFromParent(state, folder.id, parentId),
+                  () => itemsService.removeFolderFromParent(config.section, folder.id, parentId),
+                  () => renderPanel(container, config, state)
+                );
+              },
+            },
+          ]
+        : []),
+      {
+        label: t("panel.newItem"),
+        onClick: () => createNoteFlow(container, config, state, folder.id),
+      },
+      {
+        label: t("panel.delete"),
+        onClick: () => deleteFolderFlow(folder.id, container, config, state, true),
       },
     ]);
   });
 }
+
+function wireNoteRow(el, container, config, state) {
+  const itemId = el.dataset.itemId;
+  const context = el.dataset.context;
+  const isFlat = Boolean(el.dataset.flat);
+
+  el.addEventListener("click", () => {
+    selectNote(container, config, state, itemId, isFlat ? null : context);
+  });
+
+  // Перенос заметки — та же механика, что у папок (см. startRowDrag): за
+  // курсором едет клон строки. Цели: другая заметка (перестановка), папка
+  // (добавить в неё), разделы Favorites/Unfiled; над разделом Folders и над
+  // свёрнутой папкой срабатывает пружинка.
+  el.addEventListener("mousedown", (event) => {
+    const spring = createSpringLoader();
+    startRowDrag(event, {
+      sourceEl: el,
+      prepareGhost: (ghost) => {
+        ghost.removeAttribute("data-item-id");
+        ghost.removeAttribute("data-context");
+        const ghostDelete = ghost.querySelector(".item-delete");
+        if (ghostDelete) ghostDelete.remove();
+      },
+      onBeginDrag: () => {
+        activeDrag = { kind: "item", id: itemId };
+      },
+      onCleanup: () => {
+        activeDrag = null;
+        spring.cancel();
+        container
+          .querySelectorAll(".panel-workspace .is-drop-target, .panel-workspace .is-drag-source")
+          .forEach((rowEl) => rowEl.classList.remove("is-drop-target", "is-drag-source"));
+      },
+      findTarget: (clientX, clientY) => {
+        const hit = document.elementFromPoint(clientX, clientY);
+        const hitEl = hit ? hit.closest("[data-item-id], [data-folder-id], [data-section]") : null;
+        if (!hitEl) {
+          spring.hover(null);
+          return null;
+        }
+
+        const sectionKey = hitEl.dataset.section;
+        if (sectionKey) {
+          if (sectionKey === "favorites" || sectionKey === "unfiled") {
+            spring.hover(null);
+            hitEl.classList.add("is-drop-target");
+            return { el: hitEl, kind: "section", id: sectionKey };
+          }
+          if (sectionKey === "folders" && state.section !== "folders") {
+            spring.hover("section:folders", () => springToSection(container, config, state, "folders"));
+            hitEl.classList.add("is-drop-target");
+            return { el: hitEl, kind: "none" };
+          }
+          spring.hover(null);
+          return null;
+        }
+
+        const targetFolderId = hitEl.dataset.folderId;
+        if (targetFolderId) {
+          const collapsed = !state.expandedFolderIds.has(targetFolderId);
+          spring.hover(collapsed ? `folder:${targetFolderId}` : null, () =>
+            springExpandFolder(container, config, state, targetFolderId)
+          );
+          hitEl.classList.add("is-drop-target");
+          return { el: hitEl, kind: "folder", id: targetFolderId };
+        }
+
+        spring.hover(null);
+        const targetItemId = hitEl.dataset.itemId;
+        if (targetItemId === itemId) return null; // сам на себя
+        // Строка внутри папки, где этой заметки ещё нет, — бросок туда значит
+        // «положить в эту папку», а не переставить: в одной панели папка и её
+        // заметки стоят вперемешку с остальными строками, и целиться точно в
+        // строку папки было бы неудобно.
+        const targetContext = hitEl.dataset.context;
+        const dragged = state.items.find((i) => i.id === itemId);
+        if (!hitEl.dataset.flat && isRealFolderId(targetContext) && dragged && !dragged.folderIds.includes(targetContext)) {
+          hitEl.classList.add("is-drop-target");
+          return { el: hitEl, kind: "folder", id: targetContext };
+        }
+        const after = isDropAfter(hitEl, { clientY });
+        markDropSide(hitEl, after);
+        return { el: hitEl, kind: "item", id: targetItemId, after };
+      },
+      onDrop: (target) => {
+        // Перестановка внутри списка считается целиком в памяти, поэтому
+        // рисуем новый порядок сразу, а запись отправляем за кадр:
+        // setItemsOrder переписывает всю коллекцию вместе с фото в base64, и
+        // на паре мегабайт это десятки миллисекунд — ровно то залипание,
+        // которое было видно в момент отпускания кнопки. У папок такой
+        // развилки нет: их коллекция весит килобайты и пишется мгновенно.
+        // Откат здесь пишется вручную (не через optimisticBulk) именно из-за
+        // этой отложенной записи — снимаем старую ссылку до замены.
+        if (target.kind === "none") return;
+        if (target.kind === "item") {
+          const result = reorderedItems(state.items, itemId, target.id, target.after);
+          if (!result) return;
+          const previousItems = state.items;
+          state.items = result.entries;
+          // Только панель: редактор от перестановки строк не меняется.
+          renderPanel(container, config, state);
+          afterPaint(() => {
+            itemsService.setItemsOrder(result.orderById).catch(() => {
+              state.items = previousItems;
+              renderPanel(container, config, state);
+            });
+          });
+          return;
+        }
+        if (target.id === "favorites") {
+          optimisticField(
+            state, "items", itemId, { isFavorite: true },
+            () => itemsService.updateItem(itemId, { isFavorite: true }),
+            () => renderPanel(container, config, state)
+          );
+        } else if (target.id === "unfiled") {
+          optimisticField(
+            state, "items", itemId, { folderIds: [] },
+            () => itemsService.updateItem(itemId, { folderIds: [] }),
+            () => renderPanel(container, config, state)
+          );
+        } else {
+          const item = state.items.find((i) => i.id === itemId);
+          if (item && !item.folderIds.includes(target.id)) {
+            const folderIds = [...item.folderIds, target.id];
+            optimisticField(
+              state, "items", itemId, { folderIds },
+              () => itemsService.updateItem(itemId, { folderIds }),
+              () => renderPanel(container, config, state)
+            );
+          }
+        }
+      },
+    });
+  });
+
+  el.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    // Без этого событие всплыло бы до меню пустого места панели, и оно тут же
+    // заменило бы меню заметки.
+    event.stopPropagation();
+    const item = state.items.find((i) => i.id === itemId);
+    showContextMenu(event.clientX, event.clientY, [
+      {
+        label: t("panel.rename"),
+        onClick: () => {
+          startInlineRename(el, item.title, (title) => {
+            optimisticField(
+              state, "items", item.id, { title },
+              () => itemsService.updateItem(item.id, { title }),
+              () => renderPanel(container, config, state)
+            );
+          });
+        },
+      },
+      {
+        label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
+        onClick: () => {
+          optimisticField(
+            state, "items", item.id, { isFavorite: !item.isFavorite },
+            () => itemsService.updateItem(item.id, { isFavorite: !item.isFavorite }),
+            () => renderPanel(container, config, state)
+          );
+        },
+      },
+      {
+        // Закрепление тоглим для места, где показана ЭТА строка (её context),
+        // независимо от других мест, где заметка тоже видна.
+        label: isPinnedIn(item, context) ? t("panel.unpin") : t("panel.pin"),
+        onClick: () => {
+          const pinnedIn = isPinnedIn(item, context)
+            ? item.pinnedIn.filter((k) => k !== context)
+            : [...(item.pinnedIn || []), context];
+          optimisticField(
+            state, "items", item.id, { pinnedIn },
+            () => itemsService.updateItem(item.id, { pinnedIn }),
+            () => renderPanel(container, config, state)
+          );
+        },
+      },
+      // «Убрать из этой папки» — только у строки внутри папки. Перетаскивание в
+      // папку добавляет, а не перемещает, поэтому убрать из одной папки можно отсюда.
+      ...(isRealFolderId(context) && item.folderIds.includes(context)
+        ? [
+            {
+              label: t("panel.removeFromFolder"),
+              onClick: () => {
+                const folderIds = item.folderIds.filter((f) => f !== context);
+                optimisticField(
+                  state, "items", item.id, { folderIds },
+                  () => itemsService.updateItem(item.id, { folderIds }),
+                  () => renderPanel(container, config, state)
+                );
+              },
+            },
+          ]
+        : []),
+      {
+        label: t("panel.delete"),
+        onClick: () => deleteItemFlow(item.id, container, config, state, true),
+      },
+    ]);
+  });
+}
+
+function wireTrashRow(el, container, config, state) {
+  const id = el.dataset.trashId;
+  const kind = el.dataset.trashKind;
+  // Название берём из самой строки: там уже разобрано и папка/заметка, и
+  // подстановка «Без названия», второй раз это считать незачем.
+  const name = el.querySelector(".item-title").textContent;
+
+  el.addEventListener("click", () => selectTrashEntry(container, config, state, kind, id));
+
+  el.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    showContextMenu(event.clientX, event.clientY, [
+      {
+        label: t("panel.restore"),
+        onClick: () => {
+          optimisticBulk(
+            state,
+            () => {
+              if (kind === "folder") localRestoreFolder(state, id);
+              else localRestoreItem(state, id);
+              if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+            },
+            () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
+            () => renderAfterTrashChange(container, config, state)
+          );
+        },
+      },
+      {
+        label: t("panel.deleteForever"),
+        onClick: async () => {
+          const ok = await confirmDelete("panel.deleteForeverConfirm", name);
+          if (!ok) return;
+          optimisticBulk(
+            state,
+            () => {
+              if (kind === "folder") localDeleteFolderForever(state, id);
+              else localDeleteItemForever(state, id);
+              if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
+            },
+            () => (kind === "folder" ? itemsService.deleteFolderForever(id) : itemsService.deleteItemForever(id)),
+            () => renderAfterTrashChange(container, config, state)
+          );
+        },
+      },
+    ]);
+  });
+}
+
+/**
+ * Панель после правки открытой заметки. Редактор зовёт сохранение на каждую
+ * букву, а перестраивать дерево на каждую букву — дорого и сбивает прокрутку с
+ * анимациями. Поэтому не чаще кадра, и тело перестраивается, только если от
+ * правки поменялся состав или порядок строк (заметка поднялась наверх по
+ * свежести, перестала быть пустой). Новое название вписываем прямо в строку.
+ */
+let editRefreshFrame = 0;
+
+function refreshPanelAfterEdit(container, config, state) {
+  if (editRefreshFrame) return;
+  editRefreshFrame = requestAnimationFrame(() => {
+    editRefreshFrame = 0;
+    const bodyEl = container.querySelector('[data-role="workspace-body"]');
+    if (!bodyEl) return;
+    if (bodySignature(buildBodyRows(state)) !== state.bodySignature) {
+      renderPanel(container, config, state);
+      return;
+    }
+    const item = state.items.find((i) => i.id === state.selectedItemId);
+    if (!item) return;
+    bodyEl.querySelectorAll(`[data-item-id="${item.id}"] .item-title`).forEach((titleEl) => {
+      titleEl.textContent = item.title || t("panel.untitled");
+    });
+  });
+}
+
 
 // Название удаляемого прямо в вопросе: промахнуться мышкой по соседней строке
 // легко, а из безличного «Переместить в Корзину?» не видно, что именно уедет.
@@ -1146,7 +1842,11 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
     state,
     () => {
       localTrashFolder(state, folderId, deletedAt);
-      if (state.selectedFolderId === folderId) state.selectedFolderId = "all";
+      if (state.selectedFolderId === folderId) {
+        state.selectedFolderId = null;
+        state.selectedFolderContext = null;
+      }
+      state.expandedFolderIds.delete(folderId);
     },
     () => itemsService.moveFolderToTrash(config.section, folderId, deletedAt),
     () => renderAfterTrashChange(container, config, state)
@@ -1163,321 +1863,6 @@ function getTrashRows(state) {
   ].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
 }
 
-// Содержимое Корзины — тот же визуальный стиль строки, что у обычного списка
-// заметок (.item-list-row/.item-title), но без перетаскивания и с другим
-// контекстным меню (Восстановить / Удалить навсегда вместо обычных пунктов).
-function renderTrashList(bodyEl, titleEl, container, config, state) {
-  const rows = getTrashRows(state);
-  titleEl.textContent = getListTitle(state);
-
-  bodyEl.innerHTML = `
-    <ul class="item-list">
-      ${rows
-        .map((row) => {
-          const title = row.kind === "folder" ? row.name : row.title || t("panel.untitled");
-          const active = state.selectedTrash && state.selectedTrash.kind === row.kind && state.selectedTrash.id === row.id;
-          return `
-        <li class="item-list-row ${active ? "is-active" : ""}" data-trash-kind="${row.kind}" data-trash-id="${row.id}">
-          <span class="item-title">${escapeHtml(title)}</span>
-        </li>`;
-        })
-        .join("")}
-      ${!rows.length ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
-    </ul>
-  `;
-
-  bodyEl.querySelectorAll("[data-trash-id]").forEach((el) => {
-    const id = el.dataset.trashId;
-    const kind = el.dataset.trashKind;
-    // Название берём из самой строки: там уже разобрано и папка/заметка, и
-    // подстановка «Без названия», второй раз это считать незачем.
-    const name = el.querySelector(".item-title").textContent;
-
-    el.addEventListener("click", () => {
-      state.selectedTrash = { kind, id };
-      render(container, config, state);
-    });
-
-    el.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      showContextMenu(event.clientX, event.clientY, [
-        {
-          label: t("panel.restore"),
-          onClick: () => {
-            optimisticBulk(
-              state,
-              () => {
-                if (kind === "folder") localRestoreFolder(state, id);
-                else localRestoreItem(state, id);
-                if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
-              },
-              () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
-              () => renderAfterTrashChange(container, config, state)
-            );
-          },
-        },
-        {
-          label: t("panel.deleteForever"),
-          onClick: async () => {
-            const ok = await confirmDelete("panel.deleteForeverConfirm", name);
-            if (!ok) return;
-            optimisticBulk(
-              state,
-              () => {
-                if (kind === "folder") localDeleteFolderForever(state, id);
-                else localDeleteItemForever(state, id);
-                if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
-              },
-              () => (kind === "folder" ? itemsService.deleteFolderForever(id) : itemsService.deleteItemForever(id)),
-              () => renderAfterTrashChange(container, config, state)
-            );
-          },
-        },
-      ]);
-    });
-  });
-}
-
-// Правка заметки, которая может задеть счётчики папок слева (избранное — общий
-// счётчик "Избранное (N)"; folderIds — счётчик конкретной папки), но не
-// трогает открытый редактор — оба уже "коллекции этого дешёвого узкого
-// рендера" (в отличие от полного render(), который его бы пересоздал).
-function renderFoldersAndList(container, config, state) {
-  renderFolders(container, config, state);
-  renderList(container, config, state);
-}
-
-function renderList(container, config, state) {
-  const bodyEl = container.querySelector('[data-role="list-body"]');
-  const titleEl = container.querySelector('[data-role="list-title"]');
-  // Список перерисовывают и в обход render(): перестановка мышью, клик по папке
-  // и — на КАЖДЫЙ введённый символ — сохранение заголовка открытой заметки.
-  const scrollTop = bodyEl.scrollTop;
-
-  if (state.selectedFolderId === "trash") {
-    renderTrashList(bodyEl, titleEl, container, config, state);
-    bodyEl.scrollTop = scrollTop;
-    return;
-  }
-
-  const items = getFilteredItems(state);
-  // В разделе "Избранное" папки не являются заметками — показываем их
-  // отдельными строками-ссылками сверху, клик по ним просто переключает
-  // на эту папку в обычном виде (у папки нет собственного контента).
-  const favFolders = state.selectedFolderId === "favorites" ? state.folders.filter((f) => f.isFavorite) : [];
-  const isEmpty = !favFolders.length && !items.length;
-  // Закрепление заметок независимо для каждого места показа. Текущее место —
-  // это selectedFolderId ("all"/"favorites"/"unfiled"/id папки): булавку, оттенок и
-  // подъём наверх показываем только для заметок, закреплённых именно здесь.
-  const locationKey = state.selectedFolderId;
-
-  titleEl.textContent = getListTitle(state);
-
-  bodyEl.innerHTML = `
-    <ul class="item-list">
-      ${favFolders
-        .map(
-          (folder) =>
-            `<li class="item-list-row" data-jump-folder-id="${folder.id}">${folderIcon()}<span class="item-title">${escapeHtml(folder.name)}</span></li>`
-        )
-        .join("")}
-      ${items
-        .map((item) => {
-          const empty = isItemEmpty(item);
-          return `
-        <li class="item-list-row ${state.selectedItemId === item.id ? "is-active" : ""} ${isPinnedIn(item, locationKey) ? "is-pinned" : ""}" data-item-id="${item.id}">
-          <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
-          ${rowBadges(item, isPinnedIn(item, locationKey))}
-          ${empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
-        </li>`;
-        })
-        .join("")}
-      ${isEmpty ? `<li class="placeholder">${t("panel.empty")}</li>` : ""}
-    </ul>
-  `;
-  bodyEl.scrollTop = scrollTop;
-
-  bodyEl.querySelectorAll("[data-item-id]").forEach((el) => {
-    const itemId = el.dataset.itemId;
-
-    el.addEventListener("click", () => {
-      state.selectedItemId = itemId;
-      state.selectedTrash = null;
-      render(container, config, state);
-    });
-
-    // Перенос заметки — та же механика, что у папок (см. startRowDrag): нативный
-    // HTML5 DnD убран, за курсором едет клон строки, а не браузерный скриншот.
-    // Целей две: другая заметка (переупорядочивание) и папка в левой панели —
-    // раньше приём заметки папкой висел отдельными нативными dragover/drop.
-    el.addEventListener("mousedown", (event) => {
-      startRowDrag(event, {
-        sourceEl: el,
-        prepareGhost: (ghost) => {
-          ghost.removeAttribute("data-item-id");
-          const ghostDelete = ghost.querySelector(".item-delete");
-          if (ghostDelete) ghostDelete.remove();
-        },
-        findTarget: (clientX, clientY) => {
-          const hit = document.elementFromPoint(clientX, clientY);
-          const hitEl = hit ? hit.closest("[data-item-id],[data-folder-id]") : null;
-          if (!hitEl) return null;
-
-          const targetItemId = hitEl.dataset.itemId;
-          if (targetItemId) {
-            if (targetItemId === itemId) return null; // сам на себя
-            const after = isDropAfter(hitEl, { clientY });
-            markDropSide(hitEl, after);
-            return { el: hitEl, kind: "item", id: targetItemId, after };
-          }
-
-          // Приёмники в панели папок: реальные папки, "Без папки" и "Избранное".
-          const targetFolderId = hitEl.dataset.folderId;
-          if (isRealFolderId(targetFolderId) || targetFolderId === "unfiled" || targetFolderId === "favorites") {
-            hitEl.classList.add("is-drop-target");
-            return { el: hitEl, kind: "folder", id: targetFolderId };
-          }
-          return null;
-        },
-        onDrop: (target) => {
-          // Перестановка внутри списка считается целиком в памяти, поэтому
-          // рисуем новый порядок сразу, а запись отправляем за кадр:
-          // setItemsOrder переписывает всю коллекцию вместе с фото в base64, и
-          // на паре мегабайт это десятки миллисекунд — ровно то залипание,
-          // которое было видно в момент отпускания кнопки. У папок такой
-          // развилки нет: их коллекция весит килобайты и пишется мгновенно.
-          // Откат здесь пишется вручную (не через optimisticBulk) именно из-за
-          // этой отложенной записи — снимаем старую ссылку до замены.
-          if (target.kind === "item") {
-            const result = reorderedItems(state.items, itemId, target.id, target.after);
-            if (!result) return;
-            const previousItems = state.items;
-            state.items = result.entries;
-            // Только список: полный render() пересоздал бы ещё и редактор со
-            // всей открытой заметкой (и сбросил бы в нём каретку с прокруткой),
-            // хотя от перестановки строк он не меняется вовсе.
-            renderList(container, config, state);
-            afterPaint(() => {
-              itemsService.setItemsOrder(result.orderById).catch(() => {
-                state.items = previousItems;
-                renderList(container, config, state);
-              });
-            });
-            return;
-          }
-          if (target.id === "favorites") {
-            optimisticField(
-              state, "items", itemId, { isFavorite: true },
-              () => itemsService.updateItem(itemId, { isFavorite: true }),
-              () => renderFoldersAndList(container, config, state)
-            );
-          } else if (target.id === "unfiled") {
-            optimisticField(
-              state, "items", itemId, { folderIds: [] },
-              () => itemsService.updateItem(itemId, { folderIds: [] }),
-              () => renderFoldersAndList(container, config, state)
-            );
-          } else {
-            const item = state.items.find((i) => i.id === itemId);
-            if (item && !item.folderIds.includes(target.id)) {
-              const folderIds = [...item.folderIds, target.id];
-              optimisticField(
-                state, "items", itemId, { folderIds },
-                () => itemsService.updateItem(itemId, { folderIds }),
-                () => renderFoldersAndList(container, config, state)
-              );
-            }
-          }
-        },
-      });
-    });
-
-    el.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      const item = state.items.find((i) => i.id === itemId);
-      showContextMenu(event.clientX, event.clientY, [
-        {
-          label: t("panel.rename"),
-          onClick: () => {
-            startInlineRename(el, item.title, (title) => {
-              optimisticField(
-                state, "items", item.id, { title },
-                () => itemsService.updateItem(item.id, { title }),
-                () => renderList(container, config, state)
-              );
-            });
-          },
-        },
-        {
-          label: item.isFavorite ? t("panel.removeFromFavorites") : t("panel.addToFavorites"),
-          onClick: () => {
-            optimisticField(
-              state, "items", item.id, { isFavorite: !item.isFavorite },
-              () => itemsService.updateItem(item.id, { isFavorite: !item.isFavorite }),
-              () => renderFoldersAndList(container, config, state)
-            );
-          },
-        },
-        {
-          // Закрепление тоглим для ТЕКУЩЕГО места показа (selectedFolderId),
-          // независимо от других мест, где заметка тоже видна.
-          label: isPinnedIn(item, state.selectedFolderId) ? t("panel.unpin") : t("panel.pin"),
-          onClick: () => {
-            const key = state.selectedFolderId;
-            const pinnedIn = isPinnedIn(item, key)
-              ? item.pinnedIn.filter((k) => k !== key)
-              : [...(item.pinnedIn || []), key];
-            optimisticField(
-              state, "items", item.id, { pinnedIn },
-              () => itemsService.updateItem(item.id, { pinnedIn }),
-              () => renderList(container, config, state)
-            );
-          },
-        },
-        // «Убрать из этой папки» — только когда открыт вид конкретной папки и
-        // заметка в ней числится. Перетаскивание в папку теперь добавляет, а не
-        // перемещает, поэтому убрать из одной папки можно отсюда.
-        ...(isRealFolderId(state.selectedFolderId) && item.folderIds.includes(state.selectedFolderId)
-          ? [
-              {
-                label: t("panel.removeFromFolder"),
-                onClick: () => {
-                  const key = state.selectedFolderId;
-                  const folderIds = item.folderIds.filter((f) => f !== key);
-                  optimisticField(
-                    state, "items", item.id, { folderIds },
-                    () => itemsService.updateItem(item.id, { folderIds }),
-                    () => renderFoldersAndList(container, config, state)
-                  );
-                },
-              },
-            ]
-          : []),
-        {
-          label: t("panel.delete"),
-          onClick: () => deleteItemFlow(item.id, container, config, state, true),
-        },
-      ]);
-    });
-  });
-
-  // Крестик виден только у пустой заметки — удаляет мгновенно.
-  bodyEl.querySelectorAll("[data-delete-item]").forEach((btn) => {
-    btn.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteItemFlow(btn.dataset.deleteItem, container, config, state, false);
-    });
-  });
-
-  bodyEl.querySelectorAll("[data-jump-folder-id]").forEach((el) => {
-    el.addEventListener("click", () => {
-      // Как и обычный клик по папке — открытую заметку не сбрасываем.
-      state.selectedFolderId = el.dataset.jumpFolderId;
-      renderFolders(container, config, state);
-      renderList(container, config, state);
-    });
-  });
-}
 
 async function deleteItemFlow(itemId, container, config, state, confirm) {
   if (confirm) {
@@ -1552,24 +1937,6 @@ function afterPaint(run) {
   };
   requestAnimationFrame(() => setTimeout(once, 0));
   setTimeout(once, 100);
-}
-
-function getFilteredItems(state) {
-  // Закреплённые наверх — но отдельно для каждого места показа (ключ = вид списка).
-  const key = state.selectedFolderId;
-  if (key === "favorites") return sortItemsByPin(state.items.filter((item) => item.isFavorite), key);
-  if (key === "unfiled") return sortItemsByPin(state.items.filter((item) => item.folderIds.length === 0), key);
-  if (key === "all") return sortItemsByPin(state.items, key);
-  return sortItemsByPin(state.items.filter((item) => item.folderIds.includes(key)), key);
-}
-
-function getListTitle(state) {
-  if (state.selectedFolderId === "trash") return t("panel.trash");
-  if (state.selectedFolderId === "favorites") return t("panel.favorites");
-  if (state.selectedFolderId === "all") return t("panel.all");
-  if (state.selectedFolderId === "unfiled") return t("panel.unfiled");
-  const folder = state.folders.find((f) => f.id === state.selectedFolderId);
-  return folder ? folder.name : "";
 }
 
 // Просмотр удалённого — упрощённая read-only карточка, не полноценный редактор
@@ -1678,6 +2045,10 @@ function renderDetail(container, config, state) {
     detachFloatingToolbar();
     detachFloatingToolbar = null;
   }
+  // Искать «в заметке» можно, только пока открыт редактор. Ниже каждый ранний
+  // выход (корзина, пусто, заметка ещё грузится) так и оставит канал пустым,
+  // а обычная заметка зарегистрирует себя сама после создания редактора.
+  setNoteSearchSource(null);
 
   if (state.selectedTrash) {
     renderTrashDetail(detailEl, container, config, state);
@@ -1687,6 +2058,21 @@ function renderDetail(container, config, state) {
   const item = state.items.find((i) => i.id === state.selectedItemId);
 
   if (!item) {
+    // У пользователя нет ни одной заметки (новый аккаунт или всё удалено) —
+    // вместо подсказки «выберите слева», где выбирать нечего, сразу кнопка.
+    if (state.items.length === 0 && state.section === "all") {
+      detailEl.innerHTML = `
+        <div class="empty-create">
+          <button type="button" class="empty-create-btn" data-action="create-first-note">
+            <span class="empty-create-plus" aria-hidden="true">+</span>
+            <span>${t("panel.createNote")}</span>
+          </button>
+        </div>`;
+      detailEl
+        .querySelector('[data-action="create-first-note"]')
+        .addEventListener("click", () => createNoteFlow(container, config, state));
+      return;
+    }
     detailEl.innerHTML = `<p class="placeholder">${t("panel.selectPrompt")}</p>`;
     return;
   }
@@ -1738,13 +2124,22 @@ function renderDetail(container, config, state) {
   let pendingPatch = {};
   let saveTimer = null;
 
+  // Избранное/закрепление через ПКМ (optimisticField) заменяет объект открытой
+  // заметки в state.items копией, а захваченный здесь item остаётся старым. Если
+  // писать правки в него, список слева продолжал бы показывать прежнее название —
+  // поэтому каждый раз берём актуальный объект по id.
+  function openItem() {
+    return state.items.find((i) => i.id === item.id) || item;
+  }
+
   function scheduleSave(patch) {
-    Object.assign(item, patch);
+    const current = openItem();
+    Object.assign(current, patch);
     // itemsService.updateItem проставит activityAt и persist'нет его сам, но
     // только через 400мс дебаунса ниже — а список нужно пересортировать сразу.
-    if ("content" in patch || "title" in patch) item.activityAt = new Date().toISOString();
+    if ("content" in patch || "title" in patch) current.activityAt = new Date().toISOString();
     Object.assign(pendingPatch, patch);
-    renderList(container, config, state);
+    refreshPanelAfterEdit(container, config, state);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const toSave = pendingPatch;
@@ -1785,7 +2180,7 @@ function renderDetail(container, config, state) {
     // Название заметки нужно кнопке печати/выгрузки: оно уходит и на лист, и в
     // имя файла. Сам редактор его не знает и знать не должен — отдаём геттером,
     // как и пункты меню ниже.
-    getNoteTitle: () => item.title,
+    getNoteTitle: () => openItem().title,
     getExtraMenuItems: config.pageModeInContextMenu
       ? () => {
           // Оба пункта — расширенные инструменты, как и кнопки с
@@ -1803,10 +2198,9 @@ function renderDetail(container, config, state) {
               // Длинную заметку, которую всё время дописывают снизу, удобно открывать
               // сразу в конце. Настройка живёт в самой заметке (как pageMode), поэтому
               // у каждой она своя и переживает экспорт/импорт.
-              label: item.openAtEnd ? t("editor.openAtTop") : t("editor.openAtEnd"),
+              label: openItem().openAtEnd ? t("editor.openAtTop") : t("editor.openAtEnd"),
               onClick: () => {
-                item.openAtEnd = !item.openAtEnd;
-                scheduleSave({ openAtEnd: item.openAtEnd });
+                scheduleSave({ openAtEnd: !openItem().openAtEnd });
               },
             },
           ];
@@ -1826,6 +2220,17 @@ function renderDetail(container, config, state) {
   // рамка висела вне документа, её край читался нулём, и панель после
   // перезагрузки уезжала к началу поля вместо своего места.
   detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl });
+
+  // Строка поиска ищет по открытой заметке. Текст берём из item.content — туда
+  // каждое нажатие клавиши попадает сразу (scheduleSave), раньше, чем уйдёт в
+  // хранилище, поэтому находится и только что напечатанное. Номер вхождения в
+  // этом тексте совпадает с тем, что считает highlightMatch в самом редакторе.
+  setNoteSearchSource({
+    contentEl,
+    getTitle: () => openItem().title,
+    getText: () => htmlToSearchText(openItem().content || ""),
+    highlight: (query, occurrence) => editor.highlightMatch(query, occurrence),
+  });
 
   // Пришли из поиска — прокручиваем к найденному и мигаем им. Цель одноразовая:
   // следующая перерисовка (правка, переключение папки) прыгать уже не должна.

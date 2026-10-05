@@ -137,6 +137,18 @@
   border-color: #33507e;
 }
 
+/* Поиск идёт по открытой заметке, а не по всему сайту — поле чуть подкрашено,
+   чтобы режим был виден ещё до того, как что-то набрано. */
+.search-field.is-scope-note {
+  background: #f1f6fd;
+}
+
+.search-field.is-scope-note .search-scope {
+  background: #dbeafe;
+  border-color: #b9d1f2;
+  color: #33507e;
+}
+
 .search-icon {
   color: #9ca3af;
   font-size: 1.05rem;

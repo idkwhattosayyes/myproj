@@ -3,6 +3,7 @@ import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { search, findMatches, MATCH_FETCH_CAP } from "./searchService.js";
 import { getBlockSearchSource, onBlockSearchSource } from "./blockScope.js";
+import { getNoteSearchSource, onNoteSearchSource } from "./noteScope.js";
 import { setPendingTarget } from "./searchTarget.js";
 import { openBlockTagsBrowser, LAST_FILTER_KEY } from "../modules/shared/blockTagsBrowser.js";
 import * as blockTagsService from "../services/blockTagsService.js";
@@ -29,6 +30,11 @@ let currentRoute = "home";
 // Охват до открытия меню блоков: оно забирает "local" себе, при закрытии
 // возвращаем прежний, чтобы обычный поиск вёл себя как до открытия.
 let scopeBeforeBrowser = null;
+// На странице Notes "local" значит «в открытой заметке». Если там ничего не
+// нашлось, тот же запрос сам уходит на всё приложение — флаг помнит, что так
+// случилось, ради подписи охвата («Везде · в заметке нет»). Сбрасывается на
+// каждом новом запросе.
+let fellBackToGlobal = false;
 
 // Режим выбора цели для внутренней ссылки (см. openLinkPicker) — та же полоска
 // поиска, но клик по результату не переходит к нему, а возвращает выбор вызывающему
@@ -147,6 +153,9 @@ export function mountSearch({ onNavigate }) {
     else if (!source) closeResults();
   });
 
+  // Открыли/закрыли заметку — подпись охвата «В заметке» должна это отразить.
+  onNoteSearchSource(() => renderLabels());
+
   renderLabels();
 }
 
@@ -193,9 +202,29 @@ function toggleScope() {
   // открытое меню блоков: там "в разделе" значит "по показанным блокам", и это
   // осмысленно на любом маршруте, включая главную.
   if ((currentRoute === "home" && !getBlockSearchSource()) || pickerActive) return;
-  scope = scope === "global" ? "local" : "global";
+  // Поиск в заметке уже сам расширился до «везде» — Tab закрепляет это явно,
+  // а не возвращает в заметку, где только что ничего не нашлось. Иначе нажатие
+  // выглядело бы так, будто ничего не произошло.
+  if (scope === "local" && fellBackToGlobal) scope = "global";
+  else scope = scope === "global" ? "local" : "global";
   renderLabels();
   scheduleSearch();
+}
+
+/**
+ * Открытая заметка, по которой сейчас можно искать, или null. Канал может
+ * хранить заметку с другой страницы (роутер не размонтирует разделы), поэтому
+ * сверяем и маршрут, и то, что редактор всё ещё в документе.
+ */
+function activeNoteSource() {
+  if (currentRoute !== "notes" || getBlockSearchSource() || pickerActive) return null;
+  const source = getNoteSearchSource();
+  return source && source.contentEl.isConnected ? source : null;
+}
+
+// Идёт ли поиск на самом деле по открытой заметке (а не по выбранному охвату).
+function isNoteScope() {
+  return scope === "local" && !fellBackToGlobal && activeNoteSource() !== null;
 }
 
 /**
@@ -287,21 +316,39 @@ export function returnFocusFromSearch() {
 /** Смена языка перерисовывает разделы; подписи полоски обновляем вместе с ними. */
 export function renderLabels() {
   if (!barEl) return;
-  inputEl.placeholder = pickerActive ? t("search.pickNotePlaceholder") : t("search.placeholder");
-  scopeBtn.textContent = scope === "global" ? t("search.scopeGlobal") : t("search.scopeLocal");
+  const inNote = isNoteScope();
+  if (pickerActive) inputEl.placeholder = t("search.pickNotePlaceholder");
+  else if (inNote) inputEl.placeholder = t("search.placeholderNote");
+  else inputEl.placeholder = t("search.placeholder");
+  scopeBtn.textContent = scopeLabel(inNote);
+  // Другой фон поля — режим поиска виден, даже пока в поле ничего не набрано.
+  barEl.querySelector(".search-field").classList.toggle("is-scope-note", inNote);
   scopeBtn.title = t("search.scopeHint");
   scopeBtn.disabled = (currentRoute === "home" && !getBlockSearchSource()) || pickerActive;
 }
 
 // Какие данные перебирать: "all" — всё, "items" — папки и заметки,
 // "calendar" — записи календаря. В режиме выбора цели ссылки — только
-// заметки, папки и записи календаря ссылкой быть не могут.
+// заметки, папки и записи календаря ссылкой быть не могут. На странице Notes
+// поиск «в разделе» — это поиск по открытой заметке (см. runSearch); сюда он
+// попадает, только когда в ней ничего не нашлось, и тогда ищем по всему сайту.
 function currentScopeKey() {
   if (pickerActive) return "items";
   if (scope === "global") return "all";
   if (currentRoute === "calendar") return "calendar";
-  if (currentRoute === "notes") return "items";
   return "all";
+}
+
+function scopeLabel(inNote) {
+  if (scope === "global") return t("search.scopeGlobal");
+  if (inNote) return t("search.scopeNote");
+  // Меню блоков открыто — «в разделе» значит по его блокам, подпись прежняя.
+  if (getBlockSearchSource()) return t("search.scopeLocal");
+  // Локальный поиск на странице Notes: в заметке не нашлось — ищем везде.
+  if (currentRoute === "notes" && fellBackToGlobal) return t("search.scopeFallback");
+  // На Notes без открытой заметки искать «в разделе» значит искать везде.
+  if (currentRoute === "notes") return t("search.scopeGlobal");
+  return t("search.scopeLocal");
 }
 
 function scheduleSearch() {
@@ -414,8 +461,11 @@ function renderPickedTags() {
 
 async function runSearch() {
   const query = inputEl.value.trim();
+  const wasFallback = fellBackToGlobal;
+  fellBackToGlobal = false;
   if (!query) {
     closeResults();
+    if (wasFallback) renderLabels();
     return;
   }
   const blockSource = getBlockSearchSource();
@@ -434,6 +484,24 @@ async function runSearch() {
     return;
   }
 
+  // Сначала — в открытой заметке. Синхронно: её текст уже в памяти.
+  const noteSource = scope === "local" ? activeNoteSource() : null;
+  if (noteSource) {
+    const inNote = searchOpenNote(query, noteSource);
+    if (inNote.length) {
+      searchToken += 1; // ответ более раннего глобального поиска уже не нужен
+      groups = inNote;
+      activeRow = 0;
+      visibleByGroup.clear();
+      if (wasFallback) renderLabels();
+      renderResults();
+      return;
+    }
+    // В заметке пусто — по ТЗ поиск сам расширяется на весь сайт.
+    fellBackToGlobal = true;
+  }
+  if (wasFallback !== fellBackToGlobal) renderLabels();
+
   const myToken = ++searchToken;
   const found = await search(query, currentScopeKey());
   if (myToken !== searchToken) return;
@@ -450,6 +518,29 @@ async function runSearch() {
   // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
   visibleByGroup.clear();
   renderResults();
+}
+
+/**
+ * Совпадения внутри открытой заметки — одна группа в той же форме, что у
+ * searchService.search, поэтому отрисовка у неё общая. kind "inNote" нужен
+ * openRow: клик подсвечивает вхождение в редакторе, никуда не переходя.
+ * @param {ReturnType<typeof getNoteSearchSource>} source
+ */
+function searchOpenNote(query, source) {
+  const found = findMatches(source.getText(), query, MATCH_FETCH_CAP);
+  if (!found.matches.length) return [];
+  return [
+    {
+      kind: "inNote",
+      id: null,
+      section: "notes",
+      title: source.getTitle(),
+      subtitle: "",
+      query,
+      matches: found.matches,
+      moreCount: found.total - found.matches.length,
+    },
+  ];
 }
 
 /**
@@ -607,6 +698,17 @@ function openRow(rowIndex) {
     return;
   }
 
+  // Совпадение в открытой заметке — подсвечиваем его в редакторе и остаёмся на
+  // месте; список не закрываем, чтобы можно было пройтись по остальным
+  // вхождениям стрелками. Строка-название ведёт к первому вхождению.
+  if (group.kind === "inNote") {
+    const noteSource = activeNoteSource();
+    activeRow = rowIndex;
+    markActiveRow();
+    if (noteSource) noteSource.highlight(group.query, row.matchIndex);
+    return;
+  }
+
   // Блок из открытого меню — перемещение ВНУТРИ него: прокручиваем список к
   // карточке и остаёмся на месте. Ни закрывать меню, ни уходить в заметку
   // (для этого у карточки есть двойной клик), ни трогать pendingTarget не надо.
@@ -675,6 +777,11 @@ function openResults() {
 function closeResults() {
   // Ответ поиска, который ещё в пути, после закрытия уже никому не нужен.
   searchToken += 1;
+  // Следующий запрос снова начнётся с открытой заметки.
+  if (fellBackToGlobal) {
+    fellBackToGlobal = false;
+    renderLabels();
+  }
   groups = [];
   rows = [];
   // selectedViaPlus здесь НЕ сбрасываем: выбранные теги теперь чипы в самой
@@ -749,5 +856,6 @@ function kindLabel(kind) {
   // Совпало название заметки, а не текст блока — бейдж тот же, что у обычного
   // результата-заметки: по смыслу это она и есть.
   if (kind === "blockNote") return t("search.kindNote");
+  if (kind === "inNote") return t("search.kindThisNote");
   return t("search.kindNote");
 }
