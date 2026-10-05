@@ -187,3 +187,22 @@ export function autoGrowTextarea(el) {
   el.addEventListener("input", resize);
   resize();
 }
+
+/** Прокручивается ли элемент сам (свой скролл, а не окно). */
+export function isScrollContainer(el) {
+  const overflowY = getComputedStyle(el).overflowY;
+  return overflowY === "auto" || overflowY === "scroll";
+}
+
+/**
+ * Ближайший предок, который прокручивает el, — или окно (document.scrollingElement).
+ * Нужен коду, который запоминает и возвращает прокрутку: на странице заметок
+ * широкого экрана прокручивается поле заметки, а в узком окне — сама страница
+ * (см. html.is-notes-route в panels.css).
+ */
+export function scrollContainerOf(el) {
+  for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+    if (isScrollContainer(node)) return node;
+  }
+  return document.scrollingElement;
+}

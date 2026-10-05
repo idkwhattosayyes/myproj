@@ -6,7 +6,7 @@ import { fileToDataUrl, downscaleImage } from "../../utils/image.js";
 import { openPhotoEditor } from "./photoEditor.js";
 import { openLinkEditor } from "./linkEditor.js";
 import { openLinkPicker } from "../../search/searchBar.js";
-import { escapeAttr } from "../../utils/dom.js";
+import { escapeAttr, scrollContainerOf } from "../../utils/dom.js";
 import * as itemsService from "../../services/itemsService.js";
 import * as blockTagsService from "../../services/blockTagsService.js";
 import { createBlockSync, pageLines, getBlockTagIds, ensureBlockIdFactory, getBlockLines, assignBlock, setBlockTagIds, dissolveLine } from "./blockTags.js";
@@ -2457,11 +2457,11 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   function restoreSnapshot(entry, caretOffset) {
     isRestoring = true;
-    // Прокрутка живёт на уровне окна (панель детали своего скролла не имеет).
-    // Пересборка страниц схлопывает высоту и сбрасывает scroll к началу —
-    // запоминаем позицию и возвращаем её после восстановления.
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
+    // Пересборка страниц схлопывает высоту и сбрасывает прокрутку к началу —
+    // запоминаем позицию и возвращаем её после восстановления. Прокручивает
+    // заметку поле детали (широкий экран) или окно (узкий) — берём того, кто есть.
+    const scroller = scrollContainerOf(contentEl);
+    const scrollTop = scroller.scrollTop;
     getPages().forEach((page) => page.parentElement.remove());
     parsePages(entry.html).forEach((pageHtml) => contentEl.insertBefore(createPageFrame(pageHtml), addPageBtn));
     upgradeLegacyChecklists(contentEl);
@@ -2486,7 +2486,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // Undo/redo — тоже нажатие клавиши (Ctrl+Z/Ctrl+Y или кнопки тулбара), но
     // идёт мимо input-события contentEl, поэтому счётчик обновляем явно здесь.
     scheduleWordCountUpdate();
-    window.scrollTo(scrollX, scrollY);
+    scroller.scrollTop = scrollTop;
     isRestoring = false;
   }
 

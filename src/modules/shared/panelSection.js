@@ -4,7 +4,7 @@ import { createRichTextEditor } from "./richTextEditor.js";
 import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
-import { escapeHtml, htmlToSearchText } from "../../utils/dom.js";
+import { escapeHtml, htmlToSearchText, isScrollContainer } from "../../utils/dom.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
 import { setNoteSearchSource } from "../../search/noteScope.js";
@@ -452,23 +452,34 @@ function detailKey(state) {
 }
 
 /**
- * Возврат прокрутки окна после перерисовки раздела.
+ * Что прокручивает заметку. На широком экране — само поле детали: окно на
+ * странице заметок неподвижно (html.is-notes-route в panels.css). В узком окне
+ * панель и заметка стоят друг под другом, и прокручивается, как раньше, окно.
+ */
+function detailScroller(container) {
+  const detailEl = container.querySelector('[data-role="detail"]');
+  if (detailEl && isScrollContainer(detailEl)) return detailEl;
+  return document.scrollingElement;
+}
+
+/**
+ * Возврат прокрутки заметки после перерисовки раздела.
  *
- * Панель детали своего скролла не имеет — прокручивается само окно. Пока
- * container.innerHTML пуст, высота документа схлопывается, и браузер зажимает
- * прокрутку страницы в 0. Наш код при этом не двигает окно вообще: замер
- * владельца показал переход 1476 → 0 без единого вызова scrollTo или
- * scrollIntoView в стеке.
+ * render() пересоздаёт поле детали заново, и у нового прокрутка в нуле. Окно
+ * (узкий экран) теряет её так же: пока container.innerHTML пуст, высота
+ * документа схлопывается, и браузер зажимает прокрутку в 0 — замер владельца
+ * показал переход 1476 → 0 без единого вызова scrollTo в стеке.
  *
  * Второй заход через requestAnimationFrame обязателен: высота на момент возврата
  * может быть ещё не окончательной (лист пересчитывает свой масштаб через
- * --page-fit), а scrollTo по слишком короткому документу молча зажимается.
+ * --page-fit), а прокрутка по слишком короткому содержимому молча зажимается.
  */
-function restorePageScroll(y) {
-  if (window.scrollY === y) return;
-  window.scrollTo(window.scrollX, y);
+function restoreDetailScroll(container, y) {
+  const scroller = detailScroller(container);
+  if (scroller.scrollTop === y) return;
+  scroller.scrollTop = y;
   requestAnimationFrame(() => {
-    if (window.scrollY !== y) window.scrollTo(window.scrollX, y);
+    if (scroller.scrollTop !== y) scroller.scrollTop = y;
   });
 }
 
@@ -479,7 +490,7 @@ function render(container, config, state) {
   // вычистил #app-view, старых панелей в DOM нет и карта выйдет пустой, так что
   // отдельный признак «первый это рендер или нет» не нужен.
   const scrollTops = panelScrollTops(container);
-  const pageScrollY = window.scrollY;
+  const detailScrollTop = detailScroller(container).scrollTop;
   // Та же заметка останется открытой — значит место, где читали, надо сохранить.
   const sameDetail = state.renderedDetailKey === detailKey(state);
   // renderDetail в двух случаях уводит окно НАМЕРЕННО: к найденному из поиска и в
@@ -516,7 +527,7 @@ function render(container, config, state) {
   applyPanelScrollTops(container, scrollTops);
   revealSelectedRow(container, state);
   state.renderedDetailKey = detailKey(state);
-  if (sameDetail && !state.detailScrolled) restorePageScroll(pageScrollY);
+  if (sameDetail && !state.detailScrolled) restoreDetailScroll(container, detailScrollTop);
 }
 
 // Пришли из поиска или с кружка главной — выбранная строка может оказаться
@@ -1278,14 +1289,23 @@ function selectNote(container, config, state, itemId, context) {
   state.selectedItemContext = context;
   state.selectedTrash = null;
   syncSelection(container, state);
-  renderDetail(container, config, state);
-  state.renderedDetailKey = detailKey(state);
+  showDetailFromTop(container, config, state);
 }
 
 function selectTrashEntry(container, config, state, kind, id) {
   state.selectedTrash = { kind, id };
   syncSelection(container, state);
+  showDetailFromTop(container, config, state);
+}
+
+// Поле детали при смене заметки остаётся тем же узлом, и его прокрутка
+// досталась бы новой заметке от старой. Другую заметку показываем с начала —
+// кроме случая, когда renderDetail сам увёл к нужному месту (openAtEnd).
+function showDetailFromTop(container, config, state) {
+  const changed = state.renderedDetailKey !== detailKey(state);
+  state.detailScrolled = false;
   renderDetail(container, config, state);
+  if (changed && !state.detailScrolled) detailScroller(container).scrollTop = 0;
   state.renderedDetailKey = detailKey(state);
 }
 
@@ -2219,7 +2239,7 @@ function renderDetail(container, config, state) {
   // сохранённую позицию, а она хранится как смещение от левого края рамки. Пока
   // рамка висела вне документа, её край читался нулём, и панель после
   // перезагрузки уезжала к началу поля вместо своего места.
-  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl });
+  detachFloatingToolbar = attachFloatingToolbar({ hostEl: toolbarHostEl, toolbarEl, boundsEl: contentEl, scrollEl: detailEl });
 
   // Строка поиска ищет по открытой заметке. Текст берём из item.content — туда
   // каждое нажатие клавиши попадает сразу (scheduleSave), раньше, чем уйдёт в

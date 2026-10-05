@@ -41,6 +41,9 @@ async function renderRoute() {
   // Обработчик Esc от предыдущего раздела не должен пережить переход.
   setViewEscape(null);
   view.classList.toggle("app-view--home", route === "home");
+  // На странице заметок окно не прокручивается вовсе — прокрутка есть только у
+  // панели и у поля заметки (см. html.is-notes-route в panels.css).
+  document.documentElement.classList.toggle("is-notes-route", route === "notes");
   document.documentElement.lang = getLang();
   // Полоска поиска живёт вне маршрутов, но её охват зависит от раздела.
   refreshSearchScope(route);

@@ -14,6 +14,7 @@
  */
 
 import { TOOLBAR_LAYOUT_EVENT } from "./richTextEditor.js";
+import { isScrollContainer } from "../../utils/dom.js";
 
 // Насколько панель отступает от верхней полосы приложения, когда висит.
 const TOP_GAP_PX = 10;
@@ -68,7 +69,17 @@ function createDragHandle() {
   return handle;
 }
 
-export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
+/**
+ * @param {object} opts
+ * @param {HTMLElement} opts.hostEl место тулбара в разметке
+ * @param {HTMLElement} opts.toolbarEl сам тулбар
+ * @param {HTMLElement} opts.boundsEl рамка текстового поля
+ * @param {HTMLElement} [opts.scrollEl] блок, который прокручивает заметку. На
+ *   широком экране это поле детали, а не окно (см. html.is-notes-route в
+ *   panels.css); в узком окне он не прокручивается, и тогда, как раньше, всё
+ *   считается от окна.
+ */
+export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl, scrollEl = null }) {
   let floating = false;
   let frame = 0;
   // К какому краю текстового поля прилипла панель: "left" | "right" | null.
@@ -78,6 +89,25 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   let position = null;
   let drag = null;
 
+
+  // Видимая часть, в которой живёт заметка. Если её прокручивает своё поле, а не
+  // окно, верх поля и есть «потолок»: выше панель уходила бы на ссылку «На
+  // главную», а момент отрыва — когда тулбар доезжает до верха поля, а не до
+  // полоски поиска (до неё он теперь не доезжает вовсе).
+  function scrollsOnItsOwn() {
+    return scrollEl !== null && isScrollContainer(scrollEl);
+  }
+
+  function viewTop() {
+    const top = topbarHeightPx();
+    if (!scrollsOnItsOwn()) return top;
+    return Math.max(top, scrollEl.getBoundingClientRect().top);
+  }
+
+  function viewBottom() {
+    if (!scrollsOnItsOwn()) return window.innerHeight;
+    return Math.min(window.innerHeight, scrollEl.getBoundingClientRect().bottom);
+  }
 
   // Во сколько раз координаты элемента отличаются от экранных. При зуме 100% это 1.
   //
@@ -97,7 +127,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   // смещается), по вертикали — под верхнюю полосу приложения.
   function defaultAnchor() {
     const host = hostEl.getBoundingClientRect();
-    return { x: host.left, y: topbarHeightPx() + TOP_GAP_PX };
+    return { x: host.left, y: viewTop() + TOP_GAP_PX };
   }
 
   // Прилипла ли панель к краю текстового поля и к какому. Прилипание меняет не
@@ -118,7 +148,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     // Считаем по экрану, а не по нижнему краю поля: край едет при прокрутке, и
     // высота полосы менялась бы каждый кадр — это возвращало бы тряску. По экрану
     // величина постоянная, и полоса гарантированно не вылезает сверху и снизу.
-    const available = window.innerHeight - top - EDGE_PAD_PX;
+    const available = viewBottom() - top - EDGE_PAD_PX;
     toolbarEl.style.maxHeight = `${Math.max(available, 0) / scale()}px`;
   }
 
@@ -127,7 +157,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   // колонок нужно. По вертикали у полосы, растянутой на всё поле, положение всё
   // равно ничего не значит — значение имеет край, к которому она прилипла.
   function dockedTop() {
-    return topbarHeightPx() + TOP_GAP_PX;
+    return viewTop() + TOP_GAP_PX;
   }
 
   // Допустимая область — пересечение вьюпорта и текстового поля: за экран и за
@@ -137,8 +167,8 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     const bounds = boundsEl.getBoundingClientRect();
     const left = Math.max(0, bounds.left) + EDGE_PAD_PX;
     const right = Math.min(window.innerWidth, bounds.right) - EDGE_PAD_PX;
-    const top = Math.max(topbarHeightPx(), bounds.top) + EDGE_PAD_PX;
-    const bottom = Math.min(window.innerHeight, bounds.bottom) - EDGE_PAD_PX;
+    const top = Math.max(viewTop(), bounds.top) + EDGE_PAD_PX;
+    const bottom = Math.min(viewBottom(), bounds.bottom) - EDGE_PAD_PX;
     return {
       // Math.min с left на случай, когда панель шире или выше области: тогда
       // прижимаем её к началу, а не выталкиваем за противоположный край.
@@ -276,7 +306,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     frame = 0;
     // Пока панель висит, хост стоит на месте — его верх и есть точка отсчёта.
     const hostTop = hostEl.getBoundingClientRect().top;
-    const threshold = topbarHeightPx() + TOP_GAP_PX;
+    const threshold = viewTop() + TOP_GAP_PX;
     if (!floating && hostTop < threshold) goFloating();
     else if (floating && hostTop > threshold + HYSTERESIS_PX) goInline();
     // На прокрутке — только позиция. Пересчёт размера тут и вызывал тряску.
@@ -403,7 +433,10 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
     schedule();
   }
 
+  // Слушаем и окно, и поле: что из них прокручивает заметку, зависит от ширины
+  // окна (см. scrollsOnItsOwn), а она может смениться на ходу.
   window.addEventListener("scroll", schedule, { passive: true });
+  if (scrollEl) scrollEl.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", onWindowResize);
   // Позиция общая для раздела, поэтому поднимается при каждом открытии заметки.
   restorePosition();
@@ -412,6 +445,7 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl }) {
   return function detach() {
     if (frame) cancelAnimationFrame(frame);
     window.removeEventListener("scroll", schedule);
+    if (scrollEl) scrollEl.removeEventListener("scroll", schedule);
     window.removeEventListener("resize", onWindowResize);
     toolbarEl.removeEventListener(TOOLBAR_LAYOUT_EVENT, onToolbarLayout);
     handleEl.remove();
