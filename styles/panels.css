@@ -73,7 +73,20 @@
   list-style: none;
   flex-shrink: 0;
   padding: 0.4em 0.2em;
-  border-bottom: 1px solid #e5e7eb;
+  /* Закреплённая зона должна читаться отдельным слоем над прокручиваемым
+     списком, а не началом того же меню: свой чуть более тёмный фон, чёткая
+     линия снизу и мягкая тень на список. position + z-index — чтобы тень легла
+     поверх строк списка (у выбранной строки свой z-index: 1, см. .is-selected). */
+  position: relative;
+  z-index: 2;
+  background: #f6f7f9;
+  border-bottom: 1px solid #d8dbdf;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+/* Наведение на разделы: обычный #f3f4f6 на их фоне #f6f7f9 был бы почти не виден. */
+.workspace-sections .folder-item:hover {
+  background: #eceef1;
 }
 
 /* Свёрнутая панель — тонкая полоска во всю высоту у левого края, сама
