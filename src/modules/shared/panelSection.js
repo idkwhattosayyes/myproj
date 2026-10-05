@@ -522,6 +522,7 @@ function render(container, config, state) {
   renderDetail(container, config, state);
   wireHeaderActions(container, config, state);
   wireBodyMenu(container, config, state);
+  wireBodyBlankClick(container, state);
   // После renderDetail: он пересоздаёт редактор и может увести окно к концу
   // текста (scrollIntoView), а панели должны встать на место уже поверх этого.
   applyPanelScrollTops(container, scrollTops);
@@ -627,6 +628,22 @@ function wireBodyMenu(container, config, state) {
       { label: t("panel.newFolder"), onClick: createFolderFlow(container, config, state) },
       { label: t("panel.newItem"), onClick: () => createNoteFlow(container, config, state) },
     ]);
+  });
+}
+
+// Клик по пустому месту списка снимает выделение с папки — иначе снять его было
+// нечем, и оно выглядело залипшим. Открытая заметка и раздел остаются выбранными:
+// заметка всё ещё в редакторе, а раздел выбран всегда. Вешаем один раз на
+// отрисовку каркаса — по той же причине, что и меню пустого места выше.
+function wireBodyBlankClick(container, state) {
+  const bodyEl = container.querySelector('[data-role="workspace-body"]');
+  bodyEl.addEventListener("click", (event) => {
+    if (event.target.closest("li")) return; // клик по строке — у неё свой обработчик
+    if (state.selectedFolderId === null) return;
+    state.selectedFolderId = null;
+    state.selectedFolderContext = null;
+    syncSelection(container, state);
+    rememberPanel(state);
   });
 }
 
