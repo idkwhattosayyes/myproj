@@ -8,7 +8,7 @@
      Переменная та же, от которой пляшет .app-view в main.css. Высоту это не
      раздувает — box-sizing: border-box, padding входит в те же 100vh. */
   padding: calc(var(--topbar-height) + 1rem) 2rem 2rem;
-  background: #fbfbf9;
+  background: var(--surface-page);
 }
 
 /* Линии-указатели от каждого кружка к центру экрана, под кружками по z-index.
@@ -24,7 +24,7 @@
 .home-lines line {
   /* Фон главной страницы светлый — белая линия на нём не видна, поэтому
      используем тёмный полупрозрачный оттенок вместо буквально белого. */
-  stroke: rgba(34, 48, 59, 0.35);
+  stroke: color-mix(in oklch, var(--text-primary) 35%, transparent);
   stroke-width: 1;
 }
 
@@ -61,11 +61,11 @@
   justify-content: center;
   text-align: center;
   padding: 0 1rem;
-  color: #22303b;
+  color: var(--home-circle-ink);
   font-weight: 600;
   font-size: 1.05rem;
   text-decoration: none;
-  box-shadow: 0 6px 18px rgba(34, 48, 59, 0.1);
+  box-shadow: var(--shadow-circle);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
   cursor: pointer;
   /* draggable="false" в разметке браузер иногда игнорирует для <a> — эти
@@ -77,12 +77,12 @@
 .home-circle:hover,
 .home-circle:focus-visible {
   --scale: 1.06;
-  box-shadow: 0 16px 32px rgba(34, 48, 59, 0.18);
+  box-shadow: var(--shadow-circle-hover);
   text-decoration: none;
 }
 
 .home-circle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 4px;
 }
 
@@ -91,30 +91,37 @@
 .home-circle--notes {
   top: 20%;
   left: 50%;
-  background: #cfe8de;
+  background: var(--home-circle-notes);
 }
 
 .home-circle--calendar {
   top: 65%;
   left: 76%;
-  background: #dcd8ee;
+  background: var(--home-circle-calendar);
 }
 
 .home-circle--ai {
   top: 65%;
   left: 24%;
-  background: #d8dbe1;
-  color: #55606b;
+  background: var(--home-circle-ai);
+  color: var(--home-circle-ink-muted);
 }
 
 /* Карандаш и кастомные ярлыки на заметки — top/left им не нужны, координаты
    считает JS (positionExtraCircles в homeView.js), здесь только фон. */
 .home-circle--pencil {
-  background: #f3e3c3;
+  background: var(--home-circle-pencil);
+}
+
+/* Карандаш — иконка Phosphor вместо прежнего эмодзи. Эмодзи рисовался крупнее
+   букв, иконка по умолчанию ровно в букву, поэтому увеличиваем её до прежнего
+   размера на глаз. */
+.home-circle--pencil .ph {
+  font-size: 1.8em;
 }
 
 .home-circle--custom {
-  background: #f0d9d9;
+  background: var(--home-circle-custom);
 }
 
 /* Маленький вечный кружок в самой точке схождения линий — position: fixed
@@ -135,19 +142,19 @@
   transition: transform 0.15s ease;
   border: none;
   border-radius: 50%;
-  background: #e7e9ec;
+  background: var(--surface-chip);
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(34, 48, 59, 0.15);
+  box-shadow: var(--shadow-dot);
 }
 
 .home-add-circle:hover,
 .home-add-circle:focus-visible {
   --scale: 1.25;
-  background: #dadde1;
+  background: var(--surface-hover);
 }
 
 .home-add-circle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 2px;
 }
 
@@ -159,8 +166,8 @@
   align-items: center;
   justify-content: center;
   padding: 0 1rem;
-  background: rgba(20, 24, 30, 0.6);
-  color: #ffffff;
+  background: color-mix(in oklch, var(--home-circle-ink) 60%, transparent);
+  color: var(--text-on-tag);
   font-size: 0.82rem;
   font-weight: 500;
   text-align: center;
@@ -199,22 +206,22 @@
   width: 1.4rem;
   height: 1.4rem;
   padding: 0;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 50%;
-  background: #ffffff;
-  color: #9ca3af;
+  background: var(--surface-field);
+  color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .home-circle--pencil .home-circle-dismiss:hover {
-  color: #b91c1c;
-  border-color: #f3c4c4;
+  color: var(--text-danger);
+  border-color: var(--text-danger);
 }
 
 .home-circle--pencil .home-circle-dismiss:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 2px;
 }
 

@@ -52,7 +52,7 @@ export function openPhotoEditor(dataUrl, initial = {}) {
       overlay.innerHTML = `
         <div class="modal-box photo-editor">
           <div class="photo-editor-toolbar">
-            <button type="button" class="rte-btn" data-command="photoDraw" title="${t("editor.photoDraw")}">✏</button>
+            <button type="button" class="rte-btn" data-command="photoDraw" title="${t("editor.photoDraw")}"><i class="ph ph-pencil-simple"></i></button>
             <label class="photo-editor-field">${t("editor.photoWidth")}<input type="number" min="1" data-role="w"></label>
             <label class="photo-editor-field">${t("editor.photoHeight")}<input type="number" min="1" data-role="h"></label>
             <label class="photo-editor-field photo-editor-name">${t("editor.photoName")}<input type="text" data-role="name"></label>

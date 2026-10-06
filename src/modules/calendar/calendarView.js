@@ -79,16 +79,16 @@ async function renderMonthsView(container) {
   const isCurrentYear = state.year === now.getFullYear();
 
   container.innerHTML = `
-    <a href="#/" class="back-link">${t("nav.backHome")}</a>
+    <a href="#/" class="back-link"><i class="ph ph-arrow-left"></i>${t("nav.backHome")}</a>
     <div class="calendar-with-events ${state.eventsPanelOpen ? "is-open" : ""}">
       <aside class="events-panel" data-role="events-panel"></aside>
       <div class="calendar-main">
         <div class="calendar-today-date">${todayDMY()}</div>
         <div class="months-toolbar">
-          <button type="button" class="btn" data-action="prev-year">←</button>
+          <button type="button" class="btn" data-action="prev-year"><i class="ph ph-caret-left"></i></button>
           <h2 class="months-title">${state.year}</h2>
-          <button type="button" class="btn" data-action="next-year">→</button>
-          <button type="button" class="btn" data-action="toggle-events">☰ ${t("calendar.events")}</button>
+          <button type="button" class="btn" data-action="next-year"><i class="ph ph-caret-right"></i></button>
+          <button type="button" class="btn" data-action="toggle-events"><i class="ph ph-list"></i> ${t("calendar.events")}</button>
         </div>
         <div class="month-circles">
           ${months
@@ -135,8 +135,8 @@ async function renderMonthView(container) {
 
   container.innerHTML = `
     <div class="calendar-nav">
-      <a href="#/" class="back-link">${t("nav.backHome")}</a>
-      <button type="button" class="back-link back-link--button" data-action="back-to-months">${t("calendar.backToMonths")}</button>
+      <a href="#/" class="back-link"><i class="ph ph-arrow-left"></i>${t("nav.backHome")}</a>
+      <button type="button" class="back-link back-link--button" data-action="back-to-months"><i class="ph ph-arrow-left"></i>${t("calendar.backToMonths")}</button>
     </div>
     <div class="calendar-with-events ${state.eventsPanelOpen ? "is-open" : ""}">
       <aside class="events-panel" data-role="events-panel"></aside>
@@ -144,11 +144,11 @@ async function renderMonthView(container) {
         <div class="day-grid-wrap">
           <div class="calendar-today-date">${todayDMY()}</div>
           <div class="calendar-toolbar">
-            <button type="button" class="btn" data-action="prev-month">←</button>
+            <button type="button" class="btn" data-action="prev-month"><i class="ph ph-caret-left"></i></button>
             <h2 class="calendar-title">${months[state.month]} ${state.year}</h2>
-            <button type="button" class="btn" data-action="next-month">→</button>
+            <button type="button" class="btn" data-action="next-month"><i class="ph ph-caret-right"></i></button>
             <button type="button" class="btn" data-action="today">${t("calendar.today")}</button>
-            <button type="button" class="btn" data-action="toggle-events">☰ ${t("calendar.events")}</button>
+            <button type="button" class="btn" data-action="toggle-events"><i class="ph ph-list"></i> ${t("calendar.events")}</button>
           </div>
           <div class="day-weekdays">
             ${weekdays.map((label) => `<div class="day-weekday">${label}</div>`).join("")}
@@ -349,7 +349,7 @@ async function renderDayPanel(container) {
     <div class="day-panel-inner">
       <div class="day-panel-header">
         <h3>${formatDateLabel(state.selectedDate)}</h3>
-        <button type="button" class="day-panel-close" data-action="close-day" title="${t("calendar.close")}">✕</button>
+        <button type="button" class="day-panel-close" data-action="close-day" title="${t("calendar.close")}"><i class="ph ph-x"></i></button>
       </div>
       <ul class="day-entry-list">
         ${
@@ -365,7 +365,7 @@ async function renderDayPanel(container) {
       <div class="day-entry-tags" data-role="tag-picker">
         ${renderTagChip(null, t("calendar.noTag"))}
         ${state.tags.map((tag) => renderTagChip(tag.id, tag.name, tag.color)).join("")}
-        <button type="button" class="tag-chip tag-chip--new" data-action="new-tag" title="${t("calendar.newTag")}">＋</button>
+        <button type="button" class="tag-chip tag-chip--new" data-action="new-tag" title="${t("calendar.newTag")}"><i class="ph ph-plus"></i></button>
       </div>
       <div class="tag-creator" data-role="tag-creator" hidden>
         <input type="text" class="tag-name-input" data-role="tag-name" placeholder="${t("calendar.tagName")}">
@@ -594,7 +594,7 @@ function renderEntryRow(entry) {
       ${entry.startTime || entry.endTime ? `<span class="day-entry-time-range">${escapeHtml(formatTimeRange(entry))}</span>` : ""}
       ${entryTagBadge(entry)}
       <span class="day-entry-title" data-role="entry-title" title="${t("calendar.editEntry")}">${escapeHtml(entry.title)}</span>
-      <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}">✕</button>
+      <button type="button" class="day-entry-delete" data-action="delete-entry" title="${t("panel.delete")}"><i class="ph ph-x"></i></button>
     </li>`;
 }
 

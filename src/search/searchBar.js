@@ -92,9 +92,9 @@ export function mountSearch({ onNavigate }) {
   barEl.className = "search-bar";
   barEl.innerHTML = `
     <div class="search-topline">
-      <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}">#</button>
+      <button type="button" class="search-tags-open" data-role="tags-open" title="${t("blockBrowser.openMenu")}"><i class="ph ph-hash"></i></button>
       <div class="search-field">
-        <span class="search-icon">⌕</span>
+        <span class="search-icon"><i class="ph ph-magnifying-glass"></i></span>
         <span class="search-tag-picked" data-role="tag-picked"></span>
         <input type="text" class="search-input" data-role="search-input">
         <button type="button" class="search-scope" data-role="search-scope"></button>
@@ -443,7 +443,7 @@ function renderPickedTags() {
       (tag) => `
     <span class="search-tag-chip search-tag-chip--selected" style="--tag-color:${tag.color}" data-tag-id="${tag.id}">
       #${escapeHtml(tag.name)}
-      <button type="button" class="search-tag-chip-remove" data-tag-id="${tag.id}" title="${t("blockBrowser.removeFilter")}">✕</button>
+      <button type="button" class="search-tag-chip-remove" data-tag-id="${tag.id}" title="${t("blockBrowser.removeFilter")}"><i class="ph ph-x"></i></button>
     </span>`
     )
     .join("");

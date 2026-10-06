@@ -68,7 +68,7 @@ export function openNotePicker() {
       const isExpanded = expandedFolderIds.has(folder.id);
       const children = childFoldersOf(folder.id);
       const toggle = children.length
-        ? `<button type="button" class="transfer-toggle" data-toggle-folder="${folder.id}">${isExpanded ? "▾" : "▸"}</button>`
+        ? `<button type="button" class="transfer-toggle" data-toggle-folder="${folder.id}">${isExpanded ? '<i class="ph ph-caret-down"></i>' : '<i class="ph ph-caret-right"></i>'}</button>`
         : `<span class="transfer-toggle"></span>`;
       const row = `
         <div class="note-picker-row ${selectedFolderId === folder.id ? "is-selected" : ""}"

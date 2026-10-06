@@ -3,7 +3,7 @@
   text-align: center;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-muted);
   margin-bottom: 1rem;
 }
 
@@ -33,11 +33,11 @@
   aspect-ratio: 1;
   border-radius: 50%;
   border: none;
-  background: #cfe1f0;
-  color: #22303b;
+  background: var(--calendar-month-circle);
+  color: var(--home-circle-ink);
   font-weight: 600;
   font-size: 0.95rem;
-  box-shadow: 0 6px 16px rgba(34, 48, 59, 0.1);
+  box-shadow: var(--shadow-circle);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
 }
@@ -45,17 +45,17 @@
 .month-circle:hover,
 .month-circle:focus-visible {
   transform: scale(1.06);
-  box-shadow: 0 14px 28px rgba(34, 48, 59, 0.16);
+  box-shadow: var(--shadow-circle-hover);
 }
 
 .month-circle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 3px;
 }
 
 .month-circle.is-current {
-  background: #33507e;
-  color: #ffffff;
+  background: var(--surface-strong);
+  color: var(--text-on-strong);
   font-weight: 700;
 }
 
@@ -87,8 +87,8 @@
   position: sticky;
   top: calc(1rem + var(--topbar-height));
   padding: 1rem;
-  background: #ffffff;
-  border: 1px solid #d8dbdf;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -116,18 +116,18 @@
   padding: 0.55rem 0.6rem;
   border-radius: 8px;
   cursor: pointer;
-  border-bottom: 1px solid #eef1f4;
+  border-bottom: 1px solid var(--color-separator);
 }
 
-.event-row:hover { background: #f3f4f6; }
+.event-row:hover { background: var(--surface-hover); }
 
 /* Прошедшие события остаются в списке, но приглушены. */
 .event-row.is-past { opacity: 0.5; }
 
 /* Ближайшее событие — то, ради чего список открывают. */
 .event-row.is-next {
-  background: #eef2ff;
-  box-shadow: inset 3px 0 0 #33507e;
+  background: var(--surface-active);
+  box-shadow: inset 3px 0 0 var(--text-accent);
   opacity: 1;
 }
 
@@ -137,7 +137,7 @@
   gap: 0.4rem;
   flex-wrap: wrap;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .event-row-date { font-weight: 600; }
@@ -149,13 +149,13 @@
 
 .event-row-title.is-done {
   text-decoration: line-through;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 /* Дополнительная информация под названием — остальные строки заметки. */
 .event-row-note {
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--text-muted);
   white-space: pre-wrap;
   margin-top: 0.15rem;
 }
@@ -192,8 +192,8 @@
    сдвигается, ни бледнеет. Раньше она съезжала в scale(0.82), и это читалось
    как скачок всего экрана. */
 .day-grid-wrap {
-  background: #ffffff;
-  border: 1px solid #d8dbdf;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1.25rem;
 }
@@ -220,7 +220,7 @@
 .day-weekday {
   text-align: center;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-muted);
   padding-bottom: 0.3rem;
   text-transform: uppercase;
 }
@@ -232,8 +232,8 @@
   margin: 0 auto;
   border-radius: 50%;
   border: none;
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--surface-chip);
+  color: var(--text-primary);
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -241,22 +241,22 @@
 }
 
 .day-circle:hover {
-  background: #e5e7eb;
+  background: color-mix(in oklch, var(--surface-chip) 80%, var(--text-primary));
 }
 
 .day-circle.is-outside {
-  color: #c3c8cf;
+  color: color-mix(in oklch, var(--text-muted) 60%, transparent);
   background: transparent;
 }
 
 .day-circle.is-today {
-  background: #33507e;
-  color: #ffffff;
+  background: var(--surface-strong);
+  color: var(--text-on-strong);
   font-weight: 700;
 }
 
 .day-circle.is-selected {
-  box-shadow: 0 0 0 2px #33507e;
+  box-shadow: 0 0 0 2px var(--text-accent);
 }
 
 .day-circle-marker {
@@ -267,11 +267,11 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #e8590c;
+  background: var(--calendar-marker);
 }
 
 .day-circle.is-today .day-circle-marker {
-  background: #ffffff;
+  background: var(--text-on-strong);
 }
 
 /* Вариант-число: показывается вместо точки, когда записей на день больше одной. */
@@ -283,12 +283,12 @@
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
-  color: #e8590c;
+  color: var(--calendar-marker);
 }
 
 .day-circle.is-today .day-circle-marker--count {
   background: transparent;
-  color: #ffffff;
+  color: var(--text-on-strong);
 }
 
 /* Место под блок дня занято всегда, поэтому его появление ничего не двигает:
@@ -308,8 +308,8 @@
 }
 
 .day-panel-inner {
-  background: #ffffff;
-  border: 1px solid #d8dbdf;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1.25rem;
 }
@@ -325,12 +325,12 @@
   border: none;
   background: none;
   font-size: 1rem;
-  color: #6b7280;
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .day-panel-close:hover {
-  color: #1f2328;
+  color: var(--text-primary);
 }
 
 .day-entry-list {
@@ -343,12 +343,12 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.4rem 0;
-  border-bottom: 1px solid #eef1f4;
+  border-bottom: 1px solid var(--color-separator);
 }
 
 .day-entry.is-done .day-entry-title {
   text-decoration: line-through;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .day-entry-title {
@@ -361,18 +361,18 @@
 }
 
 .day-entry-title:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 .day-entry-delete {
   border: none;
   background: none;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 0.75rem;
 }
 
 .day-entry-delete:hover {
-  color: #b91c1c;
+  color: var(--text-danger);
 }
 
 .day-entry--editing {
@@ -382,7 +382,7 @@
 .day-entry-edit-input {
   flex: 1;
   padding: 0.3rem 0.5rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
 }
 
@@ -394,19 +394,19 @@
 
 .day-entry-type-btn {
   padding: 0.3rem 0.7rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface-field);
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
-.day-entry-type-btn:hover { background: #f3f4f6; }
+.day-entry-type-btn:hover { background: var(--surface-hover); }
 
 .day-entry-type-btn.is-active {
-  background: #33507e;
-  border-color: #33507e;
-  color: #ffffff;
+  background: var(--surface-strong);
+  border-color: var(--surface-strong);
+  color: var(--text-on-strong);
 }
 
 .day-entry-form {
@@ -431,12 +431,12 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .day-entry-time {
   padding: 0.3rem 0.4rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
   font-size: 0.85rem;
 }
@@ -444,14 +444,14 @@
 .day-entry-time-range {
   font-variant-numeric: tabular-nums;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
 .day-entry-input {
   flex: 1;
   padding: 0.4rem 0.6rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
 }
 
@@ -477,16 +477,16 @@
 }
 
 .tag-chip {
-  --tag-color: #9ca3af;
+  --tag-color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   padding: 0.25rem 0.6rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface-field);
   font-size: 0.78rem;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .tag-chip[data-tag-id]:not([data-tag-id=""])::before {
@@ -497,17 +497,17 @@
   background: var(--tag-color);
 }
 
-.tag-chip:hover { background: #f3f4f6; }
+.tag-chip:hover { background: var(--surface-hover); }
 
 .tag-chip.is-selected {
-  border-color: #33507e;
-  box-shadow: inset 0 0 0 1px #33507e;
+  border-color: var(--text-accent);
+  box-shadow: inset 0 0 0 1px var(--text-accent);
   font-weight: 600;
 }
 
 .tag-chip--new {
   font-weight: 700;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .tag-creator {
@@ -524,7 +524,7 @@
 
 .tag-name-input {
   padding: 0.3rem 0.5rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
   font-size: 0.85rem;
 }
@@ -533,7 +533,7 @@
   width: 2.2rem;
   height: 2rem;
   padding: 0;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
   background: none;
 }
@@ -544,5 +544,5 @@
   padding: 0.05rem 0.45rem;
   border-radius: 999px;
   font-size: 0.72rem;
-  color: #ffffff;
+  color: var(--text-on-tag);
 }

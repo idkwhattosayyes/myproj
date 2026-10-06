@@ -500,13 +500,13 @@ function render(container, config, state) {
   state.detailScrolled = false;
 
   container.innerHTML = `
-    <a href="#/" class="back-link">${t("nav.backHome")}</a>
+    <a href="#/" class="back-link"><i class="ph ph-arrow-left"></i>${t("nav.backHome")}</a>
     <div class="panel-layout">
       <aside class="panel panel-workspace ${state.panelCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-panel" title="${t("panel.togglePanel")}">☰</button>
+          <button type="button" class="panel-toggle" data-action="toggle-panel" title="${t("panel.togglePanel")}"><i class="ph ph-list"></i></button>
           <span class="panel-title">${t("panel.workspace")}</span>
-          <button type="button" class="btn btn-small panel-header-add" data-action="new-entry">+</button>
+          <button type="button" class="btn btn-small panel-header-add" data-action="new-entry"><i class="ph ph-plus"></i></button>
         </div>
         <ul class="workspace-sections" data-role="workspace-sections"></ul>
         <div class="panel-body" data-role="workspace-body"></div>
@@ -881,11 +881,11 @@ function isDropInto(el, event) {
 // ли булавку в текущем контексте: у папок закрепление глобальное (folder.pinned), у
 // заметок — своё для каждого места показа (см. isPinnedIn).
 function rowBadges(entity, showPin) {
-  const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
+  const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}"><i class="ph ph-heart"></i></span>` : "";
   // Булавка — инлайн-SVG с fill="currentColor": цвет задаём в CSS (#C2D1C9), как у
   // сердечка. Эмодзи 📌 не красится, поэтому именно SVG.
   const pin = showPin
-    ? `<span class="pin-badge" title="${t("panel.pinned")}"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M8 1c-2.5 0-4.5 2-4.5 4.5 0 3.4 4.5 9 4.5 9s4.5-5.6 4.5-9C12.5 3 10.5 1 8 1zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z"/></svg></span>`
+    ? `<span class="pin-badge" title="${t("panel.pinned")}"><i class="ph ph-push-pin-simple"></i></span>`
     : "";
   return heart + pin;
 }
@@ -894,7 +894,7 @@ function rowBadges(entity, showPin) {
 // чтобы цвет задавался в CSS и наследовался от текста строки. В «Избранном» папки и
 // заметки идут одним списком, и без значка их не отличить.
 function folderIcon() {
-  return `<span class="folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M1.5 3.5a1 1 0 0 1 1-1h3.3a1 1 0 0 1 .7.3l1 1h6a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V3.5z"/></svg></span>`;
+  return `<span class="folder-icon" aria-hidden="true"><i class="ph ph-folder-simple"></i></span>`;
 }
 
 // Закреплена ли заметка в конкретном месте показа (ключ: "all"/"favorites"/
@@ -1054,7 +1054,7 @@ function folderRowHtml(row) {
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
       <span class="folder-count">(${count})</span>
-      ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
+      ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}"><i class="ph ph-x"></i></button>` : ""}
     </li>`;
 }
 
@@ -1069,7 +1069,7 @@ function noteRowHtml(row) {
         data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
       <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
       ${rowBadges(item, row.pinned)}
-      ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
+      ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}"><i class="ph ph-x"></i></button>` : ""}
     </li>`;
 }
 
@@ -1107,6 +1107,15 @@ function renderPanel(container, config, state, options = {}) {
   rememberPanel(state);
 }
 
+// Значки разделов — те же, что у навигации в прототипе редизайна.
+const SECTION_ICONS = {
+  trash: "ph-trash-simple",
+  favorites: "ph-heart",
+  all: "ph-note-blank",
+  folders: "ph-folder-simple",
+  unfiled: "ph-file-dashed",
+};
+
 function renderSections(container, config, state) {
   const listEl = container.querySelector('[data-role="workspace-sections"]');
   const trashCount = countTrash(state);
@@ -1116,6 +1125,7 @@ function renderSections(container, config, state) {
     .map(
       (section) => `
       <li class="folder-item workspace-section" data-section="${section.key}">
+        <i class="ph ${SECTION_ICONS[section.key]} section-icon" aria-hidden="true"></i>
         <span class="folder-name">${t(section.labelKey)}</span>
         ${section.key in counts ? `<span class="folder-count">(${counts[section.key]})</span>` : ""}
       </li>`
@@ -2106,7 +2116,7 @@ function renderDetail(container, config, state) {
       detailEl.innerHTML = `
         <div class="empty-create">
           <button type="button" class="empty-create-btn" data-action="create-first-note">
-            <span class="empty-create-plus" aria-hidden="true">+</span>
+            <span class="empty-create-plus" aria-hidden="true"><i class="ph ph-plus"></i></span>
             <span>${t("panel.createNote")}</span>
           </button>
         </div>`;
@@ -2154,7 +2164,7 @@ function renderDetail(container, config, state) {
       <div class="rte-toolbar-host" data-role="toolbar-host"></div>
       <div class="item-detail-titlebar">
         <input type="text" class="item-title-input" data-role="title-input">
-        <button type="button" class="btn btn-danger btn-small" data-action="delete-item">${t("panel.delete")}</button>
+        <button type="button" class="btn btn-danger btn-small" data-action="delete-item"><i class="ph ph-trash-simple"></i>${t("panel.delete")}</button>
       </div>
       <div data-role="content-host"></div>
     </div>

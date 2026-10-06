@@ -37,7 +37,7 @@ export function mountSettings({ onLangChange }) {
   buttonEl.type = "button";
   buttonEl.className = "settings-btn";
   buttonEl.id = "settings-btn";
-  buttonEl.textContent = "⚙";
+  buttonEl.innerHTML = '<i class="ph ph-gear"></i>';
   buttonEl.title = t("settings.open");
   buttonEl.addEventListener("click", (event) => {
     event.stopPropagation();

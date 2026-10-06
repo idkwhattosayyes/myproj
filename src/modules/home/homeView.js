@@ -27,9 +27,9 @@ export async function renderHomeView(container) {
     ? ""
     : `
         <div class="home-circle home-circle--pencil" tabindex="0" data-role="pencil">
-          <span class="home-circle-label">✏️</span>
+          <span class="home-circle-label"><i class="ph ph-pencil-simple"></i></span>
           <span class="home-circle-overlay">${t("home.pencilTooltip")}</span>
-          <button type="button" class="home-circle-dismiss" data-role="pencil-dismiss" aria-label="${escapeHtml(t("home.dismissPencil"))}" title="${escapeHtml(t("home.dismissPencil"))}">−</button>
+          <button type="button" class="home-circle-dismiss" data-role="pencil-dismiss" aria-label="${escapeHtml(t("home.dismissPencil"))}" title="${escapeHtml(t("home.dismissPencil"))}"><i class="ph ph-minus"></i></button>
         </div>`;
 
   const customCirclesHtml = customCirclesData

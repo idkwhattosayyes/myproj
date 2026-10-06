@@ -14,7 +14,7 @@
 
 .trash-detail-hint {
   margin: 0 0 0.75rem;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -27,14 +27,39 @@
   margin-top: 0.75rem;
 }
 
+/* Заголовок заметки — как в прототипе: крупный шрифт заголовков темы, без
+   рамки, прямо на фоне панели. Рамка прозрачная, а не убрана: при фокусе она
+   проявляется и показывает, что название редактируется, и строка при этом не
+   прыгает на её толщину. */
 .item-title-input {
   flex: 1;
   min-width: 0; /* у input своя min-content ширина — без этого он распирает строку */
-  font-size: 1.1rem;
-  font-weight: 600;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  font-family: var(--font-heading);
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: var(--font-heading-weight);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button);
+  background: none;
+  color: var(--text-primary);
+}
+
+.item-title-input:focus {
+  outline: none;
+  border-color: var(--color-separator);
+}
+
+/* «Удалить» рядом с заголовком — обводка цвета danger, высота 38px, как
+   кнопка Delete в прототипе. */
+.item-detail-titlebar .btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  font-size: 13px;
 }
 
 /* Хост держит место тулбара в разметке. Отрывом и координатами занимается
@@ -65,9 +90,15 @@
      (.rte-content) не затронут, там выделение обязано работать как обычно. */
   user-select: none;
   -webkit-user-select: none;
-  border: 1px solid #d0d7de;
-  border-radius: 10px;
-  background: #ffffff;
+  /* Вид — тулбар прототипа: полупрозрачный фон темы с размытием под ним,
+     скругление темы. position НЕ меняем: sticky из прототипа здесь нарочно не
+     используется (см. комментарий у .rte-toolbar-host). */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-toolbar);
+  background: var(--surface-toolbar);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  color: var(--text-primary);
   /* Ни ширина, ни padding намеренно НЕ анимируются. Пока ширина ехала, панель на
      отрыве покачивалась размером, а при прилипании к краю выглядела как сужение от
      центра экрана вбок. С padding та же беда, только заметнее у прилипшей полосы:
@@ -87,9 +118,9 @@
      pill остаётся одноэтажным в обычном окне и не вылезает за край в узком. */
   width: max-content;
   align-items: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.3rem 0.65rem;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--shadow-popover);
 }
 
 /* У оторванной панели счётчика слов нет: она сжата по содержимому и висит поверх
@@ -103,7 +134,7 @@
   margin-left: auto;
   align-self: center;
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--text-muted);
   opacity: 0.65;
   white-space: nowrap;
   pointer-events: none;
@@ -135,13 +166,13 @@
   flex-shrink: 0;
   align-items: center;
   padding: 0 0.15rem;
-  color: #b6bec9;
+  color: color-mix(in oklch, var(--text-muted) 70%, transparent);
   cursor: grab;
   touch-action: none; /* иначе на тач-экране жест уедет в прокрутку страницы */
 }
 
 .rte-toolbar.is-floating .rte-drag-handle { display: inline-flex; }
-.rte-drag-handle:hover { color: #8b95a3; }
+.rte-drag-handle:hover { color: var(--text-muted); }
 
 /* Пока панель едет за курсором, переходы только мешают — она тянулась бы следом
    с задержкой вместо того, чтобы держаться под указателем. */
@@ -160,11 +191,11 @@
   background: none;
   font-size: 0.85rem;
   line-height: 1;
-  color: #6b7280;
+  color: var(--text-muted);
   border-radius: 4px;
 }
 
-.rte-toolbar-toggle:hover { background: #f3f4f6; }
+.rte-toolbar-toggle:hover { background: var(--surface-hover); }
 
 /* Свёрнутый тулбар — тонкая полоска на месте кнопок, сама являющаяся кнопкой
    разворачивания (тот же приём, что у свёрнутой панели папок). */
@@ -179,10 +210,10 @@
   padding: 0;
   font-size: 0;
   border-radius: 3px;
-  background: #e5e7eb;
+  background: var(--color-separator);
 }
 
-.rte-toolbar.is-collapsed .rte-toolbar-toggle:hover { background: #d1d5db; }
+.rte-toolbar.is-collapsed .rte-toolbar-toggle:hover { background: var(--text-muted); }
 
 /* Свёрнутая оторванная панель — это ручка и одна кнопка разворота, вплотную.
    Полоска-разворачиватель тут не нужна и вредна: ширина пилюли считается по
@@ -211,49 +242,66 @@
   background: none;
   font-size: 0.95rem;
   line-height: 1;
-  color: #6b7280;
+  color: var(--text-muted);
   border-radius: 4px;
 }
 
-.rte-toolbar-expand:hover { background: #f3f4f6; }
+.rte-toolbar-expand:hover { background: var(--surface-hover); }
 
+/* Кнопка тулбара — как в прототипе: круг 36px без рамки, иконка 19px. Кнопки с
+   текстом вместо иконки (H1/H2/H3, стрелки направления) растягиваются в «пилюлю»
+   по ширине подписи — min-width, а не width. */
 .rte-btn {
   position: relative;
-  min-width: 2.1rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.45rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-primary);
   font-size: 0.85rem;
   font-weight: 600;
+  transition: var(--transition-theme);
 }
 
-.rte-btn:hover { background: #f3f4f6; }
+.rte-btn > .ph {
+  font-size: 19px;
+}
+
+.rte-btn:hover { background: var(--surface-hover); }
 
 /* Активное состояние — курсор внутри жирного/подчёркнутого/закрашенного и
-   т.п. текста. inset box-shadow вместо border, чтобы не сдвигать layout. */
+   т.п. текста. Заливка «активным» цветом темы, как выбранный пункт навигации
+   в прототипе. */
 .rte-btn.is-active {
-  background: #dbeafe;
-  box-shadow: inset 0 0 0 2px #33507e;
+  background: var(--surface-active);
+  color: var(--text-on-active);
 }
 
-.rte-btn.is-active:hover { background: #cfe1f0; }
+.rte-btn.is-active:hover {
+  background: color-mix(in oklch, var(--surface-active) 80%, var(--text-on-active));
+}
 
-/* Идёт запись голоса — кнопка микрофона пульсирует красным. */
+/* Идёт запись голоса — кнопка микрофона пульсирует цветом danger темы. */
 .rte-btn.is-recording {
-  background: #ffe3e3;
-  box-shadow: inset 0 0 0 2px #e03131;
+  background: color-mix(in oklch, var(--text-danger) 15%, transparent);
+  color: var(--text-danger);
   animation: rte-voice-pulse 1s ease-in-out infinite;
 }
 
 @keyframes rte-voice-pulse {
-  50% { background: #ffc9c9; }
+  50% { background: color-mix(in oklch, var(--text-danger) 30%, transparent); }
 }
 
 /* Промежуточный (ещё не финализированный) текст диктовки: приглушённый и
-   подчёркнутый пунктиром, чтобы отличать от уже вставленных слов. */
+   подчёркнутый пунктиром, чтобы отличать от уже вставленных слов. Живёт внутри
+   бумаги, поэтому цвет бумажный. */
 .rte-interim {
-  color: #9ca3af;
+  color: var(--paper-muted, var(--text-muted));
   text-decoration: underline dotted;
 }
 
@@ -283,31 +331,48 @@
    (см. updateSwatch в richTextEditor.js). У цвета текста это полоска снизу,
    у заливки — именно обводка кнопки, а не заливка целиком: закрашенная кнопка
    плохо читалась бы на светлых оттенках. */
-.rte-btn[data-command="textColor"] { border-bottom: 3px solid var(--swatch); }
-
+/* Инструменты цвета в прототипе выделены акцентным цветом темы. */
+.rte-btn[data-command="textColor"],
 .rte-btn[data-command="highlight"] {
-  border: 2px solid var(--swatch);
-  padding: calc(0.3rem - 1px) calc(0.5rem - 1px);
+  color: var(--text-accent);
 }
 
-.rte-btn[data-command="draw"],
-.rte-btn[data-command="photoDraw"],
-.rte-btn[data-command="divider"] { border-bottom: 3px solid var(--swatch); }
+/* На круглой кнопке рамка смотрелась бы чужеродно, поэтому выбранный цвет —
+   короткая полоска под иконкой (::after). Не border и не box-shadow: тень у
+   кнопки уже занята под активное состояние, а рамка меняла бы размер. */
+.rte-btn[data-command="textColor"]::after,
+.rte-btn[data-command="highlight"]::after,
+.rte-btn[data-command="draw"]::after,
+.rte-btn[data-command="photoDraw"]::after,
+.rte-btn[data-command="divider"]::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  bottom: 5px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--swatch);
+  /* Тонкий контур — чтобы тёмный цвет пера не терялся на тёмном тулбаре, а
+     светлая заливка — на светлом. */
+  box-shadow: 0 0 0 1px var(--color-separator);
+  pointer-events: none;
+}
 
 /* Кнопка направления письма: обе стрелки видны всегда, горит та, в которую идёт
    строка под кареткой. is-active тут значит не «режим включён», а «строка RTL»,
    поэтому общий синий фон активной кнопки гасим — иначе кнопка выглядела бы
    нажатой каждый раз, когда курсор просто стоит в ивритской строке. */
 .rte-btn[data-command="textDirection"].is-active {
-  background: #ffffff;
-  box-shadow: none;
+  background: none;
+  color: var(--text-primary);
 }
 
 .rte-btn[data-command="textDirection"].is-active:hover,
-.rte-btn[data-command="textDirection"]:hover { background: #f3f4f6; }
+.rte-btn[data-command="textDirection"]:hover { background: var(--surface-hover); }
 
 .rte-dir-arrow {
-  color: #9ca3af; /* приглушённая — та сторона, куда строка НЕ идёт */
+  color: var(--text-muted); /* приглушённая — та сторона, куда строка НЕ идёт */
   padding: 0 0.06rem;
 }
 
@@ -315,10 +380,10 @@
    классом is-active — справа налево. */
 .rte-btn[data-command="textDirection"] .rte-dir-ltr,
 .rte-btn[data-command="textDirection"].is-active .rte-dir-rtl {
-  color: #33507e;
+  color: var(--text-accent);
 }
 
-.rte-btn[data-command="textDirection"].is-active .rte-dir-ltr { color: #9ca3af; }
+.rte-btn[data-command="textDirection"].is-active .rte-dir-ltr { color: var(--text-muted); }
 
 /* Толщина/цвет/ластик пера — тот же поповер, что у цвета текста, только шире и
    в несколько строк (пресетов толщины + вся палитра + ластик не влезают в одну). */
@@ -334,9 +399,9 @@
   width: 20px;
   height: 20px;
   padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--color-separator);
   border-radius: 4px;
-  background: #ffffff;
+  background: var(--surface-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -347,17 +412,17 @@
   width: var(--dot);
   height: var(--dot);
   border-radius: 50%;
-  background: #1f2328;
+  background: var(--text-primary);
 }
 
 .rte-draw-eraser {
   font-size: 0.8rem;
-  color: #4b5563;
+  color: var(--text-muted);
 }
 
 .rte-draw-eraser.is-active {
-  background: #dbeafe;
-  box-shadow: inset 0 0 0 2px #33507e;
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 2px var(--text-accent);
 }
 
 /* Цвет пера и ластик — взаимоисключающие режимы (см. toggleDrawPopover), и
@@ -365,7 +430,7 @@
    именно снаружи: inset-кольцо, как у ластика, закрыло бы собой сам цвет.
    outline не занимает места и не сдвигает соседей. */
 .rte-draw-popover .rte-color-swatch.is-active:not(.rte-draw-eraser) {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 1px;
 }
 
@@ -381,10 +446,10 @@
   display: flex;
   gap: 0.3rem;
   padding: 0.4rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--surface-modal);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+  box-shadow: var(--shadow-popover);
   z-index: 1100;
 }
 
@@ -403,7 +468,7 @@
   width: 20px;
   height: 20px;
   padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--color-separator);
   border-radius: 4px;
 }
 
@@ -420,10 +485,10 @@
   display: flex;
   gap: 0.3rem;
   padding: 0.35rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--surface-modal);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-popover);
 }
 
 /* Блок cut/copy/paste/delete/open-as-link рядом с выделенным текстом (см.
@@ -442,10 +507,10 @@
   display: flex;
   gap: 0.3rem;
   padding: 0.35rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--surface-modal);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-popover);
 }
 
 .rte-selection-actions.is-collapsed .rte-selection-actions-buttons {
@@ -453,14 +518,14 @@
 }
 
 .rte-color-swatch--reset {
-  background: #ffffff;
-  color: #9ca3af;
+  background: var(--surface-modal);
+  color: var(--text-muted);
   font-size: 0.7rem;
   line-height: 1;
 }
 
 .rte-color-swatch--reset:hover {
-  color: #b91c1c;
+  color: var(--text-danger);
 }
 
 /* Текстовая ссылка на внешний URL (FORMATS.linkExternal в richTextEditor.js).
@@ -469,7 +534,7 @@
    контекст позиционирования для бейджа-скрепки ниже. */
 .rte-link {
   position: relative;
-  color: #0969da;
+  color: var(--paper-link, #0969da);
   cursor: pointer;
 }
 
@@ -499,7 +564,7 @@
   left: 0;
   font-size: 0.44em;
   line-height: 1;
-  color: #9ca3af;
+  color: var(--paper-muted, #9ca3af);
 }
 
 /* Внутренняя ссылка (на другую заметку/документ) — та же скрепка, но заменена
@@ -520,10 +585,10 @@
   gap: 0.15rem;
   padding: 0.4rem;
   max-width: 22rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--surface-modal);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--shadow-popover);
 }
 
 .rte-link-preview-row {
@@ -532,7 +597,7 @@
   background: none;
   border-radius: 6px;
   font-size: 0.85rem;
-  color: #0969da;
+  color: var(--text-accent);
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -540,7 +605,7 @@
 }
 
 button.rte-link-preview-row:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
   cursor: pointer;
 }
 
@@ -548,11 +613,23 @@ button.rte-link-preview-row:hover {
    переносится вниз, страница растёт по вертикали. overflow-wrap: anywhere не
    только рвёт слишком длинные слова, но и уменьшает min-content ширину блока —
    без этого длинная ссылка тянула бы за собой всю колонку редактора. */
+/* Поле текста — «бумага» (см. theme.css): светлое во всех темах, потому что в
+   заметках хранятся цвета, подобранные под светлый фон. Запасные значения в
+   var() — для экспорта и печати: noteExport.js встраивает этот файл без
+   theme.css, и там переменных темы нет.
+
+   Размер шрифта и межстрочный интервал — прежние, не из прототипа (17px/1.7):
+   от них зависят высота листа A4 в постраничном режиме и привязка фото и
+   рисунков к строкам — уже сохранённые заметки разъехались бы. Меняется только
+   гарнитура. */
 .rte-content {
   min-height: 340px;
   padding: 0.85rem 1rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--paper-line, #d0d7de);
+  border-radius: var(--radius-item, 6px);
+  background: var(--paper-bg, #ffffff);
+  color: var(--paper-ink, #1f2328);
+  font-family: var(--font-body, -apple-system, "Segoe UI", Roboto, Arial, sans-serif);
   font-size: 0.98rem;
   line-height: 1.6;
   max-width: 100%;
@@ -583,7 +660,7 @@ button.rte-link-preview-row:hover {
 /* Редактируется не контейнер, а страницы внутри него, поэтому подсветка рамки
    вешается на focus-within. */
 .rte-content:focus-within {
-  border-color: #0969da;
+  border-color: var(--paper-link, #0969da);
 }
 
 .rte-page:focus { outline: none; }
@@ -643,7 +720,7 @@ button.rte-link-preview-row:hover {
 }
 
 .rte-photo.is-selected {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--paper-accent, #33507e);
   outline-offset: 1px;
 }
 
@@ -668,9 +745,9 @@ button.rte-link-preview-row:hover {
   width: 10px;
   height: 10px;
   margin: -5px;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--paper-bg, #ffffff);
   border-radius: 50%;
-  background: #33507e;
+  background: var(--paper-accent, #33507e);
   pointer-events: auto;
 }
 
@@ -683,20 +760,20 @@ button.rte-link-preview-row:hover {
    текста — в сам текст заметки ничего не вставляется (см. highlightMatch
    в richTextEditor.js). */
 ::highlight(search-hit) {
-  background: #ffd43b;
-  color: #1f2328;
+  background: var(--search-hit-bg, #ffd43b);
+  color: var(--search-hit-ink, #1f2328);
 }
 
 /* То же самое, но для фото, найденного по названию (см. highlightPhoto) —
    Custom Highlight API умеет красить только текстовые Range, для <img> нужен
    обычный класс с анимацией на то же время SEARCH_HIGHLIGHT_MS. */
 @keyframes rte-photo-search-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 59, 0.9); }
-  50% { box-shadow: 0 0 0 6px rgba(255, 212, 59, 0.5); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--search-hit-bg, #ffd43b) 90%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--search-hit-bg, #ffd43b) 50%, transparent); }
 }
 
 .rte-photo.is-search-hit {
-  outline: 3px solid #ffd43b;
+  outline: 3px solid var(--search-hit-bg, #ffd43b);
   animation: rte-photo-search-pulse 0.6s ease-in-out 2;
 }
 
@@ -710,6 +787,8 @@ button.rte-link-preview-row:hover {
   min-height: 0;
   padding: 0;
   border: none;
+  /* Бумага здесь — сами листы, а между ними виден фон панели. */
+  background: none;
 }
 
 /* Лист не влезает в колонку — уменьшаем его целиком, вместе с текстом и полями.
@@ -733,13 +812,13 @@ button.rte-link-preview-row:hover {
   width: 794px; /* PAGE_WIDTH в richTextEditor.js — значения должны совпадать */
   min-height: 1123px; /* A4_HEIGHT там же */
   padding: 76px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1), 0 0 0 1px #e5e7eb;
+  background: var(--paper-bg, #ffffff);
+  box-shadow: var(--paper-sheet-shadow, 0 1px 3px rgba(15, 23, 42, 0.1), 0 0 0 1px #e5e7eb);
 }
 
 /* Лист длиннее A4: приглушённый тёплый оттенок — заметно, но не кричит. */
 .rte-content.is-paged .rte-page-frame.is-overflow {
-  border-color: #d3c4a5;
+  border-color: var(--paper-overflow, #d3c4a5);
 }
 
 .rte-page-delete {
@@ -748,7 +827,7 @@ button.rte-link-preview-row:hover {
   right: 8px;
   border: none;
   background: none;
-  color: #9ca3af;
+  color: var(--paper-muted, #9ca3af);
   font-size: 0.8rem;
   line-height: 1;
   padding: 0.2rem 0.3rem;
@@ -756,8 +835,8 @@ button.rte-link-preview-row:hover {
 }
 
 .rte-page-delete:hover {
-  color: #b91c1c;
-  background: #f3f4f6;
+  color: var(--text-danger, #b91c1c);
+  background: color-mix(in srgb, var(--paper-ink, #1f2328) 8%, transparent);
 }
 
 /* Блок текста, помеченный тегом (см. blockTags.js в modules/shared) — тонкая
@@ -825,10 +904,10 @@ button.rte-link-preview-row:hover {
   min-width: 160px;
   max-width: 240px;
   padding: 0.3rem;
-  background: #ffffff;
-  border: 1px solid #d0d7de;
+  background: var(--surface-modal);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-popover);
   user-select: none;
 }
 
@@ -843,11 +922,11 @@ button.rte-link-preview-row:hover {
   background: none;
   font-size: 0.92em;
   text-align: left;
-  color: #1f2328;
+  color: var(--text-primary);
 }
 
 .rte-block-panel-tag:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 /* Цветной кружок перед именем — тот же приём, что --tag-color у чипов
@@ -867,33 +946,33 @@ button.rte-link-preview-row:hover {
   width: 100%;
   margin-top: 0.15rem;
   padding: 0.3rem 0.5rem;
-  border: 1px dashed #c7ccd3;
+  border: 1px dashed var(--color-separator);
   border-radius: 6px;
-  background: #ffffff;
-  color: #4b5563;
+  background: var(--surface-modal);
+  color: var(--text-muted);
   font-size: 0.85em;
   text-align: left;
 }
 
 .rte-block-panel-add:hover {
-  border-color: #9ca3af;
-  color: #1f2328;
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .rte-add-page {
   display: block;
   margin: 0 auto 0.5rem;
   padding: 0.4rem 0.9rem;
-  border: 1px dashed #c7ccd3;
+  border: 1px dashed var(--color-separator);
   border-radius: 6px;
-  background: #ffffff;
-  color: #4b5563;
+  background: var(--surface-modal);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .rte-add-page:hover {
-  border-color: #9ca3af;
-  color: #1f2328;
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .rte-add-page[hidden] { display: none; }
@@ -1054,17 +1133,17 @@ button.rte-link-preview-row:hover {
   top: 0.42em;
   width: 13px;
   height: 13px;
-  border: 1px solid #9ca3af;
+  border: 1px solid var(--paper-muted, #9ca3af);
   border-radius: 3px;
-  background: #ffffff;
+  background: var(--paper-bg, #ffffff);
   cursor: pointer;
 }
 
 .rte-content ul.checklist li.is-done::before {
   content: "✓";
-  border-color: #33507e;
-  background: #33507e;
-  color: #ffffff;
+  border-color: var(--paper-accent, #33507e);
+  background: var(--paper-accent, #33507e);
+  color: var(--paper-bg, #ffffff);
   font-size: 10px;
   line-height: 13px;
   text-align: center;
@@ -1072,7 +1151,7 @@ button.rte-link-preview-row:hover {
 
 .rte-content ul.checklist li.is-done {
   text-decoration: line-through;
-  color: #9ca3af;
+  color: var(--paper-muted, #9ca3af);
 }
 
 .rte-content ul.checklist ul {
@@ -1089,11 +1168,11 @@ button.rte-link-preview-row:hover {
 }
 
 .rte-content ul.checklist li.is-drop-before {
-  box-shadow: inset 0 2px 0 #33507e;
+  box-shadow: inset 0 2px 0 var(--paper-accent, #33507e);
 }
 
 .rte-content ul.checklist li.is-drop-after {
-  box-shadow: inset 0 -2px 0 #33507e;
+  box-shadow: inset 0 -2px 0 var(--paper-accent, #33507e);
 }
 
 /* "Призрак" — клон перетаскиваемого <li>, обёрнутый в свой <ul class="checklist">:
@@ -1116,8 +1195,8 @@ button.rte-link-preview-row:hover {
 
 .rte-checklist-drag-ghost-anchor li {
   position: absolute;
-  background: #ffffff;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+  background: var(--paper-bg, #ffffff);
+  box-shadow: var(--shadow-popover, 0 8px 20px rgba(15, 23, 42, 0.18));
   opacity: 0.95;
   cursor: grabbing;
 }
@@ -1130,7 +1209,7 @@ button.rte-link-preview-row:hover {
 .rte-content hr.rte-divider {
   border: none;
   height: 4px;
-  background: #d0d7de;
+  background: var(--paper-line, #d0d7de);
   margin: 0.5rem 0;
 }
 
@@ -1144,7 +1223,7 @@ button.rte-link-preview-row:hover {
 }
 
 .rte-content table.rte-table td {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--paper-line, #d0d7de);
   padding: 0.4rem 0.6rem;
   overflow-wrap: anywhere;
 }

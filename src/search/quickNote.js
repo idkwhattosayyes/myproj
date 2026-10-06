@@ -28,7 +28,7 @@ export function mountQuickNote({ onNavigate: navigate, onSaved: saved }) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "quicknote-add";
-  btn.textContent = "＋";
+  btn.innerHTML = '<i class="ph ph-plus"></i>';
   btn.title = t("quicknote.add");
   btn.addEventListener("click", openQuickNote);
   topline.appendChild(btn);
