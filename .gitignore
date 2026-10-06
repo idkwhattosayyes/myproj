@@ -16,3 +16,6 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# Полные записи сессий Claude Code (хук SessionEnd, см. .claude/hooks/)
+sessions/
