@@ -518,6 +518,27 @@ async function runSearch() {
   // Новый запрос — раскрытие групп сбрасываем: список снова свёрнут.
   visibleByGroup.clear();
   renderResults();
+  // Строки появляются только при отрисовке, поэтому выбор — после неё.
+  activeRow = initialActiveRow();
+  markActiveRow();
+}
+
+/**
+ * С какой строки начинается выбор после нового запроса — то есть куда ведёт
+ * Enter, пока стрелками ничего не трогали. Первая строка списка — НАЗВАНИЕ
+ * группы, а оно открывает заметку целиком, без прыжка к слову (см. openRow).
+ * Если слово нашлось только в тексте первой заметки, Enter оставался бы на
+ * названии и открывал её с начала: «нажал Enter — а к слову не перешло».
+ * Поэтому в таком случае начинаем с первого совпадения. Когда же совпало и само
+ * название, человек, скорее всего, набирал его — тогда Enter, как и раньше,
+ * просто открывает заметку.
+ */
+function initialActiveRow() {
+  const group = groups[0];
+  const firstMatch = rows[1];
+  if (!group || group.kind !== "item" || !firstMatch || firstMatch.groupIndex !== 0) return 0;
+  if ((group.title || "").toLowerCase().includes(group.query.toLowerCase())) return 0;
+  return 1;
 }
 
 /**

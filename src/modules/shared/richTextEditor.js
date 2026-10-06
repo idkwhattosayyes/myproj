@@ -16,7 +16,8 @@ import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
 import { printNote, downloadNoteHtml, downloadNoteDoc } from "./noteExport.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
 import {
-  occurrenceRange,
+  noteOccurrenceRange,
+  scrollRangeToCenter,
   showSearchHighlight,
   showPhotoHighlight,
   clearSearchHighlight,
@@ -371,6 +372,11 @@ function createHeadingSpan(className) {
   return span;
 }
 
+// Служебные узлы внутри страниц: временный текст диктовки, маркеры выделения
+// фото, точки и панель тегов блока. В сохранённую заметку они не попадают —
+// значит, их нет и в поисковом индексе, и искать по ним в редакторе нельзя.
+const EDITOR_UI_SELECTOR = ".rte-interim, .rte-photo-handles, .rte-block-dots, .rte-block-panel";
+
 /**
  * Заметка хранится как последовательность страниц: `<div class="rte-page">…</div>`.
  * В сплошном режиме страница обычно одна, поэтому снаружи это по-прежнему просто
@@ -385,7 +391,7 @@ function serializeEditor(editorEl) {
       // выделения фото (.rte-photo-handles) и класс подсветки выделения — тоже
       // временный UI, не часть содержимого заметки.
       const clone = page.cloneNode(true);
-      clone.querySelectorAll(".rte-interim, .rte-photo-handles, .rte-block-dots, .rte-block-panel").forEach((node) => node.remove());
+      clone.querySelectorAll(EDITOR_UI_SELECTOR).forEach((node) => node.remove());
       clone.querySelectorAll(".rte-photo.is-selected").forEach((el) => el.classList.remove("is-selected"));
       stripEditingLeftovers(clone);
       return `<div class="rte-page">${clone.innerHTML}</div>`;
@@ -4947,8 +4953,7 @@ function highlightMatch(contentEl, query, occurrence = 0, photoIndex) {
   const range = findOccurrenceRange(contentEl, query, occurrence);
   if (!range) return;
 
-  const target = range.startContainer.parentElement;
-  if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+  scrollRangeToCenter(range);
   showSearchHighlight(range);
 }
 
@@ -4979,16 +4984,12 @@ function highlightBlock(contentEl, blockId) {
 }
 
 /**
- * Вхождение в тексте заметки. Страницы здесь склеиваются БЕЗ разделителя, а
- * поисковый индекс (htmlToSearchText в utils/dom.js) разделяет строки через
- * "\n" — на порядковые номера вхождений это не влияет: одно и то же слово в
- * обоих текстах встречается одинаковое число раз и в том же порядке, поэтому
- * номер из списка результатов ведёт к тому же месту. Разойтись они могут
- * только если запрос случайно склеился из конца одной строки и начала
- * следующей — здесь такое «вхождение» есть, в индексе нет.
+ * Вхождение в тексте заметки. Номер вхождения пришёл из поискового индекса
+ * (htmlToSearchText в utils/dom.js), поэтому и считать его надо по тексту,
+ * собранному по тем же правилам, — см. noteOccurrenceRange.
  */
 function findOccurrenceRange(contentEl, query, occurrence) {
-  return occurrenceRange([...contentEl.querySelectorAll(".rte-page")], query, occurrence, "");
+  return noteOccurrenceRange([...contentEl.querySelectorAll(".rte-page")], query, occurrence, EDITOR_UI_SELECTOR);
 }
 
 // Prompt — асинхронная модалка, за время её открытия редактор теряет фокус
