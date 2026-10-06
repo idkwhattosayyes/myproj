@@ -1,5 +1,6 @@
 import { t } from "../../i18n/i18n.js";
 import { escapeHtml } from "../../utils/dom.js";
+import { toCssPx } from "../../utils/uiScale.js";
 import { openNotePicker } from "./notePicker.js";
 import * as customCircles from "./customCircles.js";
 import * as itemsService from "../../services/itemsService.js";
@@ -375,8 +376,10 @@ function fitSceneToViewport(container) {
   if (!halfWidth || !halfHeight) return;
 
   // Больше единицы не растягиваем: когда кружков мало и всё помещается, вид
-  // остаётся ровно таким, каким его задаёт CSS.
-  const scale = Math.min(1, availWidth / (halfWidth * 2), availHeight / (halfHeight * 2));
+  // остаётся ровно таким, каким его задаёт CSS. Свободное место (clientWidth) —
+  // в пикселях раскладки, габариты из ректов — в пикселях экрана; при масштабе
+  // сайта 110% они расходятся, поэтому габариты переводим в те же единицы.
+  const scale = Math.min(1, availWidth / toCssPx(halfWidth * 2), availHeight / toCssPx(halfHeight * 2));
   box.style.setProperty("--home-scale", String(scale));
 }
 
@@ -387,18 +390,18 @@ function fitSceneToViewport(container) {
 function drawConnectorLines(container) {
   const svg = container.querySelector(".home-lines");
   const circles = container.querySelectorAll(".home-circle");
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  svg.setAttribute("width", vw);
-  svg.setAttribute("height", vh);
+  // Всё ниже меряется в пикселях экрана, а svg и точка в центре лежат под
+  // масштабом сайта — в их размеры и координаты пишем через toCssPx.
+  svg.setAttribute("width", toCssPx(window.innerWidth));
+  svg.setAttribute("height", toCssPx(window.innerHeight));
 
   // Сводим в центр .home-circles, а не экрана: кружки разложены вокруг первого,
   // и точки расходятся — по горизонтали из-за scrollbar-gutter, по вертикали
   // из-за резерва под полоску поиска. С центром экрана линии приходили мимо
   // середины схемы.
   const boxRect = container.querySelector(".home-circles").getBoundingClientRect();
-  const centerX = boxRect.left + boxRect.width / 2;
-  const centerY = boxRect.top + boxRect.height / 2;
+  const centerX = toCssPx(boxRect.left + boxRect.width / 2);
+  const centerY = toCssPx(boxRect.top + boxRect.height / 2);
 
   // Точка в пикселях, той же парой чисел, что и схождение линий — так это
   // гарантированно одна точка, а не два независимых расчёта.
@@ -409,8 +412,8 @@ function drawConnectorLines(container) {
   svg.innerHTML = [...circles]
     .map((circle) => {
       const rect = circle.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
+      const x = toCssPx(rect.left + rect.width / 2);
+      const y = toCssPx(rect.top + rect.height / 2);
       return `<line x1="${x}" y1="${y}" x2="${centerX}" y2="${centerY}"></line>`;
     })
     .join("");

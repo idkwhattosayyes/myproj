@@ -5,8 +5,8 @@
 .block-browser {
   display: flex;
   flex-direction: column;
-  width: min(1100px, 92vw);
-  max-height: 88vh;
+  width: min(1100px, calc(92vw / var(--app-zoom, 1)));
+  max-height: calc(88vh / var(--app-zoom, 1));
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
@@ -22,7 +22,7 @@
 }
 
 .block-browser-overlay .block-browser {
-  max-height: calc(100vh - 5rem);
+  max-height: calc(100vh / var(--app-zoom, 1) - 5rem);
 }
 
 /* Вспышка на карточке, к которой прокрутились из поиска. Общий .is-search-flash

@@ -40,7 +40,7 @@
   zoom: var(--ui-scale, 1);
   position: sticky;
   top: calc((1rem + var(--topbar-height)) / var(--ui-scale, 1));
-  max-height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
+  max-height: calc((100vh / var(--app-zoom, 1) - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -57,7 +57,7 @@
    компенсации панель заняла бы 13vw уже после зума — доля экрана плавала бы
    при Ctrl+колесо. Тот же приём, что у max-height и top. */
 .panel-workspace {
-  flex: 0 0 calc(13vw / var(--ui-scale, 1));
+  flex: 0 0 calc(13vw / var(--app-zoom, 1) / var(--ui-scale, 1));
   /* Названия папок/заметок не должны выделяться мышью — случайное выделение
      буквы во время перетаскивания создавало иллюзию, что тащат сразу несколько
      строк. Переименование идёт через настоящий <input> (startInlineRename) — на
@@ -96,7 +96,7 @@
    некуда прилипать, и полоска уезжала бы при прокрутке. */
 .panel-workspace.is-collapsed {
   flex: 0 0 10px;
-  height: calc((100vh - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
+  height: calc((100vh / var(--app-zoom, 1) - 2rem - var(--topbar-height)) / var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
 }
@@ -213,7 +213,7 @@
      search.css), а отступ без него — нет. При уменьшенном масштабе браузера
      рабочая зона заезжала под поиск, при увеличенном — между ними росла дыра. */
   html.is-notes-route .app-view {
-    height: 100vh;
+    height: calc(100vh / var(--app-zoom, 1));
     display: flex;
     flex-direction: column;
     padding-top: calc(var(--topbar-height) * var(--ui-scale, 1));
@@ -628,7 +628,7 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
      прижимается к верху экрана (см. placeMenu) и прокручивается внутри себя —
      недостижимых пунктов не остаётся. Запас 16px — те же 8px зазора с двух
      сторон, которыми placeMenu отступает от краёв. */
-  max-height: calc(100vh - 16px);
+  max-height: calc(100vh / var(--app-zoom, 1) - 16px);
   overflow-y: auto;
 }
 

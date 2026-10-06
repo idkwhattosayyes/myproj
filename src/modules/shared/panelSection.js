@@ -5,6 +5,7 @@ import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml, htmlToSearchText, isScrollContainer } from "../../utils/dom.js";
+import { toCssPx, toScrollPx } from "../../utils/uiScale.js";
 import { t } from "../../i18n/i18n.js";
 import { consumePendingTarget } from "../../search/searchTarget.js";
 import { setNoteSearchSource } from "../../search/noteScope.js";
@@ -543,7 +544,8 @@ function revealSelectedRow(container, state) {
   const bodyRect = bodyEl.getBoundingClientRect();
   const rowRect = rowEl.getBoundingClientRect();
   if (rowRect.top < bodyRect.top || rowRect.bottom > bodyRect.bottom) {
-    bodyEl.scrollTop += rowRect.top - bodyRect.top - bodyRect.height / 3;
+    // Ректы — в пикселях экрана, прокрутка панели — в её собственных (zoom).
+    bodyEl.scrollTop += toScrollPx(bodyEl, rowRect.top - bodyRect.top - bodyRect.height / 3);
   }
 }
 
@@ -761,9 +763,12 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
     );
     if (prepareGhost) prepareGhost(ghost);
     ghost.style.position = "fixed";
-    ghost.style.width = `${rect.width}px`;
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.top = `${rect.top}px`;
+    // Рект и мышь — в пикселях экрана, «призрак» лежит в body под масштабом
+    // сайта: без перевода он отставал бы от курсора тем сильнее, чем дальше от
+    // левого верхнего угла.
+    ghost.style.width = `${toCssPx(rect.width)}px`;
+    ghost.style.left = `${toCssPx(rect.left)}px`;
+    ghost.style.top = `${toCssPx(rect.top)}px`;
     ghost.style.margin = "0";
     document.body.appendChild(ghost);
     offsetX = startX - rect.left;
@@ -785,8 +790,8 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
       clearDropMarks(lastHighlighted);
       lastHighlighted = null;
     }
-    ghost.style.left = `${clientX - offsetX}px`;
-    ghost.style.top = `${clientY - offsetY}px`;
+    ghost.style.left = `${toCssPx(clientX - offsetX)}px`;
+    ghost.style.top = `${toCssPx(clientY - offsetY)}px`;
 
     const target = findTarget(clientX, clientY);
     if (target) lastHighlighted = target.el;

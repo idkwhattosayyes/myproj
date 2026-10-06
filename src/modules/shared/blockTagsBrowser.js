@@ -2,6 +2,7 @@ import { t } from "../../i18n/i18n.js";
 import { openConfirm, openAlert } from "../../utils/modal.js";
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { escapeHtml, clamp } from "../../utils/dom.js";
+import { toCssPx } from "../../utils/uiScale.js";
 import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openBlockTagEditor } from "./blockTagEditor.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
@@ -373,8 +374,9 @@ export function openBlockTagsBrowser(tagIds) {
     })();
     const fitsBelow = point.y + box.height + 8 <= window.innerHeight;
     const top = fitsBelow ? point.y : point.y - box.height;
-    panel.style.left = `${clamp(point.x, 8, window.innerWidth - box.width - 8)}px`;
-    panel.style.top = `${clamp(top, 8, window.innerHeight - box.height - 8)}px`;
+    // Посчитано в пикселях экрана; в стиль — через масштаб сайта (см. contextMenu.js).
+    panel.style.left = `${toCssPx(clamp(point.x, 8, window.innerWidth - box.width - 8))}px`;
+    panel.style.top = `${toCssPx(clamp(top, 8, window.innerHeight - box.height - 8))}px`;
 
     function onOutside(event) {
       if (!panel.contains(event.target)) closePanel();

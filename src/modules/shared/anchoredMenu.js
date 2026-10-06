@@ -1,5 +1,6 @@
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { clamp } from "../../utils/dom.js";
+import { toCssPx } from "../../utils/uiScale.js";
 
 // Тот же зазор от краёв экрана, что и в contextMenu.js.
 const EDGE_PAD_PX = 8;
@@ -84,6 +85,7 @@ function placeMenu(menu, x, y) {
   const box = menu.getBoundingClientRect();
   const fitsBelow = y + box.height + EDGE_PAD_PX <= window.innerHeight;
   const top = fitsBelow ? y : y - box.height;
-  menu.style.left = `${clamp(x, EDGE_PAD_PX, window.innerWidth - box.width - EDGE_PAD_PX)}px`;
-  menu.style.top = `${clamp(top, EDGE_PAD_PX, window.innerHeight - box.height - EDGE_PAD_PX)}px`;
+  // Посчитано в пикселях экрана; в стиль — через масштаб сайта (см. contextMenu.js).
+  menu.style.left = `${toCssPx(clamp(x, EDGE_PAD_PX, window.innerWidth - box.width - EDGE_PAD_PX))}px`;
+  menu.style.top = `${toCssPx(clamp(top, EDGE_PAD_PX, window.innerHeight - box.height - EDGE_PAD_PX))}px`;
 }

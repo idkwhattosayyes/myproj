@@ -5,7 +5,8 @@ import { getLang, t } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
 import { setNavigateHandler } from "./search/searchTarget.js";
-import { watchUiScale } from "./utils/uiScale.js";
+import { watchUiScale, applyAppZoom } from "./utils/uiScale.js";
+import { getUiZoom } from "./settings/uiZoomSetting.js";
 import {
   mountSearch,
   refreshSearchScope,
@@ -18,6 +19,10 @@ import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
 import { getSession, hasChosenGuest } from "./auth/authService.js";
 import { openAuthModal } from "./auth/authModal.js";
 import { mountSaveIndicator } from "./saveIndicator.js";
+
+// Сразу при загрузке модуля, до первой отрисовки: иначе страница мелькнула бы
+// в 100% и только потом выросла.
+applyAppZoom(getUiZoom());
 
 const DEFAULT_ROUTE = "home";
 

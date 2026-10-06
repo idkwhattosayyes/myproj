@@ -1,5 +1,5 @@
 .home {
-  min-height: 100vh;
+  min-height: calc(100vh / var(--app-zoom, 1));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -42,8 +42,8 @@
 .home-circles {
   position: relative;
   z-index: 1;
-  width: clamp(320px, 58vw, 460px);
-  height: clamp(320px, 58vw, 460px);
+  width: clamp(320px, calc(58vw / var(--app-zoom, 1)), 460px);
+  height: clamp(320px, calc(58vw / var(--app-zoom, 1)), 460px);
   --home-scale: 1;
   transform: scale(var(--home-scale));
   transform-origin: center;
@@ -52,8 +52,8 @@
 .home-circle {
   position: absolute;
   --scale: 1;
-  width: clamp(120px, 16vw, 172px);
-  height: clamp(120px, 16vw, 172px);
+  width: clamp(120px, calc(16vw / var(--app-zoom, 1)), 172px);
+  height: clamp(120px, calc(16vw / var(--app-zoom, 1)), 172px);
   transform: translate(-50%, -50%) translate(var(--tx, 0px), var(--ty, 0px)) scale(var(--scale));
   border-radius: 50%;
   display: flex;

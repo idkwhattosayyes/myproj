@@ -104,7 +104,7 @@
 .events-list {
   position: relative;
   list-style: none;
-  max-height: calc(100vh - 10rem - var(--topbar-height));
+  max-height: calc(100vh / var(--app-zoom, 1) - 10rem - var(--topbar-height));
   overflow-y: auto;
   scroll-snap-type: y proximity;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10%, #000 90%, transparent 100%);
@@ -227,7 +227,7 @@
 
 .day-circle {
   position: relative;
-  width: clamp(34px, 6vw, 56px);
+  width: clamp(34px, calc(6vw / var(--app-zoom, 1)), 56px);
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 50%;
@@ -460,7 +460,7 @@
    за экран; дальше поле скроллится внутри себя. */
 .day-entry-textarea {
   min-height: 3.5rem;
-  max-height: 40vh;
+  max-height: calc(40vh / var(--app-zoom, 1));
   overflow-y: auto;
   resize: none;
   font: inherit;

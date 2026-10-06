@@ -173,9 +173,13 @@ export function openPhotoEditor(dataUrl, initial = {}) {
         setTimeout(() => document.addEventListener("click", closePencilPopover, { once: true }), 0);
       });
 
+      // Точка мыши — в пикселях экрана, а холст под масштабом сайта (zoom на
+      // <html>) показан крупнее своих пикселей. Делим на измеренное отношение, а
+      // не на настройку: так верно при любом зуме, откуда бы он ни взялся.
       const pointFrom = (event) => {
         const rect = canvas.getBoundingClientRect();
-        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const scale = rect.width / canvas.width || 1;
+        return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
       };
       canvas.addEventListener("pointerdown", (event) => {
         if (!penOn) return;

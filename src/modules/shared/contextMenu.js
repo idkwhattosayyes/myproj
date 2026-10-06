@@ -1,5 +1,6 @@
 import { pushLayer } from "../../utils/escapeLayers.js";
 import { clamp } from "../../utils/dom.js";
+import { toCssPx } from "../../utils/uiScale.js";
 
 // Зазор от краёв экрана — тот же, что у панели выделения и поповера ссылки
 // в richTextEditor.js.
@@ -40,8 +41,9 @@ function placeMenu(menu, x, y) {
   const top = fitsBelow ? y : y - box.height;
   // Меню выше экрана даже вверх ногами — clamp вернёт min и прижмёт его к верху;
   // доехать до нижних пунктов даёт max-height с прокруткой в panels.css.
-  menu.style.left = `${clamp(x, EDGE_PAD_PX, window.innerWidth - box.width - EDGE_PAD_PX)}px`;
-  menu.style.top = `${clamp(top, EDGE_PAD_PX, window.innerHeight - box.height - EDGE_PAD_PX)}px`;
+  // Всё выше посчитано в пикселях экрана; в стиль — через масштаб сайта.
+  menu.style.left = `${toCssPx(clamp(x, EDGE_PAD_PX, window.innerWidth - box.width - EDGE_PAD_PX))}px`;
+  menu.style.top = `${toCssPx(clamp(top, EDGE_PAD_PX, window.innerHeight - box.height - EDGE_PAD_PX))}px`;
 }
 
 /** @param {{label: string, onClick: () => void}[]} items */

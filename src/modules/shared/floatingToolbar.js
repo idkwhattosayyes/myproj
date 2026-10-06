@@ -15,6 +15,7 @@
 
 import { TOOLBAR_LAYOUT_EVENT } from "./richTextEditor.js";
 import { isScrollContainer } from "../../utils/dom.js";
+import { getAppZoom } from "../../utils/uiScale.js";
 
 // Насколько панель отступает от верхней полосы приложения, когда висит.
 const TOP_GAP_PX = 10;
@@ -52,9 +53,11 @@ function writePosition(value) {
 // Зазор между прилипшей панелью и краем поля, чтобы она не наезжала на рамку.
 const EDGE_PAD_PX = 6;
 
+// В пикселях экрана, как и всё, с чем её сравнивают. rem из стилей — пиксели
+// раскладки, а полоска поиска на экране ещё и увеличена масштабом сайта.
 function topbarHeightPx() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--topbar-height");
-  return parseFloat(raw) * parseFloat(getComputedStyle(document.documentElement).fontSize) || 0;
+  return parseFloat(raw) * parseFloat(getComputedStyle(document.documentElement).fontSize) * getAppZoom() || 0;
 }
 
 // Ручка перетаскивания: шесть точек инлайн-SVG с fill="currentColor" — тем же

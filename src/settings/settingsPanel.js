@@ -1,12 +1,14 @@
 import { getLang, setLang, t } from "../i18n/i18n.js";
 import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { getSaveIndicatorEnabled, setSaveIndicatorEnabled } from "./saveIndicatorSetting.js";
+import { UI_ZOOM_OPTIONS, getUiZoom, setUiZoom } from "./uiZoomSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
 import { getCachedSession, signOut, clearGuestChosen } from "../auth/authService.js";
 import { openAuthModal } from "../auth/authModal.js";
 import { escapeHtml } from "../utils/dom.js";
+import { toCssPx } from "../utils/uiScale.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
 import { getState as getHomeCirclesState } from "../modules/home/customCircles.js";
@@ -14,8 +16,15 @@ import { showLoadingOverlay } from "../utils/loadingOverlay.js";
 
 // Одна шестерёнка в углу вместо россыпи плавающих переключателей: язык,
 // обводка панелей и опасное действие "очистить данные" живут в одной панели.
+// Панель — окно по центру экрана поверх затемнения, как меню тегов, а не
+// выпадашка под шестерёнкой: у правого края выпадашка уезжала за экран при
+// крупном масштабе, и места под новые настройки в ней почти не было.
 let buttonEl = null;
+let overlayEl = null;
 let panelEl = null;
+// Открыто ли окно по смыслу. Не то же самое, что overlayEl.hidden: пока идёт
+// анимация закрытия, окно ещё на экране, но уже считается закрытым.
+let isOpen = false;
 let unregisterLayer = null;
 let onLangChangeCallback = null;
 
@@ -35,50 +44,171 @@ export function mountSettings({ onLangChange }) {
     togglePanel();
   });
 
+  overlayEl = document.createElement("div");
+  overlayEl.className = "modal-overlay settings-overlay";
+  overlayEl.hidden = true;
   panelEl = document.createElement("div");
   panelEl.className = "settings-panel";
   panelEl.id = "settings-panel";
-  panelEl.hidden = true;
+  overlayEl.appendChild(panelEl);
+  // Закрываем только нажатием, НАЧАТЫМ на затемнении (соглашение проекта):
+  // зажали кнопку внутри окна и отпустили снаружи — окно остаётся.
+  overlayEl.addEventListener("mousedown", (event) => {
+    if (event.target === overlayEl) closePanel();
+  });
 
-  document.body.append(buttonEl, panelEl);
+  document.body.append(buttonEl, overlayEl);
   renderPanel();
 }
 
 function togglePanel() {
-  if (panelEl.hidden) openPanel();
-  else closePanel();
+  if (isOpen) closePanel();
+  else openPanel();
 }
 
 function openPanel() {
   renderPanel();
-  panelEl.hidden = false;
+  isOpen = true;
+  overlayEl.hidden = false;
   buttonEl.classList.add("is-active");
   unregisterLayer = pushLayer(closePanel);
-  // Следующим тиком, иначе слушатель поймает клик, который сам и открыл панель.
-  setTimeout(() => document.addEventListener("mousedown", onOutsideMouseDown), 0);
+  playMorph("open", null);
 }
 
 function closePanel() {
-  if (panelEl.hidden) return;
-  panelEl.hidden = true;
-  buttonEl.classList.remove("is-active");
-  document.removeEventListener("mousedown", onOutsideMouseDown);
+  if (!isOpen) return;
+  isOpen = false;
   if (unregisterLayer) {
     unregisterLayer();
     unregisterLayer = null;
   }
+  // Прячем окно только когда оно уже «втянулось» обратно в шестерёнку.
+  playMorph("close", () => {
+    overlayEl.hidden = true;
+    buttonEl.classList.remove("is-active");
+  });
 }
 
-function onOutsideMouseDown(event) {
-  if (panelEl.contains(event.target) || buttonEl.contains(event.target)) return;
-  closePanel();
+// --- Превращение шестерёнки в окно и обратно ------------------------------
+// Как на iOS: окно вырастает из самой кнопки, а кнопка на это время пропадает —
+// будто окно ею и было; при закрытии оно сжимается обратно в кружок, и кнопка
+// появляется на своём месте. Web Animations API (element.animate) — встроен в
+// браузер, библиотек не нужно.
+
+const MORPH_OPEN_MS = 340;
+const MORPH_CLOSE_MS = 320;
+// Открытие: быстрый старт и мягкая посадка — похоже на пружину iOS, без отскока.
+const MORPH_OPEN_EASING = "cubic-bezier(0.2, 0.9, 0.25, 1)";
+// Закрытие: плавно и в начале, и в конце. Перевёрнутая кривая открытия здесь не
+// годилась — она долго держала окно большим и сдёргивала его в кнопку в самом
+// конце, и было видно, как уезжает белый прямоугольник.
+const MORPH_CLOSE_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+
+// Идёт ли открытие/закрытие прямо сейчас — их надо уметь оборвать, если кнопку
+// нажали снова посреди анимации.
+let morphAnimations = [];
+
+function cancelMorph() {
+  morphAnimations.forEach((animation) => animation.cancel());
+  morphAnimations = [];
+}
+
+// Пользователь попросил систему или браузер поменьше двигать на экране —
+// тогда окно просто появляется и исчезает.
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * @param {"open" | "close"} direction
+ * @param {(() => void) | null} onDone что сделать, когда анимация доиграла
+ */
+function playMorph(direction, onDone) {
+  cancelMorph();
+  const opening = direction === "open";
+
+  if (prefersReducedMotion()) {
+    buttonEl.style.visibility = opening ? "hidden" : "";
+    if (onDone) onDone();
+    return;
+  }
+
+  // Откуда и куда: оба прямоугольника — в пикселях экрана. Сдвиг пишется в
+  // transform окна, а оно под масштабом сайта, поэтому через toCssPx; масштаб
+  // (отношение размеров) единиц не имеет и переводить его не нужно.
+  const from = buttonEl.getBoundingClientRect();
+  const to = panelEl.getBoundingClientRect();
+  const dx = toCssPx(from.left + from.width / 2 - (to.left + to.width / 2));
+  const dy = toCssPx(from.top + from.height / 2 - (to.top + to.height / 2));
+  const collapsed = {
+    transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width}, ${from.height / to.height})`,
+    // 50% от сторон окна после сжатия до размеров кнопки — ровный круг.
+    borderRadius: "50%",
+  };
+  const expanded = { transform: "none", borderRadius: getComputedStyle(panelEl).borderRadius };
+  const dimmed = { backgroundColor: getComputedStyle(overlayEl).backgroundColor };
+  const clear = { backgroundColor: "rgba(15, 23, 42, 0)" };
+
+  // Кадры у открытия и закрытия разные, а не одни и те же задом наперёд.
+  // Закрытию нужно своё: окно сначала скругляется в овал (к середине пути у него
+  // уже радиус 50%, в кадре только transform не задан — браузер ведёт его
+  // плавно между соседними кадрами), и дальше в кнопку сжимается уже круглая
+  // форма, а не прямоугольник. Текст гаснет в первой четверти, чтобы не
+  // сжиматься вместе с рамкой.
+  const frames = opening
+    ? {
+        panel: [collapsed, expanded],
+        content: [{ opacity: 0 }, { opacity: 0, offset: 0.4 }, { opacity: 1 }],
+        overlay: [clear, dimmed],
+      }
+    : {
+        panel: [expanded, { borderRadius: "50%", offset: 0.45 }, collapsed],
+        content: [{ opacity: 1 }, { opacity: 0, offset: 0.25 }, { opacity: 0 }],
+        overlay: [dimmed, clear],
+      };
+
+  const timing = {
+    duration: opening ? MORPH_OPEN_MS : MORPH_CLOSE_MS,
+    easing: opening ? MORPH_OPEN_EASING : MORPH_CLOSE_EASING,
+    // Закрывшееся окно должно остаться сжатым до того, как его спрячут, —
+    // иначе на последнем кадре оно мелькнуло бы в полный размер.
+    fill: opening ? "none" : "forwards",
+  };
+
+  // Кнопка пропадает в начале открытия и возвращается только в самом конце
+  // закрытия — в промежутке её роль играет само окно.
+  buttonEl.style.visibility = "hidden";
+
+  const panelAnimation = panelEl.animate(frames.panel, timing);
+  morphAnimations = [
+    panelAnimation,
+    ...[...panelEl.children].map((child) => child.animate(frames.content, timing)),
+    overlayEl.animate(frames.overlay, timing),
+  ];
+
+  // Промис finished, а не событие onfinish: событие браузер шлёт только на кадре
+  // отрисовки, и в фоновой вкладке закрытие так и не завершалось бы. При обрыве
+  // (cancel) промис отклоняется — прерванное закрытие не спрячет окно, которое
+  // тем временем открыли снова.
+  panelAnimation.finished
+    .then(() => {
+      if (!opening) buttonEl.style.visibility = "";
+      if (onDone) onDone();
+      // Закрывающие анимации держат окно сжатым (fill: forwards) — снимаем их,
+      // когда оно уже спрятано, чтобы следующее открытие стартовало с чистого листа.
+      cancelMorph();
+    })
+    .catch(() => {});
 }
 
 function renderPanel() {
   const lang = getLang();
   const session = getCachedSession();
   panelEl.innerHTML = `
-    <h3 class="settings-title">${t("settings.title")}</h3>
+    <div class="settings-header">
+      <h3 class="settings-title">${t("settings.title")}</h3>
+      <button type="button" class="settings-close" data-action="close" title="${t("settings.close")}">✕</button>
+    </div>
     ${
       session
         ? `<div class="settings-row settings-account-row">
@@ -92,6 +222,15 @@ function renderPanel() {
         <button type="button" class="settings-lang-btn ${lang === "ru" ? "is-active" : ""}" data-lang="ru">RU</button>
         <button type="button" class="settings-lang-btn ${lang === "en" ? "is-active" : ""}" data-lang="en">EN</button>
         <button type="button" class="settings-lang-btn ${lang === "he" ? "is-active" : ""}" data-lang="he">HE</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">${t("settings.uiZoom")}</span>
+      <div class="settings-lang">
+        ${UI_ZOOM_OPTIONS.map(
+          (percent) =>
+            `<button type="button" class="settings-lang-btn ${percent === getUiZoom() ? "is-active" : ""}" data-zoom="${percent}">${percent}%</button>`
+        ).join("")}
       </div>
     </div>
     <label class="settings-row">
@@ -124,6 +263,21 @@ function renderPanel() {
       renderPanel();
       buttonEl.title = t("settings.open");
       onLangChangeCallback();
+    });
+  });
+
+  panelEl.querySelector('[data-action="close"]').addEventListener("click", closePanel);
+
+  panelEl.querySelectorAll("[data-zoom]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const percent = Number(btn.dataset.zoom);
+      if (percent === getUiZoom()) return;
+      setUiZoom(percent);
+      // Через перезагрузку, а не на лету: от масштаба зависят посчитанные при
+      // открытии размеры листа, позиции рисунков и фото, место плавающего
+      // тулбара. Пересчитывать всё это вживую ради настройки, которую меняют
+      // раз в жизни устройства, — много кода и много мест для ошибки.
+      location.reload();
     });
   });
 

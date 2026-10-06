@@ -8,6 +8,7 @@
  */
 
 import { scrollContainerOf } from "./dom.js";
+import { toScrollPx } from "./uiScale.js";
 
 // Имя, под которым диапазон регистрируется в CSS.highlights; цвет задан в
 // styles/editor.css через ::highlight(search-hit) — правило глобальное, без
@@ -220,10 +221,10 @@ export function noteOccurrenceRange(pages, query, occurrence, skipSelector) {
 export function scrollRangeToCenter(range) {
   const rect = range.getBoundingClientRect();
   const scroller = scrollContainerOf(range.startContainer.parentElement);
-  const isWindow = scroller === document.scrollingElement;
-  const viewTop = isWindow ? 0 : scroller.getBoundingClientRect().top;
-  const viewHeight = isWindow ? window.innerHeight : scroller.clientHeight;
-  scroller.scrollTop += rect.top - viewTop - (viewHeight - rect.height) / 2;
+  // Всё меряем в пикселях экрана (rect, а не clientHeight), а в прокрутку
+  // переводим одним шагом — под масштабом сайта эти пиксели не равны.
+  const view = scroller === document.scrollingElement ? { top: 0, height: window.innerHeight } : scroller.getBoundingClientRect();
+  scroller.scrollTop += toScrollPx(scroller, rect.top - view.top - (view.height - rect.height) / 2);
 }
 
 // Позиция в склеенном тексте → узел и смещение внутри него.

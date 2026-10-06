@@ -15,6 +15,7 @@ import { openBlockTagEditor } from "./blockTagEditor.js";
 import { openBlockTagsBrowser } from "./blockTagsBrowser.js";
 import { printNote, downloadNoteHtml, downloadNoteDoc } from "./noteExport.js";
 import { setPendingTarget, getNavigateHandler } from "../../search/searchTarget.js";
+import { toCssPx } from "../../utils/uiScale.js";
 import {
   noteOccurrenceRange,
   scrollRangeToCenter,
@@ -1982,8 +1983,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const box = panel.getBoundingClientRect();
     const fitsBelow = point.y + box.height + BLOCK_PANEL_EDGE_PAD_PX <= window.innerHeight;
     const top = fitsBelow ? point.y : point.y - box.height;
-    panel.style.left = `${clamp(point.x, BLOCK_PANEL_EDGE_PAD_PX, window.innerWidth - box.width - BLOCK_PANEL_EDGE_PAD_PX)}px`;
-    panel.style.top = `${clamp(top, BLOCK_PANEL_EDGE_PAD_PX, window.innerHeight - box.height - BLOCK_PANEL_EDGE_PAD_PX)}px`;
+    // Посчитано в пикселях экрана; в стиль — через масштаб сайта (см. toCssPx).
+    panel.style.left = `${toCssPx(clamp(point.x, BLOCK_PANEL_EDGE_PAD_PX, window.innerWidth - box.width - BLOCK_PANEL_EDGE_PAD_PX))}px`;
+    panel.style.top = `${toCssPx(clamp(top, BLOCK_PANEL_EDGE_PAD_PX, window.innerHeight - box.height - BLOCK_PANEL_EDGE_PAD_PX))}px`;
 
     document.addEventListener("mousedown", onBlockTagsPanelOutside, true);
     unregisterBlockTagsPanelLayer = pushLayer(closeBlockTagsPanel);
@@ -4317,8 +4319,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const left = anchor.x - rect.width * LEFT_FRACTION;
     let top = anchor.y - rect.height - GAP;
     if (top < GAP) top = anchor.y;
-    bar.style.left = `${clamp(left, GAP, window.innerWidth - rect.width - GAP)}px`;
-    bar.style.top = `${clamp(top, GAP, window.innerHeight - rect.height - GAP)}px`;
+    bar.style.left = `${toCssPx(clamp(left, GAP, window.innerWidth - rect.width - GAP))}px`;
+    bar.style.top = `${toCssPx(clamp(top, GAP, window.innerHeight - rect.height - GAP))}px`;
     selectionToolbarEl = bar;
     unregisterSelectionLayer = pushLayer(closeSelectionToolbar);
     // Закрытие по клику вне — на mousedown (соглашение проекта): зажатие внутри
@@ -4364,14 +4366,14 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       toolbarRect.bottom <= anchor.y
         ? clamp(anchor.y, GAP, window.innerHeight - rect.height - GAP)
         : clamp(toolbarRect.bottom + GAP, GAP, window.innerHeight - rect.height - GAP);
-    el.style.top = `${top}px`;
+    el.style.top = `${toCssPx(top)}px`;
     const left = toolbarRect.right - rect.width;
     // Правый край — через CSS right, а не left: сворачивание блока (см.
     // createSelectionActionsToggle) меняет его ширину, а left оставлял бы
     // стрелку на месте старого левого края — она "убегала" от точки клика и
     // пропадала из виду при каждом сворачивании (ТЗ).
     const right = clamp(viewportWidth - (left + rect.width), GAP, viewportWidth - rect.width - GAP);
-    el.style.right = `${right}px`;
+    el.style.right = `${toCssPx(right)}px`;
     selectionActionsEl = el;
   }
 
@@ -4548,7 +4550,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     const rect = drag.li.getBoundingClientRect();
     const ghost = drag.li.cloneNode(true);
     ghost.classList.remove("is-drag-source", "is-drop-before", "is-drop-after");
-    ghost.style.width = `${rect.width}px`;
+    // Рект и мышь — в пикселях экрана, а призрак лежит под масштабом сайта.
+    ghost.style.width = `${toCssPx(rect.width)}px`;
     // Обёртка нужна квадратику и зачёркиванию "выполнено" — оба стилизованы
     // селектором .rte-content ul.checklist li, без предка-<ul> клон остался бы
     // голым текстом (см. editor.css).
@@ -4567,8 +4570,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
 
   function updateChecklistGhostPosition(clientX, clientY) {
     const drag = checklistDrag;
-    drag.ghostEl.style.left = `${clientX - drag.offsetX}px`;
-    drag.ghostEl.style.top = `${clientY - drag.offsetY}px`;
+    drag.ghostEl.style.left = `${toCssPx(clientX - drag.offsetX)}px`;
+    drag.ghostEl.style.top = `${toCssPx(clientY - drag.offsetY)}px`;
   }
 
   function updateChecklistDrag(clientX, clientY) {
@@ -5157,8 +5160,8 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
   const GAP = 8;
   const btnRect = btn.getBoundingClientRect();
   const popoverRect = popover.getBoundingClientRect();
-  popover.style.left = `${clamp(btnRect.left, GAP, window.innerWidth - popoverRect.width - GAP)}px`;
-  popover.style.top = `${clamp(btnRect.bottom + 4, GAP, window.innerHeight - popoverRect.height - GAP)}px`;
+  popover.style.left = `${toCssPx(clamp(btnRect.left, GAP, window.innerWidth - popoverRect.width - GAP))}px`;
+  popover.style.top = `${toCssPx(clamp(btnRect.bottom + 4, GAP, window.innerHeight - popoverRect.height - GAP))}px`;
   openPopoverBtn = btn;
   openColorPopoverEl = popover;
   unregisterPopoverLayer = pushLayer(closeColorPopovers);
@@ -5239,8 +5242,8 @@ function showLinkPreview(anchorEl, links, { clickable = false } = {}) {
   document.body.appendChild(popover);
   const anchorRect = anchorEl.getBoundingClientRect();
   const box = popover.getBoundingClientRect();
-  popover.style.left = `${clamp(anchorRect.left, 8, window.innerWidth - box.width - 8)}px`;
-  popover.style.top = `${clamp(anchorRect.bottom + 4, 8, window.innerHeight - box.height - 8)}px`;
+  popover.style.left = `${toCssPx(clamp(anchorRect.left, 8, window.innerWidth - box.width - 8))}px`;
+  popover.style.top = `${toCssPx(clamp(anchorRect.bottom + 4, 8, window.innerHeight - box.height - 8))}px`;
 
   // Курсор доехал до поповера (в т.ч. через зазор) — отменяем отложенное
   // скрытие, запланированное mouseout на contentEl.

@@ -116,7 +116,7 @@
 }
 
 .quicknote-body-slot {
-  max-height: min(50vh, 22rem);
+  max-height: min(calc(50vh / var(--app-zoom, 1)), 22rem);
   overflow-y: auto;
 }
 
@@ -193,7 +193,7 @@
 /* Выпадающий список результатов под полоской. */
 .search-results {
   margin-top: 0.4rem;
-  max-height: min(28rem, calc(100vh - 6rem));
+  max-height: min(28rem, calc(100vh / var(--app-zoom, 1) - 6rem));
   overflow-y: auto;
   padding: 0.3rem;
   border: 1px solid #d0d7de;
