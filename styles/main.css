@@ -92,6 +92,12 @@ button {
   opacity: 1;
 }
 
+/* Родные галочки и радиокнопки — в акцентном цвете темы, а не системном синем. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--text-accent);
+}
+
 /* Кольцо фокуса — только у кнопок, ссылок и галочек и только при управлении с
    клавиатуры. Не общим :focus-visible: у contenteditable-страниц заметки он
    срабатывает на каждый клик, и вокруг текста появлялась бы рамка. */
@@ -166,36 +172,44 @@ input[type="checkbox"]:focus-visible {
   display: none;
 }
 
+/* Размеры и вид — из прототипа редизайна: окно 580px, отступ 32px,
+   скругление 20px. Отступ от краёв экрана 16px — тоже оттуда. */
 .settings-panel {
-  width: min(32.5rem, calc(92vw / var(--app-zoom, 1)));
-  max-height: calc(88vh / var(--app-zoom, 1));
+  display: flex;
+  flex-direction: column;
+  width: min(580px, calc(100vw / var(--app-zoom, 1) - 32px));
+  max-height: calc(100vh / var(--app-zoom, 1) - 32px);
   overflow-y: auto;
-  padding: 1.4rem 1.55rem;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  padding: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-modal);
+  background: var(--surface-modal);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-modal);
 }
 
 .settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.9rem;
+  padding-bottom: 20px;
 }
 
 .settings-close {
-  width: 1.8rem;
-  height: 1.8rem;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 0.9rem;
-  color: #6b7280;
+  border-radius: var(--radius-segment);
+  background: none;
+  color: var(--text-primary);
+  font-size: 20px;
+  transition: opacity 0.15s;
 }
 
 .settings-close:hover {
-  background: #f3f4f6;
-  color: #1f2328;
+  opacity: 0.6;
 }
 
 /* Индикатор сохранения в облако — тот же ярус (z-index), что у settings-btn,
@@ -231,24 +245,43 @@ input[type="checkbox"]:focus-visible {
 }
 
 .settings-title {
-  font-size: 1rem;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: var(--font-heading-weight);
+  line-height: 1.2;
 }
 
+/* Строка настройки: подпись слева, управление справа, тонкий разделитель
+   сверху. Нижний разделитель — только у последней строки перед кнопками. */
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  margin-bottom: 0.7rem;
-  font-size: 0.85rem;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-separator);
+  font-size: 14px;
+}
+
+.settings-row--last {
+  border-bottom: 1px solid var(--color-separator);
+}
+
+/* Строка-переключатель кликабельна целиком (это <label>), как в прототипе. */
+.settings-toggle-row {
   cursor: pointer;
 }
 
-/* Email залогиненного может быть длиннее панели (15rem) — обрезаем многоточием,
-   а не выталкиваем кнопку "Log out" за край. min-width:0 нужен именно потому,
-   что flex-элементы по умолчанию не сжимаются меньше своего контента. */
+/* Email залогиненного может быть длиннее окна — обрезаем многоточием, а не
+   растягиваем строку. min-width:0 нужен именно потому, что flex-элементы по
+   умолчанию не сжимаются меньше своего контента. */
 .settings-account-row {
-  cursor: default;
+  justify-content: flex-start;
+}
+
+.settings-account-icon {
+  flex: none;
+  font-size: 20px;
 }
 
 .settings-account-email {
@@ -258,39 +291,100 @@ input[type="checkbox"]:focus-visible {
   white-space: nowrap;
 }
 
-.settings-lang {
+/* Сегментный переключатель (язык, масштаб): кнопки на общей подложке,
+   выбранная залита «сильным» цветом темы. */
+.settings-segment {
   display: flex;
-  gap: 0.25rem;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-button);
+  background: var(--surface-chip);
 }
 
-/* Кнопки экспорта и импорта — рядом, как переключатели языка. */
+.settings-segment-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--radius-segment);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: var(--transition-theme);
+}
+
+.settings-segment-btn:hover {
+  background: color-mix(in oklch, var(--surface-strong) 10%, transparent);
+}
+
+.settings-segment-btn.is-active {
+  background: var(--surface-strong);
+  color: var(--text-on-strong);
+}
+
+/* Тумблер — это обычная галочка (input type=checkbox) с appearance:none: логика
+   (change, checked) остаётся родной, меняется только вид. Бегунок нарисован
+   радиальным градиентом фона и ездит через background-position — у галочки
+   нет надёжного места под отдельный элемент-бегунок. */
+.settings-switch {
+  flex: none;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-chip);
+  background-image: radial-gradient(circle, oklch(0.98 0 0) 7.5px, transparent 8px);
+  background-size: 20px 20px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  cursor: pointer;
+  transition: background-color 0.2s, background-position 0.2s;
+}
+
+.settings-switch:checked {
+  background-color: var(--text-accent);
+  background-position: 16px 0;
+}
+
+/* Экспорт / импорт — текстовые кнопки с иконкой, как в прототипе. */
 .settings-io {
   display: flex;
-  gap: 0.3rem;
+  gap: 20px;
 }
 
-.settings-lang-btn {
-  padding: 0.15rem 0.5rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  background: #ffffff;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #374151;
+.settings-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.15s;
 }
 
-.settings-lang-btn:hover {
-  background: #f3f4f6;
+.settings-link .ph {
+  font-size: 15px;
 }
 
-.settings-lang-btn.is-active {
-  background: #33507e;
-  border-color: #33507e;
-  color: #ffffff;
+.settings-link:hover {
+  color: var(--text-accent);
 }
 
-.settings-clear {
-  width: 100%;
+.settings-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 22px;
+}
+
+.settings-footer-btn {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 13px;
 }
 
 .placeholder {
@@ -346,20 +440,25 @@ input[type="checkbox"]:focus-visible {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--overlay-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 
+/* Окна — в стиле окна настроек прототипа: фон, рамка и тень окна темы,
+   скругление 20px. Отступ меньше, чем у настроек (24 против 32): в маленьком
+   окне подтверждения 32px съели бы половину ширины. */
 .modal-box {
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 1.25rem;
+  background: var(--surface-modal);
+  color: var(--text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-modal);
+  padding: 24px;
   width: 100%;
   max-width: 360px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+  box-shadow: var(--shadow-modal);
 }
 
 .modal-message {
@@ -369,10 +468,16 @@ input[type="checkbox"]:focus-visible {
 
 .modal-input {
   width: 100%;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
+  background: var(--surface-field);
   margin-bottom: 0.9rem;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: var(--text-accent);
 }
 
 .modal-actions {
@@ -401,14 +506,14 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.85rem;
-  color: #4b5563;
+  color: var(--text-muted);
 }
 
 .photo-editor-field input {
   width: 4.5rem;
   padding: 0.3rem 0.4rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
 }
 
 .photo-editor-name {
@@ -425,8 +530,8 @@ input[type="checkbox"]:focus-visible {
   margin: 0 auto 1rem;
   background-size: cover;
   background-position: center;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
   overflow: hidden;
 }
 
@@ -454,8 +559,8 @@ input[type="checkbox"]:focus-visible {
   flex: 1;
   min-width: 0;
   padding: 0.45rem 0.6rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
 }
 
 .link-editor-row-remove {
@@ -463,33 +568,33 @@ input[type="checkbox"]:focus-visible {
   width: 1.6rem;
   height: 1.6rem;
   padding: 0;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 50%;
-  background: #ffffff;
-  color: #9ca3af;
+  background: var(--surface-field);
+  color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 1;
 }
 
 .link-editor-row-remove:hover {
-  color: #b91c1c;
-  border-color: #f3c4c4;
+  color: var(--text-danger);
+  border-color: var(--text-danger);
 }
 
 .link-editor-add {
   display: block;
   margin-bottom: 0.9rem;
   padding: 0.3rem 0.6rem;
-  border: 1px dashed #c7ccd3;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #4b5563;
+  border: 1px dashed var(--color-separator);
+  border-radius: var(--radius-button);
+  background: var(--surface-field);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .link-editor-add:hover {
-  border-color: #9ca3af;
-  color: #1f2328;
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 /* Окно создания/редактирования тега блока (см. blockTagEditor.js) — имя и
@@ -514,20 +619,20 @@ input[type="checkbox"]:focus-visible {
   width: 2.2rem;
   height: 2.2rem;
   padding: 0;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
   background: none;
 }
 
 .block-tag-editor-id {
   margin: 0 0 0.9rem;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .block-tag-editor-error {
   margin: -0.4rem 0 0.9rem;
-  color: #b91c1c;
+  color: var(--text-danger);
   font-size: 0.85rem;
 }
 
@@ -559,7 +664,7 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.85rem;
-  color: #57606a;
+  color: var(--text-muted);
 }
 
 .transfer-body {
@@ -572,8 +677,8 @@ input[type="checkbox"]:focus-visible {
 
 .transfer-tree,
 .transfer-preview {
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-button);
   padding: 0.5rem;
   overflow: auto;
   min-height: 14rem;
@@ -598,12 +703,12 @@ input[type="checkbox"]:focus-visible {
   cursor: pointer;
   width: 1.1rem;
   font-size: 0.8rem;
-  color: #57606a;
+  color: var(--text-muted);
   padding: 0;
 }
 
 .transfer-group-count {
-  color: #8b949e;
+  color: var(--text-muted);
   font-weight: 400;
   font-size: 0.8rem;
 }
@@ -622,12 +727,12 @@ input[type="checkbox"]:focus-visible {
 
 .transfer-item-title {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-segment);
   padding: 0.05rem 0.25rem;
 }
 
 .transfer-item-title:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 .transfer-item-title.is-active {
@@ -635,7 +740,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 .transfer-preview-empty {
-  color: #8b949e;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -662,12 +767,12 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   gap: 0.4rem;
   padding: 0.25rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--radius-segment);
   cursor: pointer;
 }
 
 .note-picker-row:hover {
-  background: #f3f4f6;
+  background: var(--surface-hover);
 }
 
 .note-picker-row.is-selected {

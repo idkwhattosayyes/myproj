@@ -52,3 +52,14 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* --- Значки (коды — из Phosphor; одинаковы у всех трёх начертаний) --- */
+.ph-arrow-left::before { content: "\e058"; }
+.ph-caret-down::before { content: "\e136"; }
+.ph-caret-right::before { content: "\e13a"; }
+.ph-download-simple::before { content: "\e20c"; }
+.ph-eye::before { content: "\e220"; }
+.ph-eye-slash::before { content: "\e224"; }
+.ph-upload-simple::before { content: "\e4c0"; }
+.ph-user-circle::before { content: "\e4c4"; }
+.ph-x::before { content: "\e4f6"; }
