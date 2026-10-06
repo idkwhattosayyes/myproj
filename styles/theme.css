@@ -1,0 +1,319 @@
+/* Темы оформления — единственное место, где живут цвета, шрифты, радиусы и
+   тени интерфейса. Остальные файлы стилей берут их только через var(--…),
+   поэтому палитра правится здесь и больше нигде.
+
+   Значения перенесены из прототипа редизайна один в один (цвета в oklch).
+   Тема выбирается атрибутом data-theme на <html> — его ставит скрипт в
+   <head> index.html до первой отрисовки (см. src/settings/themeSetting.js).
+   Без атрибута действует светлая тема: её значения заданы прямо на :root.
+
+   Имена — по смыслу, а не по виду («текст основной», а не «тёмно-серый»):
+   у тёмной темы основной текст светлый, и имя «тёмно-серый» там врало бы.
+
+   ВНЕ тем лежат две группы (ниже, в первом блоке :root):
+   - «бумага» — поле текста заметки. Во всех темах оно светлое: в заметках
+     хранятся цвета, выбранные пользователем под светлый фон (тёмный текст,
+     светлые заливки), и экспорт в Word переносит цвета как есть. Цвета
+     бумаги — в hex, а не в oklch: Word oklch не понимает.
+   - палитры, из которых пользователь выбирает цвет букв, заливки и пера.
+     Выбранное значение пишется в саму заметку, поэтому палитры от темы не
+     зависят. */
+
+:root {
+  /* --- Палитра цвета текста (кнопка «A» в тулбаре) --- */
+  --text-color-red: #e03131;
+  --text-color-orange: #f08c00;
+  --text-color-green: #2f9e44;
+  --text-color-blue: #1971c2;
+  --text-color-violet: #7048e8;
+  --text-color-gray: #495057;
+
+  /* --- Палитра заливки под текстом. Светлая, иначе текст на ней не читается. --- */
+  --highlight-yellow: #fff3a3;
+  --highlight-orange: #ffd8a8;
+  --highlight-green: #b2f2bb;
+  --highlight-blue: #a5d8ff;
+  --highlight-violet: #d0bfff;
+  --highlight-red: #ffc9c9;
+
+  /* --- Перо рисования по умолчанию и «сброс цвета» текста --- */
+  --draw-color-default: #1f2328;
+
+  /* --- Подсветка найденного поиском: жёлтая во всех темах, под ней светлая бумага --- */
+  --search-hit-bg: #ffd43b;
+  --search-hit-ink: #1f2328;
+
+  /* --- Общие для всех тем --- */
+  --radius-pill: 999px;
+  --radius-button: 10px;
+  --radius-segment: 7px;
+  --radius-modal: 20px;
+  --overlay-backdrop: oklch(0.2 0 0 / 0.4);
+  /* Та же подложка, но прозрачная — к ней анимируется затемнение при закрытии
+     окон: переход к другому цвету дал бы сдвиг оттенка посреди анимации. */
+  --overlay-backdrop-clear: oklch(0.2 0 0 / 0);
+  --shadow-modal: 0 40px 80px -30px oklch(0 0 0 / 0.5);
+  --transition-theme: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+/* ------------------------------------------------------------------
+   Светлая — по умолчанию
+   ------------------------------------------------------------------ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(1 0 0);
+  --surface-panel: oklch(0.985 0.006 255);
+  --surface-field: oklch(0.975 0.006 255);
+  --surface-chip: oklch(0.94 0.008 255);
+  --surface-modal: oklch(0.995 0.003 255);
+  --surface-toolbar: oklch(0.995 0.004 255 / 0.9);
+  --surface-active: oklch(0.92 0.045 250);
+  --surface-pinned: oklch(0.96 0.012 170);
+  --surface-strong: oklch(0.36 0.07 258);
+
+  --text-primary: oklch(0.36 0.025 258);
+  --text-muted: oklch(0.58 0.012 258);
+  --text-on-active: oklch(0.36 0.07 258);
+  --text-on-strong: oklch(0.98 0.005 255);
+  --text-accent: oklch(0.55 0.12 255);
+  --text-danger: oklch(0.55 0.15 25);
+  --color-heart: oklch(0.72 0.11 15);
+
+  --color-border: oklch(0.94 0.006 255);
+  --color-separator: oklch(0.91 0.008 255);
+  --selection-bg: oklch(0.55 0.12 255 / 0.16);
+
+  --shadow-panel: 0 24px 60px -34px oklch(0.4 0.03 258 / 0.3);
+  --radius-panel: 20px;
+  --radius-item: 10px;
+  --radius-toolbar: 14px;
+
+  --paper-bg: #f7fafe;
+  --paper-ink: #353e4a;
+}
+
+/* ------------------------------------------------------------------
+   Тёмная
+   ------------------------------------------------------------------ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.155 0 0);
+  --surface-panel: oklch(0.2 0 0);
+  --surface-field: oklch(0.2 0 0);
+  --surface-chip: oklch(0.26 0 0);
+  --surface-modal: oklch(0.2 0 0);
+  --surface-toolbar: oklch(0.22 0 0 / 0.9);
+  --surface-active: oklch(0.72 0.08 250 / 0.16);
+  --surface-pinned: oklch(0.78 0.05 170 / 0.07);
+  --surface-strong: oklch(0.9 0.05 250);
+
+  --text-primary: oklch(0.88 0 0);
+  --text-muted: oklch(0.65 0 0);
+  --text-on-active: oklch(0.9 0.05 250);
+  --text-on-strong: oklch(0.17 0 0);
+  --text-accent: oklch(0.74 0.1 250);
+  --text-danger: oklch(0.76 0.11 25);
+  --color-heart: oklch(0.72 0.11 15);
+
+  --color-border: oklch(1 0 0 / 0.07);
+  --color-separator: oklch(1 0 0 / 0.08);
+  --selection-bg: oklch(0.74 0.1 250 / 0.28);
+
+  --shadow-panel: 0 24px 60px -30px oklch(0.9 0.02 250 / 0.06);
+  --radius-panel: 20px;
+  --radius-item: 10px;
+  --radius-toolbar: 14px;
+
+  /* Приглушённая тёплая бумага: чисто-белое поле в тёмной комнате «жжёт». */
+  --paper-bg: #ece8df;
+  --paper-ink: #1f2328;
+}
+
+/* ------------------------------------------------------------------
+   Шалфей
+   ------------------------------------------------------------------ */
+:root[data-theme="sage"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.95 0.015 150);
+  --surface-panel: oklch(0.985 0.006 150);
+  --surface-field: oklch(0.985 0.006 150);
+  --surface-chip: oklch(0.93 0.02 150);
+  --surface-modal: oklch(0.985 0.006 150);
+  --surface-toolbar: oklch(0.97 0.01 150 / 0.92);
+  --surface-active: oklch(0.9 0.04 155);
+  --surface-pinned: oklch(0.95 0.025 120);
+  --surface-strong: oklch(0.45 0.07 160);
+
+  --text-primary: oklch(0.3 0.03 160);
+  --text-muted: oklch(0.55 0.03 160);
+  --text-on-active: oklch(0.32 0.06 160);
+  --text-on-strong: oklch(0.98 0.01 150);
+  --text-accent: oklch(0.55 0.08 160);
+  --text-danger: oklch(0.55 0.13 25);
+  --color-heart: oklch(0.65 0.12 25);
+
+  --color-border: oklch(0.92 0.015 150);
+  --color-separator: oklch(0.91 0.015 150);
+  --selection-bg: oklch(0.55 0.08 160 / 0.18);
+
+  --shadow-panel: 0 8px 24px -16px oklch(0.4 0.05 160 / 0.4);
+  --radius-panel: 18px;
+  --radius-item: 12px;
+  --radius-toolbar: 14px;
+
+  --paper-bg: #f7fbf8;
+  --paper-ink: #203329;
+}
+
+/* ------------------------------------------------------------------
+   Сепия — единственная тема с другим шрифтом (с засечками). Это
+   осознанный выбор прототипа: шрифт не унифицируем.
+   ------------------------------------------------------------------ */
+:root[data-theme="sepia"] {
+  color-scheme: light;
+
+  --font-ui: "Literata", Georgia, "Times New Roman", serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 500;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.9 0.035 75);
+  --surface-panel: oklch(0.93 0.03 78);
+  --surface-field: oklch(0.93 0.03 78);
+  --surface-chip: oklch(0.87 0.04 72);
+  --surface-modal: oklch(0.93 0.03 78);
+  --surface-toolbar: oklch(0.91 0.032 76 / 0.94);
+  --surface-active: oklch(0.86 0.05 70);
+  --surface-pinned: oklch(0.9 0.04 100);
+  --surface-strong: oklch(0.42 0.06 50);
+
+  --text-primary: oklch(0.33 0.04 55);
+  --text-muted: oklch(0.52 0.04 55);
+  --text-on-active: oklch(0.33 0.05 50);
+  --text-on-strong: oklch(0.94 0.03 78);
+  --text-accent: oklch(0.45 0.07 50);
+  --text-danger: oklch(0.5 0.13 30);
+  --color-heart: oklch(0.55 0.12 30);
+
+  --color-border: oklch(0.85 0.04 70);
+  --color-separator: oklch(0.84 0.04 70);
+  --selection-bg: oklch(0.45 0.07 50 / 0.18);
+
+  --shadow-panel: none;
+  --radius-panel: 12px;
+  --radius-item: 8px;
+  --radius-toolbar: 10px;
+
+  --paper-bg: #f3e6d2;
+  --paper-ink: #463021;
+}
+
+/* ------------------------------------------------------------------
+   Полночь — иконки залитые
+   ------------------------------------------------------------------ */
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor-Fill";
+
+  --surface-page: oklch(0.18 0.04 260);
+  --surface-panel: oklch(0.22 0.045 260);
+  --surface-field: oklch(0.22 0.045 260);
+  --surface-chip: oklch(0.27 0.05 260);
+  --surface-modal: oklch(0.22 0.045 260);
+  --surface-toolbar: oklch(0.2 0.04 260 / 0.92);
+  --surface-active: oklch(0.8 0.12 190 / 0.16);
+  --surface-pinned: oklch(0.8 0.12 190 / 0.06);
+  --surface-strong: oklch(0.8 0.12 190);
+
+  --text-primary: oklch(0.92 0.02 250);
+  --text-muted: oklch(0.68 0.03 250);
+  --text-on-active: oklch(0.85 0.11 190);
+  --text-on-strong: oklch(0.18 0.04 260);
+  --text-accent: oklch(0.8 0.12 190);
+  --text-danger: oklch(0.75 0.13 20);
+  --color-heart: oklch(0.75 0.14 10);
+
+  --color-border: oklch(0.8 0.12 190 / 0.12);
+  --color-separator: oklch(1 0 0 / 0.08);
+  --selection-bg: oklch(0.8 0.12 190 / 0.25);
+
+  --shadow-panel: 0 0 40px -20px oklch(0.8 0.12 190 / 0.25);
+  --radius-panel: 18px;
+  --radius-item: 12px;
+  --radius-toolbar: 14px;
+
+  /* Нейтральная, чуть холодная бумага — в тон синеве темы, но не белая. */
+  --paper-bg: #e6e8ec;
+  --paper-ink: #1f2328;
+}
+
+/* ------------------------------------------------------------------
+   Песок — иконки тонкие
+   ------------------------------------------------------------------ */
+:root[data-theme="sand"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor-Light";
+
+  --surface-page: oklch(0.93 0.012 70);
+  --surface-panel: oklch(0.97 0.008 70);
+  --surface-field: oklch(0.97 0.008 70);
+  --surface-chip: oklch(0.92 0.012 70);
+  --surface-modal: oklch(0.97 0.008 70);
+  --surface-toolbar: oklch(0.95 0.01 70 / 0.94);
+  --surface-active: oklch(0.9 0.04 20);
+  --surface-pinned: oklch(0.94 0.02 60);
+  --surface-strong: oklch(0.28 0.01 50);
+
+  --text-primary: oklch(0.28 0.01 50);
+  --text-muted: oklch(0.52 0.01 50);
+  --text-on-active: oklch(0.42 0.1 20);
+  --text-on-strong: oklch(0.97 0.008 70);
+  --text-accent: oklch(0.68 0.11 20);
+  --text-danger: oklch(0.55 0.13 25);
+  --color-heart: oklch(0.68 0.11 20);
+
+  --color-border: oklch(0.9 0.01 70);
+  --color-separator: oklch(0.9 0.01 70);
+  --selection-bg: oklch(0.68 0.11 20 / 0.18);
+
+  --shadow-panel: none;
+  --radius-panel: 16px;
+  --radius-item: 10px;
+  --radius-toolbar: 12px;
+
+  --paper-bg: #f9f4ef;
+  --paper-ink: #2d2825;
+}

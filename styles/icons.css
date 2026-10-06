@@ -1,0 +1,54 @@
+/* Иконки Phosphor (phosphoricons.com, лицензия MIT) — иконочным шрифтом, как в
+   прототипе редизайна. Иконка — пустой <i class="ph ph-gear">, сам значок
+   рисует ::before. Только через псевдоэлемент, не текстом: иначе символ
+   попадал бы в textContent кнопки, а у кнопок внутри редактора — и в текст
+   заметки.
+
+   Три начертания (обычное, тонкое, залитое) делят одни и те же коды символов,
+   поэтому класс у иконки один — .ph, а начертание выбирает тема через
+   --icon-font (см. theme.css): у «Полночи» залитые, у «Песка» тонкие.
+
+   Сюда добавляются только те иконки, что реально есть на сайте: полный набор
+   Phosphor — это полторы тысячи строк, которые никто не читает. */
+
+@font-face {
+  font-family: "Phosphor";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Phosphor-Light";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-light.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Phosphor-Fill";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-fill.woff2") format("woff2");
+}
+
+/* Бокс ровно 1em × 1em, пока шрифт ещё грузится, — тоже: плавающий тулбар
+   меряет свою ширину сразу после монтирования, и без фиксированного размера
+   иконка до загрузки шрифта имела бы другую ширину, чем после. */
+.ph {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  font-family: var(--icon-font, "Phosphor") !important;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  speak: never;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
