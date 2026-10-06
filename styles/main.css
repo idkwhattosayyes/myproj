@@ -356,6 +356,87 @@ input[type="checkbox"]:focus-visible {
   background-position: 16px 0;
 }
 
+/* Выбор темы — сетка карточек, как в прототипе. Превью внутри карточки
+   рисуется переменными СВОЕЙ темы (атрибут data-theme-preview, см. theme.css):
+   фон страницы, квадрат панели, точка акцента и точка маркера. */
+.settings-theme-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-theme-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-theme-current {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.settings-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-separator);
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+/* Рамка 2px при выборе съела бы 1px внутрь и сдвинула превью — компенсируем
+   отступом, как и прототип (там у карточки рамка 1px или 2px). */
+.settings-theme-card.is-active {
+  border: 2px solid var(--text-accent);
+  padding: 7px;
+}
+
+.settings-theme-swatch {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 44px;
+  padding: 6px;
+  border: 1px solid var(--swatch-outline);
+  border-radius: 8px;
+  background: var(--surface-page);
+}
+
+.settings-theme-swatch-panel {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface-panel);
+}
+
+.settings-theme-swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+.settings-theme-swatch-dot--accent {
+  background: var(--text-accent);
+}
+
+.settings-theme-swatch-dot--mark {
+  background: var(--theme-swatch-mark);
+}
+
+.settings-theme-name {
+  font-size: 12px;
+  font-weight: 500;
+}
+
 /* Экспорт / импорт — текстовые кнопки с иконкой, как в прототипе. */
 .settings-io {
   display: flex;

@@ -2,6 +2,7 @@ import { getLang, setLang, t } from "../i18n/i18n.js";
 import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { getSaveIndicatorEnabled, setSaveIndicatorEnabled } from "./saveIndicatorSetting.js";
 import { UI_ZOOM_OPTIONS, getUiZoom, setUiZoom } from "./uiZoomSetting.js";
+import { THEMES, getTheme, setTheme } from "./themeSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
@@ -224,6 +225,27 @@ function renderPanel() {
           </div>`
         : ""
     }
+    <div class="settings-row settings-theme-row">
+      <div class="settings-theme-head">
+        <span class="settings-label">${t("settings.theme")}</span>
+        <span class="settings-theme-current">${t(`settings.theme.${getTheme()}`)}</span>
+      </div>
+      <div class="settings-theme-grid">
+        ${THEMES.map(
+          (theme) => `
+          <button type="button" class="settings-theme-card ${theme === getTheme() ? "is-active" : ""}" data-theme-pick="${theme}">
+            <!-- data-theme-preview — переменные этой темы только внутри превью
+                 (см. theme.css); подпись и рамка остаются в цветах текущей. -->
+            <span class="settings-theme-swatch" data-theme-preview="${theme}">
+              <span class="settings-theme-swatch-panel"></span>
+              <span class="settings-theme-swatch-dot settings-theme-swatch-dot--accent"></span>
+              <span class="settings-theme-swatch-dot settings-theme-swatch-dot--mark"></span>
+            </span>
+            <span class="settings-theme-name">${t(`settings.theme.${theme}`)}</span>
+          </button>`
+        ).join("")}
+      </div>
+    </div>
     <div class="settings-row">
       <span class="settings-label">${t("settings.language")}</span>
       <div class="settings-segment">
@@ -277,6 +299,17 @@ function renderPanel() {
   });
 
   panelEl.querySelector('[data-action="close"]').addEventListener("click", closePanel);
+
+  // Тема меняется на лету: это только значения CSS-переменных, перерисовывать
+  // разделы не нужно. Окно перерисовываем — сдвинуть рамку выбранной карточки
+  // и подпись с названием темы.
+  panelEl.querySelectorAll("[data-theme-pick]").forEach((card) => {
+    card.addEventListener("click", () => {
+      if (card.dataset.themePick === getTheme()) return;
+      setTheme(card.dataset.themePick);
+      renderPanel();
+    });
+  });
 
   panelEl.querySelectorAll("[data-zoom]").forEach((btn) => {
     btn.addEventListener("click", () => {

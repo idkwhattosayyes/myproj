@@ -83,6 +83,9 @@
      окон: переход к другому цвету дал бы сдвиг оттенка посреди анимации. */
   --overlay-backdrop-clear: oklch(0.2 0 0 / 0);
   --shadow-modal: 0 40px 80px -30px oklch(0 0 0 / 0.5);
+  /* Нейтральная обводка превью темы в настройках: одна на все темы, чтобы
+     светлое превью было видно на тёмном окне и наоборот. */
+  --swatch-outline: oklch(0.5 0 0 / 0.15);
   /* Меню и всплывающие панели — тень мягче, чем у окон: они маленькие и
      висят прямо над содержимым. */
   --shadow-popover: 0 16px 40px -18px oklch(0 0 0 / 0.35);
@@ -103,7 +106,8 @@
    Светлая — по умолчанию
    ------------------------------------------------------------------ */
 :root,
-:root[data-theme="light"] {
+:root[data-theme="light"],
+[data-theme-preview="light"] {
   color-scheme: light;
 
   --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
@@ -141,12 +145,15 @@
 
   --paper-bg: #f7fafe;
   --paper-ink: #353e4a;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.89 0.08 70);
 }
 
 /* ------------------------------------------------------------------
    Тёмная
    ------------------------------------------------------------------ */
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+[data-theme-preview="dark"] {
   color-scheme: dark;
 
   --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
@@ -185,12 +192,15 @@
   /* Приглушённая тёплая бумага: чисто-белое поле в тёмной комнате «жжёт». */
   --paper-bg: #ece8df;
   --paper-ink: #1f2328;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.8 0.1 70 / 0.16);
 }
 
 /* ------------------------------------------------------------------
    Шалфей
    ------------------------------------------------------------------ */
-:root[data-theme="sage"] {
+:root[data-theme="sage"],
+[data-theme-preview="sage"] {
   color-scheme: light;
 
   --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
@@ -228,13 +238,16 @@
 
   --paper-bg: #f7fbf8;
   --paper-ink: #203329;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.92 0.07 95);
 }
 
 /* ------------------------------------------------------------------
    Сепия — единственная тема с другим шрифтом (с засечками). Это
    осознанный выбор прототипа: шрифт не унифицируем.
    ------------------------------------------------------------------ */
-:root[data-theme="sepia"] {
+:root[data-theme="sepia"],
+[data-theme-preview="sepia"] {
   color-scheme: light;
 
   --font-ui: "Literata", Georgia, "Times New Roman", serif;
@@ -272,12 +285,15 @@
 
   --paper-bg: #f3e6d2;
   --paper-ink: #463021;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.86 0.1 85);
 }
 
 /* ------------------------------------------------------------------
    Полночь — иконки залитые
    ------------------------------------------------------------------ */
-:root[data-theme="midnight"] {
+:root[data-theme="midnight"],
+[data-theme-preview="midnight"] {
   color-scheme: dark;
 
   --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
@@ -316,12 +332,15 @@
   /* Нейтральная, чуть холодная бумага — в тон синеве темы, но не белая. */
   --paper-bg: #e6e8ec;
   --paper-ink: #1f2328;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.8 0.12 90 / 0.18);
 }
 
 /* ------------------------------------------------------------------
    Песок — иконки тонкие
    ------------------------------------------------------------------ */
-:root[data-theme="sand"] {
+:root[data-theme="sand"],
+[data-theme-preview="sand"] {
   color-scheme: light;
 
   --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
@@ -359,4 +378,6 @@
 
   --paper-bg: #f9f4ef;
   --paper-ink: #2d2825;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.9 0.06 80);
 }
