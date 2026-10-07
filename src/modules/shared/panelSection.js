@@ -951,24 +951,47 @@ function indentForDepth(depth) {
 const TREE_GUIDE_OFFSET = 9;
 
 /**
- * Вертикальные линии иерархии, как в прототипе. Вложенная строка целиком
- * сдвинута вправо (отступ — внешний, margin; см. --indent в panels.css), и линия
- * идёт в этом зазоре слева от строки, а не поверх неё: фон и подсветка строки
- * начинаются правее линии.
+ * Вертикальные линии иерархии, как в прототипе: у каждой раскрытой папки одна
+ * линия под её значком — от верха первого вложенного элемента до низа
+ * последнего. Вложенные строки сдвинуты вправо внешним отступом (--indent в
+ * panels.css), и линия идёт в этом зазоре, а не поверх строк.
  *
- * У строки уровня depth — по линии на каждый уровень над ней, под значком папки
- * этого уровня. Координата считается от левого края самой строки, поэтому
- * отрицательная. Соседние строки стыкуются, и линия тянется от раскрытой папки
- * до её последнего вложенного элемента сплошной. pointer-events: none (см.
- * .tree-guide) — линии не перехватывают ни клики, ни перетаскивание.
+ * Линии — отдельный слой под строками, а не часть самих строк. Выбранная
+ * строка увеличивается (transform: scale), и всё, что лежит внутри неё, ехало
+ * бы вместе с ней. Координаты берём из раскладки (offsetTop/offsetLeft): на них
+ * transform не влияет, поэтому при смене выбора линии стоят на месте.
+ *
+ * Перерисовывать нужно после каждой отрисовки списка: раскрыли папку, добавили
+ * заметку — строки и их места уже другие.
+ * @param {HTMLElement} listEl список строк (.workspace-list)
  */
-function treeGuidesHtml(depth) {
-  let html = "";
-  for (let level = 0; level < depth; level++) {
-    const left = indentForDepth(level) + TREE_GUIDE_OFFSET - indentForDepth(depth);
-    html += `<span class="tree-guide" aria-hidden="true" style="--guide-left: ${left}px"></span>`;
-  }
-  return html;
+function drawTreeGuides(listEl) {
+  listEl.querySelector(":scope > .tree-guides")?.remove();
+  const rows = [...listEl.querySelectorAll(":scope > [data-depth]")];
+  const layer = document.createElement("div");
+  layer.className = "tree-guides";
+  layer.setAttribute("aria-hidden", "true");
+
+  rows.forEach((row, index) => {
+    if (!row.classList.contains("is-expanded")) return;
+    const depth = Number(row.dataset.depth);
+    // Потомки папки — все строки сразу под ней, пока глубина больше её глубины.
+    let last = null;
+    for (let i = index + 1; i < rows.length && Number(rows[i].dataset.depth) > depth; i++) last = rows[i];
+    if (!last) return; // папка раскрыта, но пустая — линии не к чему идти
+
+    const first = rows[index + 1];
+    const line = document.createElement("span");
+    line.className = "tree-guide";
+    line.style.left = `${row.offsetLeft + TREE_GUIDE_OFFSET}px`;
+    line.style.top = `${first.offsetTop}px`;
+    line.style.height = `${last.offsetTop + last.offsetHeight - first.offsetTop}px`;
+    layer.appendChild(line);
+  });
+
+  // Первым ребёнком — то есть ПОД строками: подсветка строки, даже увеличенная,
+  // ложится поверх линии, а не наоборот.
+  listEl.prepend(layer);
 }
 // ------------------------------------------------------------------
 // Панель Workspace: фиксированные разделы сверху, под разделителем — содержимое
@@ -1076,9 +1099,8 @@ function folderRowHtml(row) {
   const source = isDragSource("folder", folder.id) ? "is-drag-source" : "";
   return `
     <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
-        data-folder-id="${folder.id}" data-context="${context}"
+        data-folder-id="${folder.id}" data-context="${context}" data-depth="${depth}"
         style="--indent: ${indentForDepth(depth)}px">
-      ${treeGuidesHtml(depth)}
       ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
@@ -1095,8 +1117,7 @@ function noteRowHtml(row) {
   const indent = depth > 0 ? `style="--indent: ${indentForDepth(depth)}px"` : "";
   return `
     <li class="item-list-row ${row.flat ? "" : "is-nested"} ${row.pinned ? "is-pinned" : ""} ${source}"
-        data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
-      ${treeGuidesHtml(depth)}
+        data-item-id="${item.id}" data-context="${context}" data-depth="${depth}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
       <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
       ${rowBadges(item, row.pinned)}
       ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}"><i class="ph ph-x"></i></button>` : ""}
@@ -1229,6 +1250,14 @@ function renderWorkspaceBody(container, config, state, resetScroll) {
     </ul>
   `;
   bodyEl.scrollTop = scrollTop;
+
+  // Линии иерархии — по готовой раскладке. Шрифты могут догрузиться позже и
+  // поменять высоту строк, тогда перерисовываем, если список ещё на экране.
+  const listEl = bodyEl.querySelector(".workspace-list");
+  drawTreeGuides(listEl);
+  document.fonts.ready.then(() => {
+    if (listEl.isConnected) drawTreeGuides(listEl);
+  });
 
   // Пришли из поиска: показываем, какая именно папка нашлась. Метка одноразовая.
   if (state.flashFolderId) {
