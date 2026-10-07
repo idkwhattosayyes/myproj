@@ -125,27 +125,27 @@ button {
   margin-block: var(--scrollbar-inset, 0px);
 }
 
-/* Скруглённые прокручиваемые блоки: дорожка короче на половину радиуса угла —
-   этого хватает, чтобы полоса целиком лежала внутри скругления. */
+/* Скруглённые прокручиваемые блоки: дорожка короче на целый радиус угла —
+   полоса начинается и заканчивается там, где скругление уже закончилось. */
 .panel-detail,
 .panel-body {
-  --scrollbar-inset: calc(var(--radius-panel) / 2);
+  --scrollbar-inset: var(--radius-panel);
 }
 
 .settings-panel {
-  --scrollbar-inset: calc(var(--radius-modal) / 2);
+  --scrollbar-inset: var(--radius-modal);
 }
 
 .search-results,
 .quicknote-body-slot,
 .context-menu {
-  --scrollbar-inset: calc(var(--radius-toolbar) / 2);
+  --scrollbar-inset: var(--radius-toolbar);
 }
 
 .transfer-tree,
 .transfer-preview,
 .block-browser-list {
-  --scrollbar-inset: calc(var(--radius-button) / 2);
+  --scrollbar-inset: var(--radius-button);
 }
 
 /* Прозрачная рамка + background-clip: padding-box — ползунок тоньше самой
