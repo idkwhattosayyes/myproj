@@ -13,6 +13,10 @@
      прилипания панелей, чтобы они вставали под полоской, а не под её край.
      Обязательно в rem: floatingToolbar.js читает её как rem. */
   --topbar-height: 3.2rem;
+  /* Высота элементов шапки: поле поиска, круглые кнопки «#», «+», шестерёнка,
+     ссылка «На главную». В прототипе они 48px, но для рабочего инструмента, где
+     поиском пользуются постоянно, это слишком крупно — возвращены прежние ~32px. */
+  --topbar-control: 2rem;
 }
 
 /* JS прячет элементы атрибутом hidden (индикатор сохранения, окна, строки
@@ -124,16 +128,16 @@ input[type="checkbox"]:focus-visible {
 .back-link {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 1.25rem;
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 500;
   transition: opacity 0.15s;
 }
 
 .back-link .ph {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 /* Как у кнопки «Home» в прототипе: при наведении ссылка просто бледнеет. */
@@ -146,23 +150,23 @@ input[type="checkbox"]:focus-visible {
    zoom у кнопки: та же компенсация браузерного зума, что уже есть у .search-bar
    (search.css) — оба position:fixed, координаты не пересчитываем (в отличие
    от .panel, у которой position:sticky и своя система координат). */
-/* Круг 48px посередине шапки, как в прототипе. Окно настроек при открытии
-   вырастает именно из этого круга (см. playMorph в settingsPanel.js), поэтому
-   радиус — ровно половина стороны. */
+/* Круг посередине шапки, как в прототипе, размером с остальные элементы шапки.
+   Окно настроек при открытии вырастает именно из этого круга (см. playMorph в
+   settingsPanel.js), поэтому радиус — ровно половина стороны. */
 .settings-btn {
   position: fixed;
-  top: calc((var(--topbar-height) - 3rem) / 2);
-  right: 14px;
+  top: calc((var(--topbar-height) - var(--topbar-control)) / 2);
+  right: 1rem;
   z-index: 600;
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: var(--topbar-control);
+  height: var(--topbar-control);
   zoom: var(--ui-scale, 1);
   border: 1px solid var(--color-border);
   border-radius: 50%;
   background: var(--surface-field);
-  font-size: 22px;
+  font-size: 16px;
   line-height: 1;
   color: var(--text-primary);
   transition: var(--transition-theme);

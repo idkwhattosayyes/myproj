@@ -273,10 +273,10 @@
 @media (min-width: 840px) {
   html.is-notes-route .back-link {
     position: fixed;
-    top: calc((var(--topbar-height) - 3rem) / 2);
-    left: 14px;
+    top: calc((var(--topbar-height) - var(--topbar-control)) / 2);
+    left: 0.75rem;
     z-index: 500;
-    height: 3rem;
+    height: var(--topbar-control);
     margin: 0;
     zoom: var(--ui-scale, 1);
   }
