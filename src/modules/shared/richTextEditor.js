@@ -4337,9 +4337,12 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // экрана) — опускается на уровень самой точки. Клампинг по краям вьюпорта.
     const rect = bar.getBoundingClientRect();
     const GAP = 8;
+    // Над курсором панель стоит выше, чем отступ от краёв экрана: при прежних
+    // 8px она висела впритык к точке клика и давила на неё. 12px — на 50% больше.
+    const LIFT = 12;
     const LEFT_FRACTION = 0.25;
     const left = anchor.x - rect.width * LEFT_FRACTION;
-    let top = anchor.y - rect.height - GAP;
+    let top = anchor.y - rect.height - LIFT;
     if (top < GAP) top = anchor.y;
     bar.style.left = `${toCssPx(clamp(left, GAP, window.innerWidth - rect.width - GAP))}px`;
     bar.style.top = `${toCssPx(clamp(top, GAP, window.innerHeight - rect.height - GAP))}px`;
