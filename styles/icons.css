@@ -109,3 +109,10 @@
 .ph-user-circle::before { content: "\e4c4"; }
 .ph-waveform::before { content: "\e802"; }
 .ph-x::before { content: "\e4f6"; }
+
+/* Плюсы кнопок «создать» — своим начертанием, если тема его задала (см.
+   --icon-font-plus у «Полночи» в theme.css). */
+.quicknote-add .ph-plus,
+.panel-header-add .ph-plus {
+  font-family: var(--icon-font-plus, var(--icon-font, "Phosphor")) !important;
+}

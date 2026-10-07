@@ -89,7 +89,9 @@
   border: none;
   border-radius: var(--radius-pill);
   background: var(--surface-active);
-  font-size: 15px;
+  /* 16, а не 15: в круге 32px нечётная иконка встаёт на полпикселя и
+     размывается — крестик выглядит неровным и съехавшим. */
+  font-size: 16px;
   line-height: 1;
   color: var(--text-on-active);
   cursor: pointer;

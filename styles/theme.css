@@ -352,6 +352,9 @@
   --font-body: var(--font-ui);
   --font-heading-weight: 600;
   --icon-font: "Phosphor-Fill";
+  /* «Плюс» в залитом начертании — квадрат с прорезанным крестиком: в круглой
+     кнопке он смотрится кривой плашкой. Плюсы кнопок «создать» берут контурный. */
+  --icon-font-plus: "Phosphor";
 
   --surface-page: oklch(0.18 0.04 260);
   --surface-panel: oklch(0.22 0.045 260);
