@@ -96,6 +96,11 @@
      var() внутри custom property вычисляется на том же элементе (<html>), где
      уже действуют значения выбранной темы. */
   --surface-hover: var(--surface-chip);
+  /* Полосы прокрутки: в светлых темах — приглушённый серый ползунок на светлой
+     дорожке. Тёмные темы переопределяют их у себя (тёмный на ещё более тёмном). */
+  --scrollbar-track: color-mix(in oklch, var(--surface-chip) 45%, transparent);
+  --scrollbar-thumb: color-mix(in oklch, var(--text-muted) 45%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--text-muted) 70%, transparent);
   /* Карандаш и ярлыки заметок на главной — в прототипе их нет, поэтому их
      цвет смешан из трёх кружков темы: он всегда в одной гамме с ними. */
   --home-circle-pencil: color-mix(in oklch, var(--home-circle-notes) 50%, var(--home-circle-calendar));
@@ -210,6 +215,11 @@
   --home-circle-calendar: oklch(0.32 0.035 50);
   --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
   --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
+
+  /* Полоса прокрутки — тёмный ползунок на ещё более тёмной дорожке. */
+  --scrollbar-track: var(--surface-page);
+  --scrollbar-thumb: color-mix(in oklch, var(--surface-chip) 75%, var(--text-muted));
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--surface-chip) 50%, var(--text-muted));
 }
 
 /* ------------------------------------------------------------------
@@ -374,6 +384,11 @@
   --home-circle-calendar: oklch(0.32 0.07 300);
   --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
   --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
+
+  /* Полоса прокрутки — тёмный ползунок на ещё более тёмной дорожке. */
+  --scrollbar-track: var(--surface-page);
+  --scrollbar-thumb: color-mix(in oklch, var(--surface-chip) 75%, var(--text-muted));
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--surface-chip) 50%, var(--text-muted));
 }
 
 /* ------------------------------------------------------------------

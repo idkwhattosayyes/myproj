@@ -96,6 +96,42 @@ button {
   opacity: 1;
 }
 
+/* Полосы прокрутки в цветах темы — у всех прокручиваемых областей сразу:
+   окно, панель, поле заметки, окна-модалки, меню тегов.
+   scrollbar-color/-width — стандарт (Firefox, Chrome 121+); когда они заданы,
+   новый Chrome на ::-webkit-scrollbar уже не смотрит. Правила ::-webkit-* ниже —
+   для браузеров постарше, где стандартных свойств ещё нет. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+/* Прозрачная рамка + background-clip: padding-box — ползунок тоньше самой
+   полосы и не прилипает к краям дорожки. */
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Родные галочки и радиокнопки — в акцентном цвете темы, а не системном синем. */
 input[type="checkbox"],
 input[type="radio"] {
