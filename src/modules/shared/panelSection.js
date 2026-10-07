@@ -942,6 +942,25 @@ function indentForDepth(depth) {
   for (let i = 0; i < depth; i++) total += INDENT_STEPS[Math.min(i, INDENT_STEPS.length - 1)];
   return total;
 }
+
+// Где у строки уровня depth центр значка папки: отступ уровня плюс половина
+// значка (он ~12px). Под этой точкой и идёт вертикальная линия к детям.
+const TREE_GUIDE_OFFSET = 6;
+
+/**
+ * Вертикальные линии иерархии, как в прототипе: у вложенной строки по тонкой
+ * линии на каждый уровень над ней, ровно под значком папки этого уровня.
+ * Соседние строки стыкуются, поэтому линия тянется от раскрытой папки до её
+ * последнего вложенного элемента сплошной. pointer-events: none (см. .tree-guide)
+ * — линии не перехватывают ни клики, ни перетаскивание.
+ */
+function treeGuidesHtml(depth) {
+  let html = "";
+  for (let level = 0; level < depth; level++) {
+    html += `<span class="tree-guide" aria-hidden="true" style="left: ${indentForDepth(level) + TREE_GUIDE_OFFSET}px"></span>`;
+  }
+  return html;
+}
 // ------------------------------------------------------------------
 // Панель Workspace: фиксированные разделы сверху, под разделителем — содержимое
 // выбранного раздела.
@@ -1050,6 +1069,7 @@ function folderRowHtml(row) {
     <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
         data-folder-id="${folder.id}" data-context="${context}"
         style="padding-left: ${indentForDepth(depth)}px">
+      ${treeGuidesHtml(depth)}
       ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
@@ -1067,6 +1087,7 @@ function noteRowHtml(row) {
   return `
     <li class="item-list-row ${row.flat ? "" : "is-nested"} ${row.pinned ? "is-pinned" : ""} ${source}"
         data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
+      ${treeGuidesHtml(depth)}
       <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
       ${rowBadges(item, row.pinned)}
       ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}"><i class="ph ph-x"></i></button>` : ""}
