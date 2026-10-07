@@ -636,6 +636,44 @@ button.rte-link-preview-row:hover {
   overflow-wrap: anywhere;
 }
 
+/* Выгрузка в Word (noteExport.js) переносит в файл вычисленные цвета. На время
+   выгрузки бумага получает светлые значения при любой теме — иначе в документ
+   уехал бы светлый текст тёмной темы на белую страницу. */
+.rte-content.is-exporting {
+  --paper-bg: #ffffff;
+  --paper-ink: #1f2328;
+  --paper-link: #0969da;
+  --paper-muted: #9ca3af;
+  --paper-accent: #33507e;
+  --paper-line: #d0d7de;
+}
+
+/* Тёмная бумага (Тёмная, Полночь) и заметки, написанные под светлую. Меняется
+   только отображение, сами заметки не трогаем.
+   - Заливки из палитры светлые, а текст на них наследует светлый цвет тёмной
+     бумаги — не прочитать. Текст на заливке делаем тёмным (свой цвет текста
+     внутри заливки по-прежнему сильнее: он задан на вложенном элементе).
+     Прозрачная «заливка» остаётся от «Убрать заливку» — её не трогаем.
+   - Прежний «Сбросить цвет» записывал в заметку тёмный #1f2328 прямо тегом
+     <font>. На тёмной бумаге такой текст невидим — отдаём ему цвет бумаги. */
+:root[data-theme="dark"] .rte-content:not(.is-exporting) [style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]),
+:root[data-theme="midnight"] .rte-content:not(.is-exporting) [style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]) {
+  color: #1f2328;
+}
+
+:root[data-theme="dark"] .rte-content:not(.is-exporting) font[color="#1f2328"],
+:root[data-theme="midnight"] .rte-content:not(.is-exporting) font[color="#1f2328"] {
+  color: var(--paper-ink);
+}
+
+/* То же с рисунками: перо по умолчанию тёмное (#1f2328), и штрих им на тёмной
+   бумаге не виден. CSS-свойство stroke сильнее атрибута stroke у <path>, так
+   что в заметке цвет остаётся прежним, меняется только отображение. */
+:root[data-theme="dark"] .rte-content:not(.is-exporting) .rte-drawing-layer path[stroke="#1f2328"],
+:root[data-theme="midnight"] .rte-content:not(.is-exporting) .rte-drawing-layer path[stroke="#1f2328"] {
+  stroke: var(--paper-ink);
+}
+
 /* Дорожка под последней строкой. Одного scroll-padding-bottom на html (см.
    main.css) хватает только там, где ниже каретки ещё есть документ: у конца
    заметки прокрутка уже стоит на максимуме, и отодвигать строку от нижнего края
