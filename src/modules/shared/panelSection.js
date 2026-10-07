@@ -934,30 +934,39 @@ function childFoldersOf(state, parentId) {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
-// Каждый следующий уровень вложенности добавляет МЕНЬШЕ пикселей, чем
+// Каждый следующий уровень вложенности добавляет не больше пикселей, чем
 // предыдущий — иначе глубокая вложенность съедала бы всю ширину узкой панели.
-const INDENT_STEPS = [18, 13, 9, 6, 4]; // px; после исчерпания — фиксированный шаг 4px
+// Но и не меньше 12px: в этом зазоре слева от строки идёт линия иерархии (см.
+// treeGuidesHtml), и на шаге уже прежних 9/6/4px она налезала бы на саму строку.
+const INDENT_STEPS = [18, 16, 14, 12]; // px; после исчерпания — фиксированный шаг 12px
 function indentForDepth(depth) {
   let total = 0;
   for (let i = 0; i < depth; i++) total += INDENT_STEPS[Math.min(i, INDENT_STEPS.length - 1)];
   return total;
 }
 
-// Где у строки уровня depth центр значка папки: отступ уровня плюс половина
-// значка (он ~12px). Под этой точкой и идёт вертикальная линия к детям.
-const TREE_GUIDE_OFFSET = 6;
+// Где у строки центр значка папки, от её левого края: внутренний отступ строки
+// (0.35em ≈ 4px) плюс половина значка (≈ 6px). Под этой точкой и идёт
+// вертикальная линия к детям.
+const TREE_GUIDE_OFFSET = 9;
 
 /**
- * Вертикальные линии иерархии, как в прототипе: у вложенной строки по тонкой
- * линии на каждый уровень над ней, ровно под значком папки этого уровня.
- * Соседние строки стыкуются, поэтому линия тянется от раскрытой папки до её
- * последнего вложенного элемента сплошной. pointer-events: none (см. .tree-guide)
- * — линии не перехватывают ни клики, ни перетаскивание.
+ * Вертикальные линии иерархии, как в прототипе. Вложенная строка целиком
+ * сдвинута вправо (отступ — внешний, margin; см. --indent в panels.css), и линия
+ * идёт в этом зазоре слева от строки, а не поверх неё: фон и подсветка строки
+ * начинаются правее линии.
+ *
+ * У строки уровня depth — по линии на каждый уровень над ней, под значком папки
+ * этого уровня. Координата считается от левого края самой строки, поэтому
+ * отрицательная. Соседние строки стыкуются, и линия тянется от раскрытой папки
+ * до её последнего вложенного элемента сплошной. pointer-events: none (см.
+ * .tree-guide) — линии не перехватывают ни клики, ни перетаскивание.
  */
 function treeGuidesHtml(depth) {
   let html = "";
   for (let level = 0; level < depth; level++) {
-    html += `<span class="tree-guide" aria-hidden="true" style="left: ${indentForDepth(level) + TREE_GUIDE_OFFSET}px"></span>`;
+    const left = indentForDepth(level) + TREE_GUIDE_OFFSET - indentForDepth(depth);
+    html += `<span class="tree-guide" aria-hidden="true" style="--guide-left: ${left}px"></span>`;
   }
   return html;
 }
@@ -1068,7 +1077,7 @@ function folderRowHtml(row) {
   return `
     <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
         data-folder-id="${folder.id}" data-context="${context}"
-        style="padding-left: ${indentForDepth(depth)}px">
+        style="--indent: ${indentForDepth(depth)}px">
       ${treeGuidesHtml(depth)}
       ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
@@ -1081,9 +1090,9 @@ function folderRowHtml(row) {
 function noteRowHtml(row) {
   const { item, depth, context } = row;
   const source = isDragSource("item", item.id) ? "is-drag-source" : "";
-  // Отступ — только у заметок внутри папок; у плоских списков остаётся обычный
-  // внутренний отступ строки из CSS.
-  const indent = depth > 0 ? `style="padding-left: ${indentForDepth(depth)}px"` : "";
+  // Отступ — только у заметок внутри папок, и внешний (--indent → margin в
+  // panels.css): слева от строки остаётся зазор под линию иерархии.
+  const indent = depth > 0 ? `style="--indent: ${indentForDepth(depth)}px"` : "";
   return `
     <li class="item-list-row ${row.flat ? "" : "is-nested"} ${row.pinned ? "is-pinned" : ""} ${source}"
         data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
