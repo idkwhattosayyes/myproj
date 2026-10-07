@@ -1,15 +1,15 @@
 /* Экран авторизации. Карточка — обычный .modal-box (как везде на сайте),
-   новый тут только акцентный цвет кнопки входа. */
+   новый тут только акцентный цвет кнопки входа — акцент текущей темы. */
 
 .btn-accent {
-  background: #f97316;
-  border-color: #f97316;
-  color: #ffffff;
+  background: var(--text-accent);
+  border-color: var(--text-accent);
+  color: var(--text-on-strong);
 }
 
 .btn-accent:hover {
-  background: #ea6a0c;
-  border-color: #ea6a0c;
+  background: color-mix(in oklch, var(--text-accent) 85%, var(--text-primary));
+  border-color: color-mix(in oklch, var(--text-accent) 85%, var(--text-primary));
 }
 
 .modal-box.auth-box {
@@ -44,12 +44,12 @@
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
-  color: #57606a;
+  color: var(--text-muted);
   padding: 0.2rem;
 }
 
 .auth-back-btn:hover {
-  color: #24292f;
+  color: var(--text-primary);
 }
 
 /* "Login from services" — Google ещё не включён в Supabase, кнопка временно
@@ -64,13 +64,13 @@
 .auth-google-overlay {
   position: absolute;
   inset: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-button);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 0.4rem;
-  background: rgba(20, 24, 30, 0.6);
-  color: #ffffff;
+  background: color-mix(in oklch, var(--text-primary) 70%, transparent);
+  color: var(--surface-page);
   font-size: 0.7rem;
   font-weight: 500;
   text-align: center;
@@ -107,22 +107,22 @@
   padding: 0.25rem;
   font-size: 1rem;
   line-height: 1;
-  color: #57606a;
+  color: var(--text-muted);
   cursor: pointer;
 }
 
 .auth-password-toggle:hover {
-  color: #24292f;
+  color: var(--text-primary);
 }
 
 .auth-password-toggle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 .auth-error {
-  color: #b91c1c;
+  color: var(--text-danger);
   font-size: 0.85rem;
   margin: -0.3rem 0 0.6rem;
 }
@@ -150,7 +150,7 @@
 }
 
 .auth-hint {
-  color: #57606a;
+  color: var(--text-muted);
   font-size: 0.85rem;
   margin: -0.3rem 0 0.6rem;
 }

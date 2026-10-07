@@ -129,7 +129,7 @@ export function openBlockTagsBrowser(tagIds) {
         return `
         <span class="block-browser-chip" style="--tag-color:${tag ? tag.color : "transparent"}">
           ${escapeHtml(tag ? tag.name : "?")}
-          <button type="button" class="block-browser-chip-remove" data-tag-id="${id}" title="${t("blockBrowser.removeFilter")}">✕</button>
+          <button type="button" class="block-browser-chip-remove" data-tag-id="${id}" title="${t("blockBrowser.removeFilter")}"><i class="ph ph-x"></i></button>
         </span>`;
       })
       .join("");

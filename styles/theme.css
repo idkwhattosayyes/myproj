@@ -1,0 +1,463 @@
+/* Темы оформления — единственное место, где живут цвета, шрифты, радиусы и
+   тени интерфейса. Остальные файлы стилей берут их только через var(--…),
+   поэтому палитра правится здесь и больше нигде.
+
+   Значения перенесены из прототипа редизайна один в один (цвета в oklch).
+   Тема выбирается атрибутом data-theme на <html> — его ставит скрипт в
+   <head> index.html до первой отрисовки (см. src/settings/themeSetting.js).
+   Без атрибута действует светлая тема: её значения заданы прямо на :root.
+
+   Имена — по смыслу, а не по виду («текст основной», а не «тёмно-серый»):
+   у тёмной темы основной текст светлый, и имя «тёмно-серый» там врало бы.
+
+   «Бумага» — поле текста заметки (--paper-*). В светлых темах — цвет панели
+   прототипа, в Тёмной и Полночи — тёмное, чуть светлее панели. Цвета бумаги в
+   hex: «Сбросить цвет» записывает их прямо в заметку. Экспорт в Word на время
+   выгрузки возвращает бумаге светлые значения (.rte-content.is-exporting в
+   editor.css), так что файл получается светлым при любой теме.
+
+   ВНЕ тем лежат палитры, из которых пользователь выбирает цвет букв, заливки и
+   пера (первый блок :root ниже). Выбранное значение пишется в саму заметку,
+   поэтому палитры от темы не зависят. */
+
+:root {
+  /* --- Палитра цвета текста (кнопка «A» в тулбаре) --- */
+  --text-color-red: #e03131;
+  --text-color-orange: #f08c00;
+  --text-color-green: #2f9e44;
+  --text-color-blue: #1971c2;
+  --text-color-violet: #7048e8;
+  --text-color-gray: #495057;
+
+  /* --- Палитра заливки под текстом. Светлая, иначе текст на ней не читается. --- */
+  --highlight-yellow: #fff3a3;
+  --highlight-orange: #ffd8a8;
+  --highlight-green: #b2f2bb;
+  --highlight-blue: #a5d8ff;
+  --highlight-violet: #d0bfff;
+  --highlight-red: #ffc9c9;
+
+  /* --- Перо рисования по умолчанию и «сброс цвета» текста --- */
+  --draw-color-default: #1f2328;
+
+  /* --- «Бумага»: служебные цвета внутри поля заметки для светлой бумаги. Фон
+     и основной текст задаёт тема (--paper-bg / --paper-ink ниже); тёмные темы
+     переопределяют и эти. Hex, а не oklch — их переносит экспорт в Word. --- */
+  --paper-link: #0969da;
+  --paper-muted: #9ca3af;
+  --paper-accent: #33507e;
+  --paper-line: #d0d7de;
+  --paper-sheet-shadow: 0 1px 3px rgba(15, 23, 42, 0.1), 0 0 0 1px #e5e7eb;
+  --paper-overflow: #d3c4a5;
+
+  /* --- Текст поверх цвета тега (цвет тега выбирает пользователь, он от темы
+     не зависит, поэтому и текст на нём — тоже) --- */
+  --text-on-tag: #ffffff;
+
+  /* --- Подпись на пастельных кружках месяцев в календаре: кружки светлые во
+     всех темах, поэтому и подпись на них постоянная, тёмная. (Кружки главной —
+     свои у каждой темы, см. --home-circle-* в блоках тем ниже.) --- */
+  --home-circle-ink: #22303b;
+  --home-circle-ink-muted: #55606b;
+  /* Затемнение поверх кружка главной с подсказкой «скоро» — тёмное в любой
+     теме, белый текст на нём читается всегда. */
+  --home-circle-scrim: oklch(0 0 0 / 0.55);
+
+  /* --- Календарь: кружки месяцев (той же пастельной породы, что кружки
+     главной) и маркер «в этот день есть записи». --- */
+  --calendar-month-circle: #cfe1f0;
+  --calendar-marker: #e8590c;
+
+  /* --- Подсветка найденного поиском: жёлтая во всех темах, текст на ней всегда тёмный --- */
+  --search-hit-bg: #ffd43b;
+  --search-hit-ink: #1f2328;
+
+  /* --- Общие для всех тем --- */
+  --radius-pill: 999px;
+  --radius-button: 10px;
+  --radius-segment: 7px;
+  --radius-modal: 20px;
+  --overlay-backdrop: oklch(0.2 0 0 / 0.4);
+  /* Та же подложка, но прозрачная — к ней анимируется затемнение при закрытии
+     окон: переход к другому цвету дал бы сдвиг оттенка посреди анимации. */
+  --overlay-backdrop-clear: oklch(0.2 0 0 / 0);
+  --shadow-modal: 0 40px 80px -30px oklch(0 0 0 / 0.5);
+  /* Нейтральная обводка превью темы в настройках: одна на все темы, чтобы
+     светлое превью было видно на тёмном окне и наоборот. */
+  --swatch-outline: oklch(0.5 0 0 / 0.15);
+  /* Меню и всплывающие панели — тень мягче, чем у окон: они маленькие и
+     висят прямо над содержимым. */
+  --shadow-popover: 0 16px 40px -18px oklch(0 0 0 / 0.35);
+  /* Тени кружков (--shadow-circle и -hover) — свои у каждой темы, см. блоки
+     ниже. Здесь только точка в центре главной — совсем короткая. */
+  --shadow-dot: 0 2px 6px oklch(0 0 0 / 0.15);
+  --transition-theme: background-color 0.3s, color 0.3s, border-color 0.3s;
+
+  /* Производные — от токенов темы, поэтому переключаются вместе с ней.
+     var() внутри custom property вычисляется на том же элементе (<html>), где
+     уже действуют значения выбранной темы. */
+  --surface-hover: var(--surface-chip);
+  /* Полосы прокрутки: в светлых темах — приглушённый серый ползунок на светлой
+     дорожке. Тёмные темы переопределяют их у себя (тёмный на ещё более тёмном). */
+  --scrollbar-track: color-mix(in oklch, var(--surface-chip) 45%, transparent);
+  --scrollbar-thumb: color-mix(in oklch, var(--text-muted) 45%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--text-muted) 70%, transparent);
+  /* Карандаш и ярлыки заметок на главной — в прототипе их нет, поэтому их
+     цвет смешан из трёх кружков темы: он всегда в одной гамме с ними. */
+  --home-circle-pencil: color-mix(in oklch, var(--home-circle-notes) 50%, var(--home-circle-calendar));
+  --home-circle-custom: color-mix(in oklch, var(--home-circle-ai) 50%, var(--home-circle-calendar));
+}
+
+/* ------------------------------------------------------------------
+   Светлая — по умолчанию
+   ------------------------------------------------------------------ */
+:root,
+:root[data-theme="light"],
+[data-theme-preview="light"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(1 0 0);
+  --surface-panel: oklch(0.985 0.006 255);
+  --surface-field: oklch(0.975 0.006 255);
+  --surface-chip: oklch(0.94 0.008 255);
+  --surface-modal: oklch(0.995 0.003 255);
+  --surface-toolbar: oklch(0.995 0.004 255 / 0.9);
+  --surface-active: oklch(0.92 0.045 250);
+  --surface-pinned: oklch(0.96 0.012 170);
+  --surface-strong: oklch(0.36 0.07 258);
+
+  --text-primary: oklch(0.36 0.025 258);
+  --text-muted: oklch(0.58 0.012 258);
+  --text-on-active: oklch(0.36 0.07 258);
+  --text-on-strong: oklch(0.98 0.005 255);
+  --text-accent: oklch(0.55 0.12 255);
+  --text-danger: oklch(0.55 0.15 25);
+  --color-heart: oklch(0.72 0.11 15);
+
+  --color-border: oklch(0.94 0.006 255);
+  --color-separator: oklch(0.91 0.008 255);
+  --selection-bg: oklch(0.55 0.12 255 / 0.16);
+
+  --shadow-panel: 0 24px 60px -34px oklch(0.4 0.03 258 / 0.3);
+  --radius-panel: 20px;
+  --radius-item: 10px;
+  --radius-toolbar: 14px;
+
+  --paper-bg: #f7fafe;
+  --paper-ink: #353e4a;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.89 0.08 70);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.9 0.04 170);
+  --home-circle-ai: oklch(0.89 0.015 280);
+  --home-circle-calendar: oklch(0.89 0.04 295);
+  --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
+  --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
+}
+
+/* ------------------------------------------------------------------
+   Тёмная
+   ------------------------------------------------------------------ */
+:root[data-theme="dark"],
+[data-theme-preview="dark"] {
+  color-scheme: dark;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.155 0 0);
+  --surface-panel: oklch(0.2 0 0);
+  --surface-field: oklch(0.2 0 0);
+  --surface-chip: oklch(0.26 0 0);
+  --surface-modal: oklch(0.2 0 0);
+  --surface-toolbar: oklch(0.22 0 0 / 0.9);
+  --surface-active: oklch(0.72 0.08 250 / 0.16);
+  --surface-pinned: oklch(0.78 0.05 170 / 0.07);
+  --surface-strong: oklch(0.9 0.05 250);
+
+  --text-primary: oklch(0.88 0 0);
+  --text-muted: oklch(0.65 0 0);
+  --text-on-active: oklch(0.9 0.05 250);
+  --text-on-strong: oklch(0.17 0 0);
+  --text-accent: oklch(0.74 0.1 250);
+  --text-danger: oklch(0.76 0.11 25);
+  --color-heart: oklch(0.72 0.11 15);
+
+  --color-border: oklch(1 0 0 / 0.07);
+  --color-separator: oklch(1 0 0 / 0.08);
+  --selection-bg: oklch(0.74 0.1 250 / 0.28);
+
+  --shadow-panel: 0 24px 60px -30px oklch(0.9 0.02 250 / 0.06);
+  --radius-panel: 20px;
+  --radius-item: 10px;
+  --radius-toolbar: 14px;
+
+  /* Поле заметки в тон темы — чуть светлее панели, на которой лежит. Hex, а
+     не oklch: «Сбросить цвет» записывает цвет текста бумаги прямо в заметку.
+     Служебные цвета бумаги (ссылки, линии, приглушённое) тоже свои: светлые
+     значения из общего блока на тёмном поле терялись бы. */
+  --paper-bg: #1e1e1e;
+  --paper-ink: #d7d7d7;
+  --paper-link: #79b0e8;
+  --paper-muted: #8f8f8f;
+  --paper-accent: #79b0e8;
+  --paper-line: #3d3d3d;
+  --paper-sheet-shadow: 0 0 0 1px #3d3d3d;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.8 0.1 70 / 0.16);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.32 0.04 170);
+  --home-circle-ai: oklch(0.3 0.015 280);
+  --home-circle-calendar: oklch(0.32 0.035 50);
+  --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
+  --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
+
+  /* Полоса прокрутки — тёмный ползунок на ещё более тёмной дорожке. */
+  --scrollbar-track: var(--surface-page);
+  --scrollbar-thumb: color-mix(in oklch, var(--surface-chip) 75%, var(--text-muted));
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--surface-chip) 50%, var(--text-muted));
+}
+
+/* ------------------------------------------------------------------
+   Шалфей
+   ------------------------------------------------------------------ */
+:root[data-theme="sage"],
+[data-theme-preview="sage"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.95 0.015 150);
+  --surface-panel: oklch(0.985 0.006 150);
+  --surface-field: oklch(0.985 0.006 150);
+  --surface-chip: oklch(0.93 0.02 150);
+  --surface-modal: oklch(0.985 0.006 150);
+  --surface-toolbar: oklch(0.97 0.01 150 / 0.92);
+  --surface-active: oklch(0.9 0.04 155);
+  --surface-pinned: oklch(0.95 0.025 120);
+  --surface-strong: oklch(0.45 0.07 160);
+
+  --text-primary: oklch(0.3 0.03 160);
+  --text-muted: oklch(0.55 0.03 160);
+  --text-on-active: oklch(0.32 0.06 160);
+  --text-on-strong: oklch(0.98 0.01 150);
+  --text-accent: oklch(0.55 0.08 160);
+  --text-danger: oklch(0.55 0.13 25);
+  --color-heart: oklch(0.65 0.12 25);
+
+  --color-border: oklch(0.92 0.015 150);
+  --color-separator: oklch(0.91 0.015 150);
+  --selection-bg: oklch(0.55 0.08 160 / 0.18);
+
+  --shadow-panel: 0 8px 24px -16px oklch(0.4 0.05 160 / 0.4);
+  --radius-panel: 18px;
+  --radius-item: 12px;
+  --radius-toolbar: 14px;
+
+  --paper-bg: #f7fbf8;
+  --paper-ink: #203329;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.92 0.07 95);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.88 0.05 155);
+  --home-circle-ai: oklch(0.9 0.03 110);
+  --home-circle-calendar: oklch(0.88 0.035 200);
+  --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
+  --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
+}
+
+/* ------------------------------------------------------------------
+   Сепия — единственная тема с другим шрифтом (с засечками). Это
+   осознанный выбор прототипа: шрифт не унифицируем.
+   ------------------------------------------------------------------ */
+:root[data-theme="sepia"],
+[data-theme-preview="sepia"] {
+  color-scheme: light;
+
+  --font-ui: "Literata", Georgia, "Times New Roman", serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 500;
+  --icon-font: "Phosphor";
+
+  --surface-page: oklch(0.9 0.035 75);
+  --surface-panel: oklch(0.93 0.03 78);
+  --surface-field: oklch(0.93 0.03 78);
+  --surface-chip: oklch(0.87 0.04 72);
+  --surface-modal: oklch(0.93 0.03 78);
+  --surface-toolbar: oklch(0.91 0.032 76 / 0.94);
+  --surface-active: oklch(0.86 0.05 70);
+  --surface-pinned: oklch(0.9 0.04 100);
+  --surface-strong: oklch(0.42 0.06 50);
+
+  --text-primary: oklch(0.33 0.04 55);
+  --text-muted: oklch(0.52 0.04 55);
+  --text-on-active: oklch(0.33 0.05 50);
+  --text-on-strong: oklch(0.94 0.03 78);
+  --text-accent: oklch(0.45 0.07 50);
+  --text-danger: oklch(0.5 0.13 30);
+  --color-heart: oklch(0.55 0.12 30);
+
+  --color-border: oklch(0.85 0.04 70);
+  --color-separator: oklch(0.84 0.04 70);
+  --selection-bg: oklch(0.45 0.07 50 / 0.18);
+
+  --shadow-panel: none;
+  --radius-panel: 12px;
+  --radius-item: 8px;
+  --radius-toolbar: 10px;
+
+  --paper-bg: #f3e6d2;
+  --paper-ink: #463021;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.86 0.1 85);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.84 0.05 70);
+  --home-circle-ai: oklch(0.85 0.04 40);
+  --home-circle-calendar: oklch(0.84 0.035 110);
+  --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
+  --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
+}
+
+/* ------------------------------------------------------------------
+   Полночь — иконки залитые
+   ------------------------------------------------------------------ */
+:root[data-theme="midnight"],
+[data-theme-preview="midnight"] {
+  color-scheme: dark;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor-Fill";
+
+  --surface-page: oklch(0.18 0.04 260);
+  --surface-panel: oklch(0.22 0.045 260);
+  --surface-field: oklch(0.22 0.045 260);
+  --surface-chip: oklch(0.27 0.05 260);
+  --surface-modal: oklch(0.22 0.045 260);
+  --surface-toolbar: oklch(0.2 0.04 260 / 0.92);
+  --surface-active: oklch(0.8 0.12 190 / 0.16);
+  --surface-pinned: oklch(0.8 0.12 190 / 0.06);
+  --surface-strong: oklch(0.8 0.12 190);
+
+  --text-primary: oklch(0.92 0.02 250);
+  --text-muted: oklch(0.68 0.03 250);
+  --text-on-active: oklch(0.85 0.11 190);
+  --text-on-strong: oklch(0.18 0.04 260);
+  --text-accent: oklch(0.8 0.12 190);
+  --text-danger: oklch(0.75 0.13 20);
+  --color-heart: oklch(0.75 0.14 10);
+
+  --color-border: oklch(0.8 0.12 190 / 0.12);
+  --color-separator: oklch(1 0 0 / 0.08);
+  --selection-bg: oklch(0.8 0.12 190 / 0.25);
+
+  --shadow-panel: 0 0 40px -20px oklch(0.8 0.12 190 / 0.25);
+  --radius-panel: 18px;
+  --radius-item: 12px;
+  --radius-toolbar: 14px;
+
+  /* Поле заметки в тон темы — чуть светлее панели, на которой лежит. Hex, а
+     не oklch: «Сбросить цвет» записывает цвет текста бумаги прямо в заметку.
+     Служебные цвета бумаги (ссылки, линии, приглушённое) тоже свои: светлые
+     значения из общего блока на тёмном поле терялись бы. */
+  --paper-bg: #17243a;
+  --paper-ink: #dbe6f2;
+  --paper-link: #47d6cf;
+  --paper-muted: #8b9aab;
+  --paper-accent: #47d6cf;
+  --paper-line: #34435b;
+  --paper-sheet-shadow: 0 0 0 1px #34435b;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.8 0.12 90 / 0.18);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.32 0.07 190);
+  --home-circle-ai: oklch(0.3 0.05 260);
+  --home-circle-calendar: oklch(0.32 0.07 300);
+  --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
+  --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
+
+  /* Полоса прокрутки — тёмный ползунок на ещё более тёмной дорожке. */
+  --scrollbar-track: var(--surface-page);
+  --scrollbar-thumb: color-mix(in oklch, var(--surface-chip) 75%, var(--text-muted));
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--surface-chip) 50%, var(--text-muted));
+}
+
+/* ------------------------------------------------------------------
+   Песок — иконки тонкие
+   ------------------------------------------------------------------ */
+:root[data-theme="sand"],
+[data-theme-preview="sand"] {
+  color-scheme: light;
+
+  --font-ui: "DM Sans", "Manrope", "Segoe UI", Arial, system-ui, sans-serif;
+  --font-heading: var(--font-ui);
+  --font-body: var(--font-ui);
+  --font-heading-weight: 600;
+  --icon-font: "Phosphor-Light";
+
+  --surface-page: oklch(0.93 0.012 70);
+  --surface-panel: oklch(0.97 0.008 70);
+  --surface-field: oklch(0.97 0.008 70);
+  --surface-chip: oklch(0.92 0.012 70);
+  --surface-modal: oklch(0.97 0.008 70);
+  --surface-toolbar: oklch(0.95 0.01 70 / 0.94);
+  --surface-active: oklch(0.9 0.04 20);
+  --surface-pinned: oklch(0.94 0.02 60);
+  --surface-strong: oklch(0.28 0.01 50);
+
+  --text-primary: oklch(0.28 0.01 50);
+  --text-muted: oklch(0.52 0.01 50);
+  --text-on-active: oklch(0.42 0.1 20);
+  --text-on-strong: oklch(0.97 0.008 70);
+  --text-accent: oklch(0.68 0.11 20);
+  --text-danger: oklch(0.55 0.13 25);
+  --color-heart: oklch(0.68 0.11 20);
+
+  --color-border: oklch(0.9 0.01 70);
+  --color-separator: oklch(0.9 0.01 70);
+  --selection-bg: oklch(0.68 0.11 20 / 0.18);
+
+  --shadow-panel: none;
+  --radius-panel: 16px;
+  --radius-item: 10px;
+  --radius-toolbar: 12px;
+
+  --paper-bg: #f9f4ef;
+  --paper-ink: #2d2825;
+  /* Цвет «маркера» темы — третья точка на карточке темы в настройках. */
+  --theme-swatch-mark: oklch(0.9 0.06 80);
+
+  /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
+     AI, Календарь), и своя тень: у тёмных тем глубже. */
+  --home-circle-notes: oklch(0.89 0.04 20);
+  --home-circle-ai: oklch(0.9 0.02 70);
+  --home-circle-calendar: oklch(0.89 0.035 120);
+  --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
+  --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
+}

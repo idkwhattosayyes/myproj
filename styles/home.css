@@ -8,7 +8,7 @@
      Переменная та же, от которой пляшет .app-view в main.css. Высоту это не
      раздувает — box-sizing: border-box, padding входит в те же 100vh. */
   padding: calc(var(--topbar-height) + 1rem) 2rem 2rem;
-  background: #fbfbf9;
+  background: var(--surface-page);
 }
 
 /* Линии-указатели от каждого кружка к центру экрана, под кружками по z-index.
@@ -21,11 +21,10 @@
   z-index: 0;
 }
 
+/* Линии к центру — как в прототипе: цвет разделителя темы, толщина 1.5. */
 .home-lines line {
-  /* Фон главной страницы светлый — белая линия на нём не видна, поэтому
-     используем тёмный полупрозрачный оттенок вместо буквально белого. */
-  stroke: rgba(34, 48, 59, 0.35);
-  stroke-width: 1;
+  stroke: var(--color-separator);
+  stroke-width: 1.5;
 }
 
 /* Контейнер фиксированного размера — кружки позиционируются абсолютно
@@ -55,18 +54,25 @@
   width: clamp(120px, calc(16vw / var(--app-zoom, 1)), 172px);
   height: clamp(120px, calc(16vw / var(--app-zoom, 1)), 172px);
   transform: translate(-50%, -50%) translate(var(--tx, 0px), var(--ty, 0px)) scale(var(--scale));
+  /* Форма — живая «капля» из прототипа: скругление углов медленно перетекает
+     (@keyframes home-blob ниже), у каждого кружка со своей скоростью и фазой.
+     Меняется только border-radius — габариты кружка прежние, поэтому раскладка
+     и проверка пересечений (circleLayout.js, считает диаметром) не задеты. */
   border-radius: 50%;
+  animation: home-blob 10s ease-in-out infinite alternate;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 0 1rem;
-  color: #22303b;
+  color: var(--text-primary);
   font-weight: 600;
   font-size: 1.05rem;
   text-decoration: none;
-  box-shadow: 0 6px 18px rgba(34, 48, 59, 0.1);
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  box-shadow: var(--shadow-circle);
+  /* Пружинистое увеличение при наведении и плавная смена цвета с темой —
+     как в прототипе. */
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease, background-color 0.3s;
   cursor: pointer;
   /* draggable="false" в разметке браузер иногда игнорирует для <a> — эти
      свойства гасят нативный drag ссылки, чтобы не появлялся курсор "запрещено". */
@@ -76,13 +82,13 @@
 
 .home-circle:hover,
 .home-circle:focus-visible {
-  --scale: 1.06;
-  box-shadow: 0 16px 32px rgba(34, 48, 59, 0.18);
+  --scale: 1.04;
+  box-shadow: var(--shadow-circle-hover);
   text-decoration: none;
 }
 
 .home-circle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 4px;
 }
 
@@ -91,30 +97,64 @@
 .home-circle--notes {
   top: 20%;
   left: 50%;
-  background: #cfe8de;
+  background: var(--home-circle-notes);
+  animation-duration: 9s;
 }
 
 .home-circle--calendar {
   top: 65%;
   left: 76%;
-  background: #dcd8ee;
+  background: var(--home-circle-calendar);
+  animation-duration: 10s;
+  animation-delay: -6s;
 }
 
+/* AI пока недоступен — подпись приглушённая. */
 .home-circle--ai {
   top: 65%;
   left: 24%;
-  background: #d8dbe1;
-  color: #55606b;
+  background: var(--home-circle-ai);
+  color: var(--text-muted);
+  animation-duration: 11s;
+  animation-delay: -3s;
 }
 
 /* Карандаш и кастомные ярлыки на заметки — top/left им не нужны, координаты
-   считает JS (positionExtraCircles в homeView.js), здесь только фон. */
+   считает JS (positionExtraCircles в homeView.js), здесь только фон и своя
+   фаза «капли», чтобы соседние кружки не перетекали в такт. */
 .home-circle--pencil {
-  background: #f3e3c3;
+  background: var(--home-circle-pencil);
+  animation-duration: 12s;
+  animation-delay: -2s;
+}
+
+/* Карандаш — иконка Phosphor вместо прежнего эмодзи. Эмодзи рисовался крупнее
+   букв, иконка по умолчанию ровно в букву, поэтому увеличиваем её до прежнего
+   размера на глаз. */
+.home-circle--pencil .ph {
+  font-size: 1.8em;
 }
 
 .home-circle--custom {
-  background: #f0d9d9;
+  background: var(--home-circle-custom);
+  animation-duration: 13s;
+  animation-delay: -8s;
+}
+
+/* Скругление «капли» — четыре кадра из прототипа. */
+@keyframes home-blob {
+  0% { border-radius: 58% 42% 55% 45% / 52% 45% 55% 48%; }
+  33% { border-radius: 45% 55% 48% 52% / 58% 50% 50% 42%; }
+  66% { border-radius: 52% 48% 40% 60% / 46% 58% 42% 54%; }
+  100% { border-radius: 42% 58% 56% 44% / 55% 42% 58% 45%; }
+}
+
+/* Кто попросил систему поменьше двигать на экране — кружки остаются круглыми. */
+@media (prefers-reduced-motion: reduce) {
+  .home-circle,
+  .home-add-circle {
+    animation: none;
+  }
 }
 
 /* Маленький вечный кружок в самой точке схождения линий — position: fixed
@@ -135,32 +175,35 @@
   transition: transform 0.15s ease;
   border: none;
   border-radius: 50%;
-  background: #e7e9ec;
+  /* Та же «капля», что у больших кружков, только быстрее — как в прототипе. */
+  animation: home-blob 7s ease-in-out infinite alternate;
+  background: var(--surface-chip);
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(34, 48, 59, 0.15);
+  box-shadow: var(--shadow-dot);
 }
 
 .home-add-circle:hover,
 .home-add-circle:focus-visible {
   --scale: 1.25;
-  background: #dadde1;
+  background: color-mix(in oklch, var(--surface-chip) 80%, var(--text-primary));
 }
 
 .home-add-circle:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 2px;
 }
 
 .home-circle-overlay {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
+  /* inherit — затемнение повторяет текущую форму «капли», а не круг. */
+  border-radius: inherit;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 1rem;
-  background: rgba(20, 24, 30, 0.6);
-  color: #ffffff;
+  background: var(--home-circle-scrim);
+  color: var(--text-on-tag);
   font-size: 0.82rem;
   font-weight: 500;
   text-align: center;
@@ -199,22 +242,22 @@
   width: 1.4rem;
   height: 1.4rem;
   padding: 0;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 50%;
-  background: #ffffff;
-  color: #9ca3af;
+  background: var(--surface-field);
+  color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .home-circle--pencil .home-circle-dismiss:hover {
-  color: #b91c1c;
-  border-color: #f3c4c4;
+  color: var(--text-danger);
+  border-color: var(--text-danger);
 }
 
 .home-circle--pencil .home-circle-dismiss:focus-visible {
-  outline: 2px solid #33507e;
+  outline: 2px solid var(--text-accent);
   outline-offset: 2px;
 }
 

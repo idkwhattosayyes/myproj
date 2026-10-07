@@ -500,13 +500,13 @@ function render(container, config, state) {
   state.detailScrolled = false;
 
   container.innerHTML = `
-    <a href="#/" class="back-link">${t("nav.backHome")}</a>
+    <a href="#/" class="back-link"><i class="ph ph-arrow-left"></i>${t("nav.backHome")}</a>
     <div class="panel-layout">
       <aside class="panel panel-workspace ${state.panelCollapsed ? "is-collapsed" : ""}">
         <div class="panel-header">
-          <button type="button" class="panel-toggle" data-action="toggle-panel" title="${t("panel.togglePanel")}">☰</button>
+          <button type="button" class="panel-toggle" data-action="toggle-panel" title="${t("panel.togglePanel")}"><i class="ph ph-list"></i></button>
           <span class="panel-title">${t("panel.workspace")}</span>
-          <button type="button" class="btn btn-small panel-header-add" data-action="new-entry">+</button>
+          <button type="button" class="btn btn-small panel-header-add" data-action="new-entry"><i class="ph ph-plus"></i></button>
         </div>
         <ul class="workspace-sections" data-role="workspace-sections"></ul>
         <div class="panel-body" data-role="workspace-body"></div>
@@ -881,11 +881,11 @@ function isDropInto(el, event) {
 // ли булавку в текущем контексте: у папок закрепление глобальное (folder.pinned), у
 // заметок — своё для каждого места показа (см. isPinnedIn).
 function rowBadges(entity, showPin) {
-  const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}">♥</span>` : "";
+  const heart = entity.isFavorite ? `<span class="fav-heart" title="${t("panel.favorites")}"><i class="ph ph-heart"></i></span>` : "";
   // Булавка — инлайн-SVG с fill="currentColor": цвет задаём в CSS (#C2D1C9), как у
   // сердечка. Эмодзи 📌 не красится, поэтому именно SVG.
   const pin = showPin
-    ? `<span class="pin-badge" title="${t("panel.pinned")}"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M8 1c-2.5 0-4.5 2-4.5 4.5 0 3.4 4.5 9 4.5 9s4.5-5.6 4.5-9C12.5 3 10.5 1 8 1zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4z"/></svg></span>`
+    ? `<span class="pin-badge" title="${t("panel.pinned")}"><i class="ph ph-push-pin-simple"></i></span>`
     : "";
   return heart + pin;
 }
@@ -894,7 +894,7 @@ function rowBadges(entity, showPin) {
 // чтобы цвет задавался в CSS и наследовался от текста строки. В «Избранном» папки и
 // заметки идут одним списком, и без значка их не отличить.
 function folderIcon() {
-  return `<span class="folder-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M1.5 3.5a1 1 0 0 1 1-1h3.3a1 1 0 0 1 .7.3l1 1h6a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V3.5z"/></svg></span>`;
+  return `<span class="folder-icon" aria-hidden="true"><i class="ph ph-folder-simple"></i></span>`;
 }
 
 // Закреплена ли заметка в конкретном месте показа (ключ: "all"/"favorites"/
@@ -934,13 +934,64 @@ function childFoldersOf(state, parentId) {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
-// Каждый следующий уровень вложенности добавляет МЕНЬШЕ пикселей, чем
+// Каждый следующий уровень вложенности добавляет не больше пикселей, чем
 // предыдущий — иначе глубокая вложенность съедала бы всю ширину узкой панели.
-const INDENT_STEPS = [18, 13, 9, 6, 4]; // px; после исчерпания — фиксированный шаг 4px
+// Но и не меньше 12px: в этом зазоре слева от строки идёт линия иерархии (см.
+// treeGuidesHtml), и на шаге уже прежних 9/6/4px она налезала бы на саму строку.
+const INDENT_STEPS = [18, 16, 14, 12]; // px; после исчерпания — фиксированный шаг 12px
 function indentForDepth(depth) {
   let total = 0;
   for (let i = 0; i < depth; i++) total += INDENT_STEPS[Math.min(i, INDENT_STEPS.length - 1)];
   return total;
+}
+
+// Где у строки центр значка папки, от её левого края: внутренний отступ строки
+// (0.35em ≈ 4px) плюс половина значка (≈ 6px). Под этой точкой и идёт
+// вертикальная линия к детям.
+const TREE_GUIDE_OFFSET = 9;
+
+/**
+ * Вертикальные линии иерархии, как в прототипе: у каждой раскрытой папки одна
+ * линия под её значком — от верха первого вложенного элемента до низа
+ * последнего. Вложенные строки сдвинуты вправо внешним отступом (--indent в
+ * panels.css), и линия идёт в этом зазоре, а не поверх строк.
+ *
+ * Линии — отдельный слой под строками, а не часть самих строк. Выбранная
+ * строка увеличивается (transform: scale), и всё, что лежит внутри неё, ехало
+ * бы вместе с ней. Координаты берём из раскладки (offsetTop/offsetLeft): на них
+ * transform не влияет, поэтому при смене выбора линии стоят на месте.
+ *
+ * Перерисовывать нужно после каждой отрисовки списка: раскрыли папку, добавили
+ * заметку — строки и их места уже другие.
+ * @param {HTMLElement} listEl список строк (.workspace-list)
+ */
+function drawTreeGuides(listEl) {
+  listEl.querySelector(":scope > .tree-guides")?.remove();
+  const rows = [...listEl.querySelectorAll(":scope > [data-depth]")];
+  const layer = document.createElement("div");
+  layer.className = "tree-guides";
+  layer.setAttribute("aria-hidden", "true");
+
+  rows.forEach((row, index) => {
+    if (!row.classList.contains("is-expanded")) return;
+    const depth = Number(row.dataset.depth);
+    // Потомки папки — все строки сразу под ней, пока глубина больше её глубины.
+    let last = null;
+    for (let i = index + 1; i < rows.length && Number(rows[i].dataset.depth) > depth; i++) last = rows[i];
+    if (!last) return; // папка раскрыта, но пустая — линии не к чему идти
+
+    const first = rows[index + 1];
+    const line = document.createElement("span");
+    line.className = "tree-guide";
+    line.style.left = `${row.offsetLeft + TREE_GUIDE_OFFSET}px`;
+    line.style.top = `${first.offsetTop}px`;
+    line.style.height = `${last.offsetTop + last.offsetHeight - first.offsetTop}px`;
+    layer.appendChild(line);
+  });
+
+  // Первым ребёнком — то есть ПОД строками: подсветка строки, даже увеличенная,
+  // ложится поверх линии, а не наоборот.
+  listEl.prepend(layer);
 }
 // ------------------------------------------------------------------
 // Панель Workspace: фиксированные разделы сверху, под разделителем — содержимое
@@ -1048,28 +1099,28 @@ function folderRowHtml(row) {
   const source = isDragSource("folder", folder.id) ? "is-drag-source" : "";
   return `
     <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
-        data-folder-id="${folder.id}" data-context="${context}"
-        style="padding-left: ${indentForDepth(depth)}px">
+        data-folder-id="${folder.id}" data-context="${context}" data-depth="${depth}"
+        style="--indent: ${indentForDepth(depth)}px">
       ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
       ${rowBadges(folder, folder.pinned)}
       <span class="folder-count">(${count})</span>
-      ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}">✕</button>` : ""}
+      ${count === 0 ? `<button type="button" class="folder-delete" data-delete-folder="${folder.id}" title="${t("panel.deleteFolder")}"><i class="ph ph-x"></i></button>` : ""}
     </li>`;
 }
 
 function noteRowHtml(row) {
   const { item, depth, context } = row;
   const source = isDragSource("item", item.id) ? "is-drag-source" : "";
-  // Отступ — только у заметок внутри папок; у плоских списков остаётся обычный
-  // внутренний отступ строки из CSS.
-  const indent = depth > 0 ? `style="padding-left: ${indentForDepth(depth)}px"` : "";
+  // Отступ — только у заметок внутри папок, и внешний (--indent → margin в
+  // panels.css): слева от строки остаётся зазор под линию иерархии.
+  const indent = depth > 0 ? `style="--indent: ${indentForDepth(depth)}px"` : "";
   return `
     <li class="item-list-row ${row.flat ? "" : "is-nested"} ${row.pinned ? "is-pinned" : ""} ${source}"
-        data-item-id="${item.id}" data-context="${context}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
+        data-item-id="${item.id}" data-context="${context}" data-depth="${depth}" ${row.flat ? 'data-flat="1"' : ""} ${indent}>
       <span class="item-title">${escapeHtml(item.title || t("panel.untitled"))}</span>
       ${rowBadges(item, row.pinned)}
-      ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}">✕</button>` : ""}
+      ${row.empty ? `<button type="button" class="item-delete" data-delete-item="${item.id}" title="${t("panel.delete")}"><i class="ph ph-x"></i></button>` : ""}
     </li>`;
 }
 
@@ -1107,6 +1158,15 @@ function renderPanel(container, config, state, options = {}) {
   rememberPanel(state);
 }
 
+// Значки разделов — те же, что у навигации в прототипе редизайна.
+const SECTION_ICONS = {
+  trash: "ph-trash-simple",
+  favorites: "ph-heart",
+  all: "ph-note-blank",
+  folders: "ph-folder-simple",
+  unfiled: "ph-file-dashed",
+};
+
 function renderSections(container, config, state) {
   const listEl = container.querySelector('[data-role="workspace-sections"]');
   const trashCount = countTrash(state);
@@ -1116,6 +1176,7 @@ function renderSections(container, config, state) {
     .map(
       (section) => `
       <li class="folder-item workspace-section" data-section="${section.key}">
+        <i class="ph ${SECTION_ICONS[section.key]} section-icon" aria-hidden="true"></i>
         <span class="folder-name">${t(section.labelKey)}</span>
         ${section.key in counts ? `<span class="folder-count">(${counts[section.key]})</span>` : ""}
       </li>`
@@ -1189,6 +1250,14 @@ function renderWorkspaceBody(container, config, state, resetScroll) {
     </ul>
   `;
   bodyEl.scrollTop = scrollTop;
+
+  // Линии иерархии — по готовой раскладке. Шрифты могут догрузиться позже и
+  // поменять высоту строк, тогда перерисовываем, если список ещё на экране.
+  const listEl = bodyEl.querySelector(".workspace-list");
+  drawTreeGuides(listEl);
+  document.fonts.ready.then(() => {
+    if (listEl.isConnected) drawTreeGuides(listEl);
+  });
 
   // Пришли из поиска: показываем, какая именно папка нашлась. Метка одноразовая.
   if (state.flashFolderId) {
@@ -2106,7 +2175,7 @@ function renderDetail(container, config, state) {
       detailEl.innerHTML = `
         <div class="empty-create">
           <button type="button" class="empty-create-btn" data-action="create-first-note">
-            <span class="empty-create-plus" aria-hidden="true">+</span>
+            <span class="empty-create-plus" aria-hidden="true"><i class="ph ph-plus"></i></span>
             <span>${t("panel.createNote")}</span>
           </button>
         </div>`;
@@ -2154,7 +2223,7 @@ function renderDetail(container, config, state) {
       <div class="rte-toolbar-host" data-role="toolbar-host"></div>
       <div class="item-detail-titlebar">
         <input type="text" class="item-title-input" data-role="title-input">
-        <button type="button" class="btn btn-danger btn-small" data-action="delete-item">${t("panel.delete")}</button>
+        <button type="button" class="btn btn-danger btn-small" data-action="delete-item"><i class="ph ph-trash-simple"></i>${t("panel.delete")}</button>
       </div>
       <div data-role="content-host"></div>
     </div>

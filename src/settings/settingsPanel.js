@@ -2,6 +2,7 @@ import { getLang, setLang, t } from "../i18n/i18n.js";
 import { getBorderEnabled, setBorderEnabled } from "./borderSetting.js";
 import { getSaveIndicatorEnabled, setSaveIndicatorEnabled } from "./saveIndicatorSetting.js";
 import { UI_ZOOM_OPTIONS, getUiZoom, setUiZoom } from "./uiZoomSetting.js";
+import { THEMES, getTheme, setTheme } from "./themeSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
@@ -37,7 +38,7 @@ export function mountSettings({ onLangChange }) {
   buttonEl.type = "button";
   buttonEl.className = "settings-btn";
   buttonEl.id = "settings-btn";
-  buttonEl.textContent = "⚙";
+  buttonEl.innerHTML = '<i class="ph ph-gear"></i>';
   buttonEl.title = t("settings.open");
   buttonEl.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -147,7 +148,9 @@ function playMorph(direction, onDone) {
   };
   const expanded = { transform: "none", borderRadius: getComputedStyle(panelEl).borderRadius };
   const dimmed = { backgroundColor: getComputedStyle(overlayEl).backgroundColor };
-  const clear = { backgroundColor: "rgba(15, 23, 42, 0)" };
+  // Прозрачная версия того же цвета затемнения (theme.css): к прозрачному
+  // ДРУГОГО цвета затемнение по пути меняло бы оттенок.
+  const clear = { backgroundColor: getComputedStyle(document.documentElement).getPropertyValue("--overlay-backdrop-clear").trim() };
 
   // Кадры у открытия и закрытия разные, а не одни и те же задом наперёд.
   // Закрытию нужно своё: окно сначала скругляется в овал (к середине пути у него
@@ -204,56 +207,85 @@ function playMorph(direction, onDone) {
 function renderPanel() {
   const lang = getLang();
   const session = getCachedSession();
+  // Раскладка — как окно настроек в прототипе редизайна: строки с тонким
+  // разделителем сверху, сегментные переключатели языка и масштаба, тумблеры,
+  // внизу — опасное действие слева и вход/выход справа. Логика привязана к
+  // data-атрибутам (data-lang, data-zoom, data-role, data-action), а не к
+  // классам, поэтому классы здесь только про вид.
   panelEl.innerHTML = `
     <div class="settings-header">
-      <h3 class="settings-title">${t("settings.title")}</h3>
-      <button type="button" class="settings-close" data-action="close" title="${t("settings.close")}">✕</button>
+      <h2 class="settings-title">${t("settings.title")}</h2>
+      <button type="button" class="settings-close" data-action="close" title="${t("settings.close")}"><i class="ph ph-x"></i></button>
     </div>
     ${
       session
         ? `<div class="settings-row settings-account-row">
+            <i class="ph ph-user-circle settings-account-icon"></i>
             <span class="settings-label settings-account-email" title="${escapeHtml(session.user.email)}">${escapeHtml(session.user.email)}</span>
           </div>`
         : ""
     }
+    <div class="settings-row settings-theme-row">
+      <div class="settings-theme-head">
+        <span class="settings-label">${t("settings.theme")}</span>
+        <span class="settings-theme-current">${t(`settings.theme.${getTheme()}`)}</span>
+      </div>
+      <div class="settings-theme-grid">
+        ${THEMES.map(
+          (theme) => `
+          <button type="button" class="settings-theme-card ${theme === getTheme() ? "is-active" : ""}" data-theme-pick="${theme}">
+            <!-- data-theme-preview — переменные этой темы только внутри превью
+                 (см. theme.css); подпись и рамка остаются в цветах текущей. -->
+            <span class="settings-theme-swatch" data-theme-preview="${theme}">
+              <span class="settings-theme-swatch-panel"></span>
+              <span class="settings-theme-swatch-dot settings-theme-swatch-dot--accent"></span>
+              <span class="settings-theme-swatch-dot settings-theme-swatch-dot--mark"></span>
+            </span>
+            <span class="settings-theme-name">${t(`settings.theme.${theme}`)}</span>
+          </button>`
+        ).join("")}
+      </div>
+    </div>
     <div class="settings-row">
       <span class="settings-label">${t("settings.language")}</span>
-      <div class="settings-lang">
-        <button type="button" class="settings-lang-btn ${lang === "ru" ? "is-active" : ""}" data-lang="ru">RU</button>
-        <button type="button" class="settings-lang-btn ${lang === "en" ? "is-active" : ""}" data-lang="en">EN</button>
-        <button type="button" class="settings-lang-btn ${lang === "he" ? "is-active" : ""}" data-lang="he">HE</button>
+      <div class="settings-segment">
+        <button type="button" class="settings-segment-btn ${lang === "ru" ? "is-active" : ""}" data-lang="ru">RU</button>
+        <button type="button" class="settings-segment-btn ${lang === "en" ? "is-active" : ""}" data-lang="en">EN</button>
+        <button type="button" class="settings-segment-btn ${lang === "he" ? "is-active" : ""}" data-lang="he">HE</button>
       </div>
     </div>
     <div class="settings-row">
       <span class="settings-label">${t("settings.uiZoom")}</span>
-      <div class="settings-lang">
+      <div class="settings-segment">
         ${UI_ZOOM_OPTIONS.map(
           (percent) =>
-            `<button type="button" class="settings-lang-btn ${percent === getUiZoom() ? "is-active" : ""}" data-zoom="${percent}">${percent}%</button>`
+            `<button type="button" class="settings-segment-btn ${percent === getUiZoom() ? "is-active" : ""}" data-zoom="${percent}">${percent}%</button>`
         ).join("")}
       </div>
     </div>
-    <label class="settings-row">
+    <label class="settings-row settings-toggle-row">
       <span class="settings-label">${t("settings.toggleBorders")}</span>
-      <input type="checkbox" data-role="borders" ${getBorderEnabled() ? "checked" : ""}>
+      <input type="checkbox" class="settings-switch" data-role="borders" ${getBorderEnabled() ? "checked" : ""}>
     </label>
-    <label class="settings-row">
+    <label class="settings-row settings-toggle-row">
       <span class="settings-label">${t("settings.toggleSaveIndicator")}</span>
-      <input type="checkbox" data-role="save-indicator" ${getSaveIndicatorEnabled() ? "checked" : ""}>
+      <input type="checkbox" class="settings-switch" data-role="save-indicator" ${getSaveIndicatorEnabled() ? "checked" : ""}>
     </label>
-    <div class="settings-row">
+    <div class="settings-row settings-row--last">
       <span class="settings-label">${t("settings.dataTransfer")}</span>
       <div class="settings-io">
-        <button type="button" class="btn btn-small" data-action="export">${t("settings.export")}</button>
-        <button type="button" class="btn btn-small" data-action="import">${t("settings.import")}</button>
+        <button type="button" class="settings-link" data-action="export"><i class="ph ph-upload-simple"></i>${t("settings.export")}</button>
+        <button type="button" class="settings-link" data-action="import"><i class="ph ph-download-simple"></i>${t("settings.import")}</button>
       </div>
     </div>
-    <button type="button" class="btn btn-danger btn-small settings-clear" data-action="clear-data">${t("settings.clearData")}</button>
-    ${
-      session
-        ? `<button type="button" class="btn btn-danger btn-small settings-clear" data-action="logout">${t("auth.logout")}</button>`
-        : `<button type="button" class="btn btn-small settings-clear" data-action="login">${t("auth.login")}</button>`
-    }
+    <div class="settings-footer">
+      <button type="button" class="btn btn-danger settings-footer-btn" data-action="clear-data">${t("settings.clearData")}</button>
+      ${
+        session
+          ? `<button type="button" class="btn btn-primary settings-footer-btn" data-action="logout">${t("auth.logout")}</button>`
+          : `<button type="button" class="btn btn-primary settings-footer-btn" data-action="login">${t("auth.login")}</button>`
+      }
+    </div>
   `;
 
   panelEl.querySelectorAll("[data-lang]").forEach((btn) => {
@@ -267,6 +299,17 @@ function renderPanel() {
   });
 
   panelEl.querySelector('[data-action="close"]').addEventListener("click", closePanel);
+
+  // Тема меняется на лету: это только значения CSS-переменных, перерисовывать
+  // разделы не нужно. Окно перерисовываем — сдвинуть рамку выбранной карточки
+  // и подпись с названием темы.
+  panelEl.querySelectorAll("[data-theme-pick]").forEach((card) => {
+    card.addEventListener("click", () => {
+      if (card.dataset.themePick === getTheme()) return;
+      setTheme(card.dataset.themePick);
+      renderPanel();
+    });
+  });
 
   panelEl.querySelectorAll("[data-zoom]").forEach((btn) => {
     btn.addEventListener("click", () => {

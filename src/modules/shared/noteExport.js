@@ -560,14 +560,23 @@ function wordPagesHtml(pages, clone) {
 async function buildWordDocument({ contentEl, title }) {
   const clone = cloneNote(contentEl);
   const failed = await inlinePhotos(clone);
-  // Порядок важен. Сначала запекаем — flatten* ниже дописывают поверх свои
-  // правки, и перезатереть их запеканием было бы нельзя.
-  bakeComputedStyles(contentEl, clone);
-  flattenBlockBars(contentEl, clone);
-  flattenDivider(contentEl, clone);
-  // Рисунки — до опускания в поток: растеризация заменяет узел, и опускать
-  // нужно уже картинку. Обе функции читают живой DOM, поэтому идут парами.
-  await rasterizeDrawings(contentEl, clone);
+  // Всё, что ниже читает живой редактор, читает его со светлой бумагой: в
+  // тёмной теме вычисленные цвета были бы светлым текстом, и в Word он ушёл бы
+  // на белую страницу (см. .rte-content.is-exporting в editor.css). Класс
+  // снимаем в finally — даже если выгрузка упала, редактор не останется светлым.
+  contentEl.classList.add("is-exporting");
+  try {
+    // Порядок важен. Сначала запекаем — flatten* ниже дописывают поверх свои
+    // правки, и перезатереть их запеканием было бы нельзя.
+    bakeComputedStyles(contentEl, clone);
+    flattenBlockBars(contentEl, clone);
+    flattenDivider(contentEl, clone);
+    // Рисунки — до опускания в поток: растеризация заменяет узел, и опускать
+    // нужно уже картинку. Обе функции читают живой DOM, поэтому идут парами.
+    await rasterizeDrawings(contentEl, clone);
+  } finally {
+    contentEl.classList.remove("is-exporting");
+  }
   groundFloatingObjects(clone);
   // Список правим после запекания: именно оно кладёт на пункт padding, который
   // сложился бы с местом под маркер.

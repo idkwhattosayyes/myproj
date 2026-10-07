@@ -31,6 +31,8 @@ import {
   DRAW_DEFAULT_COLOR,
   DRAW_DEFAULT_WIDTH,
   DRAW_WIDTHS,
+  DIVIDER_DEFAULT_COLOR,
+  currentPaperInk,
   getLastColor,
   setLastColor,
   getLastWidth,
@@ -65,6 +67,18 @@ function notifyToolbarLayout(toolbarEl) {
   toolbarEl.dispatchEvent(new CustomEvent(TOOLBAR_LAYOUT_EVENT));
 }
 
+/**
+ * Иконка Phosphor для кнопок редактора (см. styles/icons.css). Пустой <i>:
+ * значок рисует CSS через ::before, поэтому в textContent кнопки — а у кнопок
+ * внутри страниц и в текст заметки — ничего не попадает.
+ * @param {string} name имя иконки вида "ph-text-b"
+ */
+function phIcon(name) {
+  const icon = document.createElement("i");
+  icon.className = `ph ${name}`;
+  return icon;
+}
+
 function createToolbarToggle(toolbarEl) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -73,7 +87,7 @@ function createToolbarToggle(toolbarEl) {
 
   function apply(collapsed) {
     toolbarEl.classList.toggle("is-collapsed", collapsed);
-    btn.textContent = collapsed ? "▾" : "▴";
+    btn.replaceChildren(phIcon(collapsed ? "ph-caret-down" : "ph-caret-up"));
     notifyToolbarLayout(toolbarEl);
   }
 
@@ -111,7 +125,7 @@ function createToolbarExpandToggle(toolbarEl, collapseToggle) {
   // у свёрнутой панели прятать нечего, зато её саму нужно чем-то разворачивать.
   function refresh() {
     const collapsed = toolbarEl.classList.contains("is-collapsed");
-    btn.textContent = collapsed ? "▴" : toolbarEl.classList.contains("is-expanded") ? "−" : "+";
+    btn.replaceChildren(phIcon(collapsed ? "ph-caret-up" : toolbarEl.classList.contains("is-expanded") ? "ph-minus" : "ph-plus"));
     btn.title = collapsed ? t("editor.toggleToolbar") : t("editor.toggleExtraTools");
   }
 
@@ -140,24 +154,24 @@ function createToolbarExpandToggle(toolbarEl, collapseToggle) {
 
 function getButtonDefs() {
   return {
-    bold: { label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
-    italic: { label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
+    bold: { icon: "ph-text-b", label: t("editor.boldLabel"), title: t("editor.bold"), command: () => document.execCommand("bold"), isActive: () => document.queryCommandState("bold") },
+    italic: { icon: "ph-text-italic", label: t("editor.italicLabel"), title: t("editor.italic"), command: () => document.execCommand("italic"), isActive: () => document.queryCommandState("italic") },
     // U с линией снизу и S с линией посередине рисуются CSS-классом (см.
     // .rte-ico-* в styles/editor.css): по кнопке сразу видно, что она делает.
-    underline: { label: "U", labelClass: "rte-ico-underline", title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.u), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.u) },
-    strikethrough: { label: "S", labelClass: "rte-ico-strike", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
-    h1: { label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
-    h2: { label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
+    underline: { icon: "ph-text-underline", label: "U", labelClass: "rte-ico-underline", title: t("editor.underline"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.u), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.u) },
+    strikethrough: { icon: "ph-text-strikethrough", label: "S", labelClass: "rte-ico-strike", title: t("editor.strikethrough"), command: (editorEl) => toggleInlineFormat(editorEl, FORMATS.s), isActive: (editorEl) => isInlineFormatActive(editorEl, FORMATS.s) },
+    h1: { icon: "ph-text-h-one", label: "H1", title: t("editor.h1"), command: (editorEl) => applyHeading(editorEl, "H1"), isActive: (editorEl) => isHeading(editorEl, "H1") },
+    h2: { icon: "ph-text-h-two", label: "H2", title: t("editor.h2"), command: (editorEl) => applyHeading(editorEl, "H2"), isActive: (editorEl) => isHeading(editorEl, "H2") },
     // H3 — единственный уровень МЕЛЬЧЕ обычного текста (см. шкалу в editor.css).
-    h3: { label: "H3", title: t("editor.h3"), command: (editorEl) => applyHeading(editorEl, "H3"), isActive: (editorEl) => isHeading(editorEl, "H3") },
-    alignLeft: { label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
-    alignCenter: { label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
-    alignRight: { label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
+    h3: { icon: "ph-text-h-three", label: "H3", title: t("editor.h3"), command: (editorEl) => applyHeading(editorEl, "H3"), isActive: (editorEl) => isHeading(editorEl, "H3") },
+    alignLeft: { icon: "ph-text-align-left", label: "⟸", title: t("editor.alignLeft"), command: () => document.execCommand("justifyLeft"), isActive: () => document.queryCommandState("justifyLeft") },
+    alignCenter: { icon: "ph-text-align-center", label: "≡", title: t("editor.alignCenter"), command: () => document.execCommand("justifyCenter"), isActive: () => document.queryCommandState("justifyCenter") },
+    alignRight: { icon: "ph-text-align-right", label: "⟹", title: t("editor.alignRight"), command: () => document.execCommand("justifyRight"), isActive: () => document.queryCommandState("justifyRight") },
     // Перенос выделенного на следующую страницу. Определение живёт здесь, рядом с
     // остальными, но в списки тулбаров этот ключ не попадает: инструмент
     // подставляется только в меню по ПКМ и только в постраничном режиме
     // (см. showSelectionToolbar).
-    moveToNextPage: { label: "⤵", isMoveToNextPage: true, title: t("editor.moveToNextPage") },
+    moveToNextPage: { icon: "ph-arrow-elbow-down-right", label: "⤵", isMoveToNextPage: true, title: t("editor.moveToNextPage") },
     // Направление письма текущей строки. is-active тут значит не «режим включён»,
     // а «строка идёт справа налево» — по нему CSS и решает, какую из двух стрелок
     // на кнопке зажечь (см. .rte-dir-* в editor.css).
@@ -169,10 +183,11 @@ function getButtonDefs() {
     // Все три вида списка ведёт один движок (toggleList): браузерная команда
     // insertUnorderedList склеивала соседние списки через пустую строку и не
     // различала их вид — см. комментарий у LIST_KINDS.
-    bulletList: { label: "•", title: t("editor.bulletList"), command: (editorEl) => toggleList(editorEl, "bullet"), isActive: (editorEl) => currentListKind(editorEl) === "bullet" },
-    orderedList: { label: "1.", title: t("editor.orderedList"), command: (editorEl) => toggleList(editorEl, "ordered"), isActive: (editorEl) => currentListKind(editorEl) === "ordered" },
-    checklist: { label: "☑", title: t("editor.checklist"), command: (editorEl) => toggleList(editorEl, "checklist"), isActive: (editorEl) => currentListKind(editorEl) === "checklist" },
+    bulletList: { icon: "ph-list-bullets", label: "•", title: t("editor.bulletList"), command: (editorEl) => toggleList(editorEl, "bullet"), isActive: (editorEl) => currentListKind(editorEl) === "bullet" },
+    orderedList: { icon: "ph-list-numbers", label: "1.", title: t("editor.orderedList"), command: (editorEl) => toggleList(editorEl, "ordered"), isActive: (editorEl) => currentListKind(editorEl) === "ordered" },
+    checklist: { icon: "ph-check-square-offset", label: "☑", title: t("editor.checklist"), command: (editorEl) => toggleList(editorEl, "checklist"), isActive: (editorEl) => currentListKind(editorEl) === "checklist" },
     textColor: {
+      icon: "ph-text-t",
       label: "A",
       title: t("editor.textColorHint"),
       isColor: true,
@@ -182,10 +197,11 @@ function getButtonDefs() {
       apply: (color) => document.execCommand("foreColor", false, color),
       // Сбрасывает цвет текста обратно к обычному — иначе применённый foreColor
       // ничем не убрать после закрытия поповера.
-      reset: () => document.execCommand("foreColor", false, "#1f2328"),
+      reset: () => document.execCommand("foreColor", false, currentPaperInk()),
       isActive: (editorEl) => isColorActive(editorEl, "color"),
     },
     highlight: {
+      icon: "ph-paint-brush-broad",
       label: "▮",
       title: t("editor.highlightHint"),
       isColor: true,
@@ -200,18 +216,19 @@ function getButtonDefs() {
       // нативный hiliteColor не снимается по ходу печати.
       caretStyleProp: "backgroundColor",
     },
-    table: { label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
+    table: { icon: "ph-table", label: "▦", title: t("editor.table"), command: (editorEl) => insertTable(editorEl) },
     // ЛКМ — как у textColor/highlight: вставляет линию последним выбранным
     // цветом, ПКМ открывает палитру. isActive всегда false — в отличие от
     // цвета текста, у линии нет состояния "уже применено к выделению", каждый
     // клик — новая вставка, а не тумблер.
     divider: {
+      icon: "ph-minus",
       label: "―",
       title: t("editor.divider"),
       isColor: true,
       colors: TEXT_COLORS,
       storageKey: "app:lastDividerColor",
-      defaultColor: "#d0d7de",
+      defaultColor: DIVIDER_DEFAULT_COLOR,
       apply: (color, editorEl) => insertDivider(editorEl, color),
       reset: () => {},
       isActive: () => false,
@@ -219,27 +236,28 @@ function getButtonDefs() {
     // Ссылка на внешний URL для выделенного слова/фразы — не команда форматирования
     // (нужны модалка ввода и меню Delete/Change), обрабатывается отдельно в
     // buildToolbarButton (см. isLink).
-    link: { label: "🔗", title: t("editor.setLink"), isLink: true },
+    link: { icon: "ph-link-simple", label: "🔗", title: t("editor.setLink"), isLink: true },
     // Ссылка на другую заметку/документ — доступна только в Документах (см.
     // allowInternalLinks в createRichTextEditor), обрабатывается отдельно в
     // buildToolbarButton (isInternalLink), по той же схеме, что и isLink.
-    internalLink: { label: "📄", title: t("editor.setInternalLink"), isInternalLink: true },
+    internalLink: { icon: "ph-file-text", label: "📄", title: t("editor.setInternalLink"), isInternalLink: true },
     // Тег блока — не команда форматирования: открывает Add/Create вместо
     // прямого применения, обрабатывается отдельно в buildToolbarButton (isTag).
     // В основной тулбар не попадает — только в мини-панель на выделении, см.
     // selectionButtons в showSelectionToolbar.
-    tag: { label: "#", title: t("editor.tag"), isTag: true },
+    tag: { icon: "ph-hash", label: "#", title: t("editor.tag"), isTag: true },
     // Блок cut/copy/paste/delete/open-as-link рядом с мини-панелью на выделении
     // (см. showSelectionActions) — не форматирование, отдельная строка кнопок.
     // Cut/Copy/Delete — обычные execCommand, ничего своего им не нужно.
-    selectionCut: { label: "✂", title: t("editor.cut"), command: () => document.execCommand("cut") },
-    selectionCopy: { label: "⧉", title: t("editor.copy"), command: () => document.execCommand("copy") },
-    selectionDelete: { label: "🗑", title: t("editor.delete"), command: () => document.execCommand("delete") },
+    selectionCut: { icon: "ph-scissors", label: "✂", title: t("editor.cut"), command: () => document.execCommand("cut") },
+    selectionCopy: { icon: "ph-copy", label: "⧉", title: t("editor.copy"), command: () => document.execCommand("copy") },
+    selectionDelete: { icon: "ph-trash-simple", label: "🗑", title: t("editor.delete"), command: () => document.execCommand("delete") },
     // execCommand("paste") браузеры блокируют программно — единственный рабочий
     // путь через Clipboard API, а он отдаёт только голый текст, без
     // форматирования и картинок. Обычный Ctrl+V этим не заменяется, это
     // дополнительный путь.
     selectionPaste: {
+      icon: "ph-clipboard-text",
       label: "📋",
       title: t("editor.paste"),
       command: async () => {
@@ -249,30 +267,30 @@ function getButtonDefs() {
     },
     // Не команда форматирования — открывает уже существующую ссылку в новой
     // вкладке, обрабатывается отдельно в buildToolbarButton (см. isOpenLink).
-    selectionOpenLink: { label: "↗", title: t("editor.openAsLink"), isOpenLink: true },
+    selectionOpenLink: { icon: "ph-arrow-square-out", label: "↗", title: t("editor.openAsLink"), isOpenLink: true },
     // Вставка фото: ЛКМ открывает выбор файла. Само чтение/ужатие/вставка —
     // отдельной веткой в createRichTextEditor (см. isPhoto), потому что нужен
     // доступ к сохранённому диапазону и serializeEditor.
-    insertPhoto: { label: "🖼", title: t("editor.insertPhoto"), isPhoto: true },
+    insertPhoto: { icon: "ph-image-square", label: "🖼", title: t("editor.insertPhoto"), isPhoto: true },
     // Рисование поверх документа — не команда форматирования, а переключатель
     // режима, как pageMode/voice. Обрабатывается отдельно в createRichTextEditor.
     // storageKey/defaultColor — только для индикатора цвета на самой кнопке
     // (тот же приём, что у textColor/highlight, см. updateSwatch).
-    draw: { label: "✏", title: t("editor.draw"), isDraw: true, storageKey: DRAW_COLOR_KEY, defaultColor: DRAW_DEFAULT_COLOR },
+    draw: { icon: "ph-pencil-simple", label: "✏", title: t("editor.draw"), isDraw: true, storageKey: DRAW_COLOR_KEY, defaultColor: DRAW_DEFAULT_COLOR },
     // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
     // откатывает наши <u>/<s> и заголовки-span). Обрабатываются в createRichTextEditor.
-    undo: { label: "↶", title: t("editor.undo"), isHistory: "undo" },
-    redo: { label: "↷", title: t("editor.redo"), isHistory: "redo" },
+    undo: { icon: "ph-arrow-counter-clockwise", label: "↶", title: t("editor.undo"), isHistory: "undo" },
+    redo: { icon: "ph-arrow-clockwise", label: "↷", title: t("editor.redo"), isHistory: "redo" },
     // Голосовой ввод: ЛКМ — старт/стоп записи, ПКМ — выбор языка распознавания.
     // Обрабатывается отдельно в createRichTextEditor (см. isVoice).
-    voice: { label: "🎤", title: t("editor.voice"), isVoice: true },
+    voice: { icon: "ph-waveform", label: "🎤", title: t("editor.voice"), isVoice: true },
     // Не команда форматирования, а переключатель вида — обрабатывается отдельно
     // в createRichTextEditor (см. isPageMode).
-    pageMode: { label: "▤", title: t("editor.pageMode"), isPageMode: true },
+    pageMode: { icon: "ph-files", label: "▤", title: t("editor.pageMode"), isPageMode: true },
     // Печать и выгрузка заметки в файл. Не команда форматирования: по клику
     // открывается меню со способами (см. isPrintExport в createRichTextEditor),
     // а сама сборка документа живёт в noteExport.js.
-    printExport: { label: "🖨", title: t("editor.printExport"), isPrintExport: true },
+    printExport: { icon: "ph-printer", label: "🖨", title: t("editor.printExport"), isPrintExport: true },
   };
 }
 
@@ -2214,7 +2232,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     btn.type = "button";
     btn.className = "rte-page-delete";
     btn.title = t("editor.deletePage");
-    btn.textContent = "✕";
+    btn.appendChild(phIcon("ph-x"));
     btn.addEventListener("mousedown", (event) => event.preventDefault());
     btn.addEventListener("click", () => removePage(page));
     return btn;
@@ -3077,7 +3095,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     eraserBtn.type = "button";
     eraserBtn.className = "rte-color-swatch rte-draw-eraser";
     eraserBtn.title = t("editor.eraser");
-    eraserBtn.textContent = "⌫";
+    eraserBtn.appendChild(phIcon("ph-eraser"));
     eraserBtn.classList.toggle("is-active", erasingActive);
     eraserBtn.addEventListener("mousedown", (event) => event.preventDefault());
     eraserBtn.addEventListener("click", (event) => {
@@ -3684,11 +3702,15 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // символа нельзя. Саму подсветку двигает общий механизм подсветки кнопок.
       const ltr = document.createElement("span");
       ltr.className = "rte-dir-arrow rte-dir-ltr";
-      ltr.textContent = "→";
+      ltr.appendChild(phIcon("ph-arrow-right"));
       const rtl = document.createElement("span");
       rtl.className = "rte-dir-arrow rte-dir-rtl";
-      rtl.textContent = "←";
+      rtl.appendChild(phIcon("ph-arrow-left"));
       btn.append(ltr, rtl);
+    } else if (def.icon) {
+      // Кнопки с иконкой Phosphor (редизайн). label у них остаётся — на случай
+      // кода, который читает подпись, но на кнопке рисуется только иконка.
+      btn.appendChild(phIcon(def.icon));
     } else if (def.labelClass) {
       // Линия рисуется вокруг буквы, поэтому подпись нужна отдельным узлом.
       const icon = document.createElement("span");
@@ -4388,7 +4410,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     btn.title = t("editor.toggleSelectionActions");
     function apply(collapsed) {
       actionsEl.classList.toggle("is-collapsed", collapsed);
-      btn.textContent = collapsed ? "▾" : "▴";
+      btn.replaceChildren(phIcon(collapsed ? "ph-caret-down" : "ph-caret-up"));
     }
     apply(localStorage.getItem(SELECTION_ACTIONS_COLLAPSED_KEY) === "1");
     btn.addEventListener("mousedown", (event) => event.preventDefault());
@@ -5116,7 +5138,7 @@ function toggleColorPopover(btn, def, editorEl, onChange, refreshToolbarState, f
   resetSwatch.type = "button";
   resetSwatch.className = "rte-color-swatch rte-color-swatch--reset";
   resetSwatch.title = t("editor.removeColor");
-  resetSwatch.textContent = "✕";
+  resetSwatch.appendChild(phIcon("ph-x"));
   resetSwatch.addEventListener("mousedown", (event) => event.preventDefault());
   resetSwatch.addEventListener("click", (event) => {
     event.stopPropagation();

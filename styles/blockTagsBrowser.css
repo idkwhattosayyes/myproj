@@ -7,9 +7,9 @@
   flex-direction: column;
   width: min(1100px, calc(92vw / var(--app-zoom, 1)));
   max-height: calc(88vh / var(--app-zoom, 1));
-  background: #ffffff;
+  background: var(--surface-modal);
   border-radius: 12px;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 
@@ -35,8 +35,8 @@
 }
 
 @keyframes block-browser-flash {
-  0%, 45% { box-shadow: 0 0 0 3px #ffd43b; }
-  100% { box-shadow: 0 0 0 0 rgba(255, 212, 59, 0); }
+  0%, 45% { box-shadow: 0 0 0 3px var(--search-hit-bg); }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 .block-browser-header {
@@ -46,7 +46,7 @@
   gap: 0.75rem;
   flex-wrap: wrap;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-separator);
 }
 
 .block-browser-filter {
@@ -64,12 +64,12 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.25rem 0.5rem 0.25rem 0.7rem;
-  border: 1.5px solid var(--tag-color, #9ca3af);
+  border: 1.5px solid var(--tag-color, var(--text-muted));
   border-radius: 999px;
-  color: var(--tag-color, #374151);
+  color: var(--tag-color, var(--text-primary));
   font-size: 0.85rem;
   font-weight: 600;
-  background: #ffffff;
+  background: var(--surface-field);
 }
 
 .block-browser-chip-remove {
@@ -89,17 +89,17 @@
 .block-browser-add {
   width: 1.6rem;
   height: 1.6rem;
-  border: 1px dashed #c7ccd3;
+  border: 1px dashed var(--color-separator);
   border-radius: 50%;
-  background: #ffffff;
-  color: #4b5563;
+  background: var(--surface-field);
+  color: var(--text-muted);
   font-size: 1rem;
   line-height: 1;
 }
 
 .block-browser-add:hover {
-  border-color: #9ca3af;
-  color: #1f2328;
+  border-color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 .block-browser-tools {
@@ -109,16 +109,16 @@
 }
 
 .block-browser-count {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
 .block-browser-sort {
   padding: 0.3rem 0.5rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-separator);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--surface-field);
   font-size: 0.85rem;
 }
 
@@ -138,7 +138,7 @@
 .block-browser-empty {
   margin: 2rem 0;
   text-align: center;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 /* Карточка блока — полоски сверху/снизу того же вида, что границы блока в
@@ -153,7 +153,7 @@
      прокрутке списка — та же порода бага, что у min-height на самом списке,
      просто на уровень ниже. */
   flex-shrink: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--color-separator);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -170,8 +170,8 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.85rem;
-  background: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
+  background: var(--surface-field);
+  border-bottom: 1px solid var(--color-separator);
 }
 
 .block-browser-card-title {
@@ -189,13 +189,13 @@
 }
 
 .block-browser-card-date {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.8rem;
   white-space: nowrap;
 }
 
 .block-browser-card-stats {
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 0.78rem;
   white-space: nowrap;
 }

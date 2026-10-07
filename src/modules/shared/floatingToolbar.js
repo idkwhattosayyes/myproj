@@ -445,7 +445,17 @@ export function attachFloatingToolbar({ hostEl, toolbarEl, boundsEl, scrollEl = 
   restorePosition();
   update();
 
+  // Шрифты редизайна (styles/fonts.css) догружаются уже после первого замера:
+  // с ними текст на кнопках другой ширины, и прилипшая к краю полоса уехала бы
+  // за рамку поля. Перемеряемся, как только шрифты готовы, — если панель к тому
+  // моменту ещё жива (заметку могли успеть закрыть).
+  let detached = false;
+  document.fonts.ready.then(() => {
+    if (!detached) onToolbarLayout();
+  });
+
   return function detach() {
+    detached = true;
     if (frame) cancelAnimationFrame(frame);
     window.removeEventListener("scroll", schedule);
     if (scrollEl) scrollEl.removeEventListener("scroll", schedule);

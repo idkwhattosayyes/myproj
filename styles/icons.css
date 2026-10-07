@@ -1,0 +1,111 @@
+/* Иконки Phosphor (phosphoricons.com, лицензия MIT) — иконочным шрифтом, как в
+   прототипе редизайна. Иконка — пустой <i class="ph ph-gear">, сам значок
+   рисует ::before. Только через псевдоэлемент, не текстом: иначе символ
+   попадал бы в textContent кнопки, а у кнопок внутри редактора — и в текст
+   заметки.
+
+   Три начертания (обычное, тонкое, залитое) делят одни и те же коды символов,
+   поэтому класс у иконки один — .ph, а начертание выбирает тема через
+   --icon-font (см. theme.css): у «Полночи» залитые, у «Песка» тонкие.
+
+   Сюда добавляются только те иконки, что реально есть на сайте: полный набор
+   Phosphor — это полторы тысячи строк, которые никто не читает. */
+
+@font-face {
+  font-family: "Phosphor";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Phosphor-Light";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-light.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Phosphor-Fill";
+  font-style: normal;
+  font-weight: normal;
+  font-display: block;
+  src: url("../fonts/phosphor-fill.woff2") format("woff2");
+}
+
+/* Бокс ровно 1em × 1em, пока шрифт ещё грузится, — тоже: плавающий тулбар
+   меряет свою ширину сразу после монтирования, и без фиксированного размера
+   иконка до загрузки шрифта имела бы другую ширину, чем после. */
+.ph {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  font-family: var(--icon-font, "Phosphor") !important;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  speak: never;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Значки (коды — из Phosphor; одинаковы у всех трёх начертаний) --- */
+.ph-arrow-clockwise::before { content: "\e036"; }
+.ph-arrow-counter-clockwise::before { content: "\e038"; }
+.ph-arrow-elbow-down-right::before { content: "\e046"; }
+.ph-arrow-left::before { content: "\e058"; }
+.ph-arrow-right::before { content: "\e06c"; }
+.ph-arrow-square-out::before { content: "\e5de"; }
+.ph-caret-down::before { content: "\e136"; }
+.ph-caret-left::before { content: "\e138"; }
+.ph-caret-right::before { content: "\e13a"; }
+.ph-caret-up::before { content: "\e13c"; }
+.ph-check-square-offset::before { content: "\e188"; }
+.ph-clipboard-text::before { content: "\e198"; }
+.ph-copy::before { content: "\e1ca"; }
+.ph-download-simple::before { content: "\e20c"; }
+.ph-eraser::before { content: "\e21e"; }
+.ph-eye::before { content: "\e220"; }
+.ph-eye-slash::before { content: "\e224"; }
+.ph-file-dashed::before { content: "\e704"; }
+.ph-files::before { content: "\e710"; }
+.ph-file-text::before { content: "\e23a"; }
+.ph-folder-simple::before { content: "\e25a"; }
+.ph-gear::before { content: "\e270"; }
+.ph-hash::before { content: "\e2a2"; }
+.ph-heart::before { content: "\e2a8"; }
+.ph-image-square::before { content: "\e2cc"; }
+.ph-link-simple::before { content: "\e2e6"; }
+.ph-list::before { content: "\e2f0"; }
+.ph-list-bullets::before { content: "\e2f2"; }
+.ph-list-numbers::before { content: "\e2f6"; }
+.ph-magnifying-glass::before { content: "\e30c"; }
+.ph-minus::before { content: "\e32a"; }
+.ph-note-blank::before { content: "\e34a"; }
+.ph-paint-brush-broad::before { content: "\e590"; }
+.ph-pencil-simple::before { content: "\e3b4"; }
+.ph-plus::before { content: "\e3d4"; }
+.ph-printer::before { content: "\e3dc"; }
+.ph-push-pin-simple::before { content: "\e65c"; }
+.ph-scissors::before { content: "\eae0"; }
+.ph-table::before { content: "\e476"; }
+.ph-text-align-center::before { content: "\e480"; }
+.ph-text-align-left::before { content: "\e484"; }
+.ph-text-align-right::before { content: "\e486"; }
+.ph-text-b::before { content: "\e5be"; }
+.ph-text-h-one::before { content: "\e6bc"; }
+.ph-text-h-three::before { content: "\e6c0"; }
+.ph-text-h-two::before { content: "\e6be"; }
+.ph-text-italic::before { content: "\e5c0"; }
+.ph-text-strikethrough::before { content: "\e5c2"; }
+.ph-text-t::before { content: "\e48a"; }
+.ph-text-underline::before { content: "\e5c4"; }
+.ph-trash-simple::before { content: "\e4a8"; }
+.ph-upload-simple::before { content: "\e4c0"; }
+.ph-user-circle::before { content: "\e4c4"; }
+.ph-waveform::before { content: "\e802"; }
+.ph-x::before { content: "\e4f6"; }

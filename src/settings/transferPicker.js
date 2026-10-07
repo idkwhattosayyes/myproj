@@ -133,7 +133,7 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
       const ul = treeEl.querySelector(`[data-children="${CSS.escape(toggle.dataset.toggle)}"]`);
       const open = ul.hidden;
       ul.hidden = !open;
-      toggle.textContent = open ? "▾" : "▸";
+      toggle.innerHTML = open ? '<i class="ph ph-caret-down"></i>' : '<i class="ph ph-caret-right"></i>';
       toggle.setAttribute("aria-expanded", String(open));
       return;
     }
@@ -226,7 +226,7 @@ export function openTransferPicker({ mode, folders, items, onConfirm }) {
     return `
       <div class="transfer-group">
         <div class="transfer-folder-row">
-          <button type="button" class="transfer-toggle" data-toggle="${escapeHtml(group.id)}" aria-expanded="true">▾</button>
+          <button type="button" class="transfer-toggle" data-toggle="${escapeHtml(group.id)}" aria-expanded="true"><i class="ph ph-caret-down"></i></button>
           <input type="checkbox" class="transfer-check" data-folder-id="${escapeHtml(group.id)}" checked>
           <span class="transfer-folder-name">${escapeHtml(group.name)}</span>
           <span class="transfer-group-count">(${group.children.length})</span>
