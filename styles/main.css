@@ -123,6 +123,8 @@ button {
 ::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
   margin-block: var(--scrollbar-inset, 0px);
+  /* Дорожка — такая же «пилюля», как ползунок на ней, а не прямоугольник. */
+  border-radius: var(--radius-pill);
 }
 
 /* Скруглённые прокручиваемые блоки: дорожка короче на целый радиус угла —
