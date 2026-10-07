@@ -38,7 +38,12 @@
   font-size: clamp(28px, 3.4vw, 40px);
   font-weight: var(--font-heading-weight);
   letter-spacing: -0.01em;
-  line-height: 1.15;
+  /* normal, а не число, как в прототипе (1.15): строка берёт высоту из метрик
+     самого шрифта и вмещает его целиком. С 1.15 буквы крупного заголовка были
+     выше поля, и колёсико прокручивало текст внутри поля — название прыгало
+     вверх-вниз. Числом не лечится: у Literata (Сепия) надстрочные знаки вроде Ё
+     выше строки при любом множителе. */
+  line-height: normal;
   padding: 0.1rem 0.3rem;
   border: 1px solid transparent;
   border-radius: var(--radius-button);
