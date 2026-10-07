@@ -98,12 +98,17 @@ button {
 
 /* Полосы прокрутки в цветах темы — у всех прокручиваемых областей сразу:
    окно, панель, поле заметки, окна-модалки, меню тегов.
-   scrollbar-color/-width — стандарт (Firefox, Chrome 121+); когда они заданы,
-   новый Chrome на ::-webkit-scrollbar уже не смотрит. Правила ::-webkit-* ниже —
-   для браузеров постарше, где стандартных свойств ещё нет. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+
+   Chrome и Edge рисуют полосу через ::-webkit-scrollbar (ниже): только там
+   можно укоротить дорожку у скруглённых углов (--scrollbar-inset). Стандартные
+   scrollbar-color/-width оставлены для Firefox — и только для него, через
+   @supports: если они заданы, новый Chrome перестаёт смотреть на
+   ::-webkit-scrollbar, и дорожка снова торчала бы за скруглённые углы. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
 }
 
 ::-webkit-scrollbar {
@@ -111,8 +116,36 @@ button {
   height: 10px;
 }
 
+/* --scrollbar-inset — на сколько укоротить дорожку сверху и снизу. Ставится
+   прокручиваемым блокам со скруглёнными углами (см. ниже), чтобы концы полосы
+   не вылезали за скругление; у остальных 0. Псевдоэлемент наследует переменную
+   от своего блока. */
 ::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
+  margin-block: var(--scrollbar-inset, 0px);
+}
+
+/* Скруглённые прокручиваемые блоки: дорожка короче на половину радиуса угла —
+   этого хватает, чтобы полоса целиком лежала внутри скругления. */
+.panel-detail,
+.panel-body {
+  --scrollbar-inset: calc(var(--radius-panel) / 2);
+}
+
+.settings-panel {
+  --scrollbar-inset: calc(var(--radius-modal) / 2);
+}
+
+.search-results,
+.quicknote-body-slot,
+.context-menu {
+  --scrollbar-inset: calc(var(--radius-toolbar) / 2);
+}
+
+.transfer-tree,
+.transfer-preview,
+.block-browser-list {
+  --scrollbar-inset: calc(var(--radius-button) / 2);
 }
 
 /* Прозрачная рамка + background-clip: padding-box — ползунок тоньше самой
