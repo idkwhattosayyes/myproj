@@ -35,7 +35,9 @@ const FOLDER_FIELD_MAP = {
 // notes есть служебные search_text и photo_names (серверный поиск), и "*"
 // тащил бы копию текста заметки с каждой строкой. Список — без content (см.
 // getItems), полная версия — для одной заметки, Корзины и экспорта.
-const NOTE_LIST_COLUMN_NAMES = ["id", "title", "page_mode", "open_at_end", "sort_order", "created_at", "updated_at", "activity_at", "deleted_at"];
+// body_empty (миграция 011) — единственная служебная колонка, которую берём:
+// без content только по ней список знает, что заметка пуста.
+const NOTE_LIST_COLUMN_NAMES = ["id", "title", "page_mode", "open_at_end", "sort_order", "created_at", "updated_at", "activity_at", "deleted_at", "body_empty"];
 const NOTE_LIST_COLUMNS = NOTE_LIST_COLUMN_NAMES.join(", ");
 const NOTE_COLUMNS = [...NOTE_LIST_COLUMN_NAMES, "content"].join(", ");
 
@@ -52,6 +54,7 @@ function mapItemRow(row, folderIds, isFavorite, pinnedIn) {
     id: row.id,
     title: row.title,
     content: row.content,
+    bodyEmpty: row.body_empty,
     folderIds,
     section: "notes",
     isFavorite,

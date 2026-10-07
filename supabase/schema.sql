@@ -86,7 +86,14 @@ create table public.notes (
   -- пересчитывает их сам при каждой правке title/content. Адаптер их не
   -- выбирает — см. NOTE_COLUMNS в supabaseAdapter.js.
   search_text text generated always as (public.note_search_text(title, content)) stored,
-  photo_names text[] generated always as (public.note_photo_names(content)) stored
+  photo_names text[] generated always as (public.note_photo_names(content)) stored,
+  -- Пуста ли заметка (без названия) — чтобы список, который грузится без
+  -- content, сразу знал, где ставить крестик удаления (см. 011_notes_body_empty.sql).
+  body_empty boolean generated always as (
+    btrim(public.note_search_text('', coalesce(content, '')), E' \n') = ''
+    and coalesce(content, '') !~* '<img\M'
+    and coalesce(content, '') !~* '<path\M'
+  ) stored
 );
 
 create index notes_user_id_idx on public.notes(user_id);

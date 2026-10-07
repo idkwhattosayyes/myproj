@@ -166,10 +166,11 @@ function saveNoteHistory(itemId, state) {
 // и они целиком ложились в момент отпускания перетаскиваемой строки.
 function isItemEmpty(item) {
   // Список отдаёт заметки без content, пока их не открыли в этой сессии
-  // (см. supabaseAdapter.getItems). Без content нельзя ДОКАЗАТЬ пустоту —
-  // считаем "не подтверждено", обычный флоу удаления с подтверждением, а не
-  // мгновенный крестик.
-  if (item.content === undefined) return false;
+  // (см. supabaseAdapter.getItems). Тогда пустоту говорит сервер — флаг
+  // bodyEmpty (колонка body_empty, миграция 011), посчитанный по тому же
+  // правилу, что и ниже. Нет флага — пустоту не доказать: обычный флоу
+  // удаления с подтверждением, а не мгновенный крестик.
+  if (item.content === undefined) return item.bodyEmpty === true;
   const content = item.content || "";
   if (/<img\b/i.test(content)) return false;
   // Рисунок — <svg> со штрихами <path>: текста в нём нет, и без этой проверки
