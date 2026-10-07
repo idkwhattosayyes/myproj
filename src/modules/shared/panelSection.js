@@ -172,6 +172,10 @@ function isItemEmpty(item) {
   if (item.content === undefined) return false;
   const content = item.content || "";
   if (/<img\b/i.test(content)) return false;
+  // Рисунок — <svg> со штрихами <path>: текста в нём нет, и без этой проверки
+  // заметка из одного рисунка считалась бы пустой — с крестиком мгновенного
+  // удаления без подтверждения. Пустой слой рисования (без штрихов) — не в счёт.
+  if (/<path\b/i.test(content)) return false;
   const text = content.replace(/<[^>]*>/g, "");
   if (text.trim() === "") return true;
   // Остаться могли одни лишь сущности (&nbsp; и подобные) — их без разбора не
@@ -2243,9 +2247,18 @@ function renderDetail(container, config, state) {
     return state.items.find((i) => i.id === item.id) || item;
   }
 
+  // «Удалить» рядом с названием — только у пустой заметки (название не в
+  // счёт): у большой важной заметки кнопка постоянно на виду и легко нажать её
+  // случайно. Непустую удаляют через ПКМ в списке. Пустота — та же, что у
+  // крестика в списке (isItemEmpty), и пересчитывается на каждую правку текста.
+  function syncDeleteButton() {
+    detailEl.querySelector('[data-action="delete-item"]').hidden = !isItemEmpty(openItem());
+  }
+
   function scheduleSave(patch) {
     const current = openItem();
     Object.assign(current, patch);
+    if ("content" in patch) syncDeleteButton();
     // itemsService.updateItem проставит activityAt и persist'нет его сам, но
     // только через 400мс дебаунса ниже — а список нужно пересортировать сразу.
     if ("content" in patch || "title" in patch) current.activityAt = new Date().toISOString();
@@ -2378,6 +2391,7 @@ function renderDetail(container, config, state) {
     editor.focusContent();
   });
 
+  syncDeleteButton();
   detailEl.querySelector('[data-action="delete-item"]').addEventListener("click", async () => {
     // Заголовок берём из поля, а не из item.title: правка сохраняется с задержкой
     // (scheduleSave), и у только что переименованной заметки item.title отстаёт.
