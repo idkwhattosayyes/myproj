@@ -568,6 +568,11 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
   color: var(--text-muted);
   font-size: 0.88em; /* 0.75rem */
   flex-shrink: 0;
+  /* Сетка, а не строчный бокс: в строке иконка садится на базовую линию и
+     стоит выше центра строки (тот же приём, что у .panel-header-add). */
+  display: inline-grid;
+  place-items: center;
+  line-height: 1;
 }
 
 .folder-delete:hover,
