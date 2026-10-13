@@ -293,7 +293,14 @@ export function returnFocusFromSearch() {
   if (!target || !inputEl || document.activeElement !== inputEl) return false;
   if (!target.el.isConnected) return false;
 
-  target.el.focus();
+  // Пользователь передумал искать — набранный запрос ему больше не нужен, и
+  // следующий Ctrl+F начнётся с чистого поля.
+  inputEl.value = "";
+  // preventScroll обязателен: без него браузер при фокусе прокручивает к ВЕРХУ
+  // всего поля заметки (страницы .rte-page). Каретка при этом вставала верно,
+  // но в длинной заметке экран улетал в начало — выглядело как «перебросило в
+  // начало». Прокрутка и так осталась той, что была до Ctrl+F.
+  target.el.focus({ preventScroll: true });
   if (target.start !== undefined) {
     target.el.setSelectionRange(target.start, target.end);
     return true;
@@ -789,7 +796,7 @@ function openRow(rowIndex) {
 function openResults() {
   if (!resultsEl.hidden) return;
   resultsEl.hidden = false;
-  unregisterLayer = pushLayer(closeResults);
+  unregisterLayer = pushLayer(closeResultsByEscape);
   // Закрываем только по клику, начавшемуся снаружи (соглашение проекта):
   // иначе зажатие кнопки внутри списка с отпусканием вне схлопывало бы его.
   document.addEventListener("mousedown", onOutsideMouseDown);
@@ -819,6 +826,16 @@ function closeResults() {
     unregisterLayer();
     unregisterLayer = null;
   }
+}
+
+// Esc при открытом списке. Если поиск открыли по Ctrl+F из текста — одним
+// нажатием и закрываем список, и возвращаем каретку туда, откуда её забрали
+// (returnFocusFromSearch сама очистит запрос). Без этого первое Esc только
+// прятало список, и до заметки приходилось жать второй раз. Если же в поле
+// пришли кликом, возвращать некуда — тогда, как и раньше, просто закрываем.
+function closeResultsByEscape() {
+  closeResults();
+  returnFocusFromSearch();
 }
 
 function onOutsideMouseDown(event) {
