@@ -359,24 +359,6 @@ export async function refreshActivePanelItems() {
   renderDetailIfIdle(container, config, state);
 }
 
-// Раскрыть цепочку родителей папки, чтобы она стала видна в дереве Folders. У
-// папки может быть несколько родителей — идём по первому существующему, этого
-// достаточно, чтобы строка появилась на экране. visited — защита от цикла в
-// данных, испорченных в обход itemsService.
-function expandAncestors(state, folderId) {
-  const visited = new Set();
-  let currentId = folderId;
-  while (currentId && !visited.has(currentId)) {
-    visited.add(currentId);
-    const folder = state.folders.find((f) => f.id === currentId);
-    if (!folder) return;
-    const parentId = parentIdsOf(folder).find((id) => state.folders.some((f) => f.id === id));
-    if (!parentId) return;
-    state.expandedFolderIds.add(parentId);
-    currentId = parentId;
-  }
-}
-
 // Пришли по результату поиска (или по кастомному кружку главной страницы):
 // открываем нужную папку или заметку. target.folderId (кружок главной знает,
 // через какое место — обычную папку или Favorites/Notes/Unfiled — заметку
@@ -390,10 +372,13 @@ function applySearchTarget(state) {
   if (target.kind === "folder") {
     state.section = "folders";
     state.selectedFolderId = target.id;
-    state.selectedFolderContext = null;
+    // Любая папка теперь есть на верхнем уровне (см. buildBodyRows) — ведём к
+    // этой строке: родителей раскрывать не нужно, и выделение не расползается
+    // на все места, где папка ещё видна.
+    state.selectedFolderContext = "root";
     state.flashFolderId = target.id;
-    // Показываем саму папку вместе с содержимым: за ней и пришли.
-    expandAncestors(state, target.id);
+    // Показываем саму папку вместе с содержимым: за ней и пришли. Ключ
+    // раскрытия верхней строки — сам id (см. pushFolderRows).
     state.expandedFolderIds.add(target.id);
     return;
   }
@@ -404,7 +389,6 @@ function applySearchTarget(state) {
     state.selectedItemContext = null;
   } else if (state.folders.some((f) => f.id === target.folderId)) {
     state.section = "folders";
-    expandAncestors(state, target.folderId);
     state.expandedFolderIds.add(target.folderId);
     state.selectedItemContext = target.folderId;
   } else {
@@ -588,7 +572,10 @@ function createFolderFlow(container, config, state) {
  * "New note" в меню папки и панели, кнопка "Create note" пустого аккаунта.
  * folderId — создать сразу внутри этой папки.
  */
-function createNoteFlow(container, config, state, folderId = null) {
+// expandKey — путь строки папки, из меню которой создают (см. pushFolderRows):
+// раскрываем именно её, иначе новая заметка во вложенной строке осталась бы
+// невидимой. Без него — верхняя строка папки (её путь равен id).
+function createNoteFlow(container, config, state, folderId = null, expandKey = folderId) {
   const folderIds = folderId ? [folderId] : [];
   // В «Избранном» ведём себя как в папке: новая заметка сразу попадает в него.
   const isFavorite = !folderId && state.section === "favorites";
@@ -604,7 +591,7 @@ function createNoteFlow(container, config, state, folderId = null) {
       state.selectedTrash = null;
       // Заметку должно быть видно в панели сразу: папку раскрываем, из Корзины
       // (где новой заметке не место) уходим в Notes.
-      if (folderId) state.expandedFolderIds.add(folderId);
+      if (expandKey) state.expandedFolderIds.add(expandKey);
       if (state.section === "trash") state.section = "all";
       // Разово попросить деталь поставить курсор в поле названия — чтобы
       // печатать сразу, без клика мышкой.
@@ -1032,6 +1019,8 @@ let activeDrag = null;
 
 // Корневые папки — без родителя, который всё ещё существует. Папка, у которой
 // единственный родитель удалён или потерян, иначе пропала бы из дерева совсем.
+// Панель Folders показывает наверху все папки (см. buildBodyRows); настоящие
+// корни нужны списку выбора в «Add to folder» (openAddToFolderMenu).
 function rootFolders(state) {
   return state.folders.filter((folder) =>
     parentIdsOf(folder).every((parentId) => !state.folders.some((f) => f.id === parentId))
@@ -1061,7 +1050,10 @@ function buildBodyRows(state) {
     );
     pushNoteRows(rows, state.items.filter((item) => item.isFavorite), "favorites", 0, true);
   } else if (state.section === "folders") {
-    sortPinnedFirst(rootFolders(state)).forEach((folder) => pushFolderRows(rows, state, folder, 0, "root", [folder.id]));
+    // Наверху — ВСЕ папки, и вложенные тоже: вложение добавляет папке место
+    // внутри родителя, а не убирает её из общего списка. Часто нужную папку
+    // иначе приходилось бы каждый раз доставать, раскрывая родителя.
+    sortPinnedFirst(state.folders).forEach((folder) => pushFolderRows(rows, state, folder, 0, "root", [folder.id]));
   }
   return rows;
 }
@@ -1076,9 +1068,16 @@ function pushNoteRows(rows, list, context, depth, flat) {
 // дочерние папки, потом заметки, на шаг глубже. chain — папки текущей ветки,
 // защита от бесконечной рекурсии при данных, испорченных в обход itemsService
 // (например, вручную через localStorage).
+//
+// expandKey — путь от верхней строки до этой («Б/А»). Одна и та же папка видна
+// в нескольких местах (наверху и внутри каждого родителя), и раскрываться они
+// должны независимо — поэтому ключ раскрытия по месту, а не по id. У строки
+// верхнего уровня путь равен самому id, так что раскрытое до этой правки
+// раскрытым и осталось.
 function pushFolderRows(rows, state, folder, depth, context, chain) {
-  const expanded = state.expandedFolderIds.has(folder.id);
-  rows.push({ kind: "folder", folder, depth, context, expanded, count: countFolderContents(state, folder.id) });
+  const expandKey = chain.join("/");
+  const expanded = state.expandedFolderIds.has(expandKey);
+  rows.push({ kind: "folder", folder, depth, context, expandKey, expanded, count: countFolderContents(state, folder.id) });
   if (!expanded) return;
   childFoldersOf(state, folder.id)
     .filter((child) => !chain.includes(child.id))
@@ -1094,7 +1093,7 @@ function bodySignature(rows) {
       if (row.kind === "trash") return `t:${row.entry.kind}:${row.entry.id}`;
       if (row.kind === "folder") {
         const f = row.folder;
-        return `f:${f.id}:${row.context}:${row.expanded}:${row.count}:${f.name}:${f.isFavorite}:${f.pinned}`;
+        return `f:${f.id}:${row.expandKey}:${row.expanded}:${row.count}:${f.name}:${f.isFavorite}:${f.pinned}`;
       }
       return `n:${row.item.id}:${row.context}:${row.empty}:${row.pinned}:${row.item.isFavorite}`;
     })
@@ -1112,7 +1111,7 @@ function folderRowHtml(row) {
   const source = isDragSource("folder", folder.id) ? "is-drag-source" : "";
   return `
     <li class="folder-item is-draggable ${row.expanded ? "is-expanded" : ""} ${folder.pinned ? "is-pinned" : ""} ${zone} ${source}"
-        data-folder-id="${folder.id}" data-context="${context}" data-depth="${depth}"
+        data-folder-id="${folder.id}" data-context="${context}" data-expand-key="${row.expandKey}" data-depth="${depth}"
         style="--indent: ${indentForDepth(depth)}px">
       ${folderIcon()}
       <span class="folder-name">${escapeHtml(folder.name)}</span>
@@ -1274,7 +1273,7 @@ function renderWorkspaceBody(container, config, state, resetScroll) {
 
   // Пришли из поиска: показываем, какая именно папка нашлась. Метка одноразовая.
   if (state.flashFolderId) {
-    const found = bodyEl.querySelector(`[data-folder-id="${state.flashFolderId}"]`);
+    const found = bodyEl.querySelector(`[data-folder-id="${state.flashFolderId}"][data-context="root"]`);
     if (found) found.classList.add("is-search-flash");
     state.flashFolderId = null;
   }
@@ -1462,22 +1461,26 @@ function springToSection(container, config, state, key) {
   renderPanel(container, config, state, { resetScroll: true });
 }
 
-function springExpandFolder(container, config, state, folderId) {
-  state.expandedFolderIds.add(folderId);
+// expandKey — путь до строки папки (см. pushFolderRows), а не её id: пружинка
+// раскрывает ровно ту строку, над которой держат перетаскиваемое.
+function springExpandFolder(container, config, state, expandKey) {
+  state.expandedFolderIds.add(expandKey);
   renderPanel(container, config, state);
 }
 
 function wireFolderRow(el, container, config, state) {
   const folderId = el.dataset.folderId;
   const context = el.dataset.context;
+  const expandKey = el.dataset.expandKey;
 
   // Клик выбирает папку и раскрывает/сворачивает её содержимое. Открытую справа
-  // заметку не трогаем — перерисовываем только панель.
+  // заметку не трогаем — перерисовываем только панель. Раскрываем по пути, а не
+  // по id: та же папка наверху и внутри родителя раскрывается независимо.
   el.addEventListener("click", () => {
     state.selectedFolderId = folderId;
     state.selectedFolderContext = context;
-    if (state.expandedFolderIds.has(folderId)) state.expandedFolderIds.delete(folderId);
-    else state.expandedFolderIds.add(folderId);
+    if (state.expandedFolderIds.has(expandKey)) state.expandedFolderIds.delete(expandKey);
+    else state.expandedFolderIds.add(expandKey);
     renderPanel(container, config, state);
   });
 
@@ -1546,8 +1549,9 @@ function wireFolderRow(el, container, config, state) {
         const after = isDropAfter(hitEl, { clientY });
         // Раскрываем только когда курсор в зоне «вложить»: при обычной
         // перестановке раскрывшаяся папка сдвигала бы строки из-под курсора.
-        const canSpring = into && !state.expandedFolderIds.has(hitId);
-        spring.hover(canSpring ? `folder:${hitId}` : null, () => springExpandFolder(container, config, state, hitId));
+        const hitKey = hitEl.dataset.expandKey;
+        const canSpring = into && !state.expandedFolderIds.has(hitKey);
+        spring.hover(canSpring ? `folder:${hitKey}` : null, () => springExpandFolder(container, config, state, hitKey));
         if (into) hitEl.classList.add("is-drop-into");
         else markDropSide(hitEl, after);
         return { el: hitEl, folderId: hitId, into, after };
@@ -1652,7 +1656,7 @@ function wireFolderRow(el, container, config, state) {
         : []),
       {
         label: t("panel.newItem"),
-        onClick: () => createNoteFlow(container, config, state, folder.id),
+        onClick: () => createNoteFlow(container, config, state, folder.id, el.dataset.expandKey),
       },
       {
         label: t("panel.delete"),
@@ -1721,9 +1725,10 @@ function wireNoteRow(el, container, config, state) {
 
         const targetFolderId = hitEl.dataset.folderId;
         if (targetFolderId) {
-          const collapsed = !state.expandedFolderIds.has(targetFolderId);
-          spring.hover(collapsed ? `folder:${targetFolderId}` : null, () =>
-            springExpandFolder(container, config, state, targetFolderId)
+          const targetKey = hitEl.dataset.expandKey;
+          const collapsed = !state.expandedFolderIds.has(targetKey);
+          spring.hover(collapsed ? `folder:${targetKey}` : null, () =>
+            springExpandFolder(container, config, state, targetKey)
           );
           hitEl.classList.add("is-drop-target");
           return { el: hitEl, kind: "folder", id: targetFolderId };
@@ -2031,7 +2036,11 @@ async function deleteFolderFlow(folderId, container, config, state, confirm) {
         state.selectedFolderId = null;
         state.selectedFolderContext = null;
       }
-      state.expandedFolderIds.delete(folderId);
+      // Ключи раскрытия — пути (см. pushFolderRows): папка могла быть раскрыта
+      // в нескольких местах, а её id мог стоять и в путях её детей.
+      [...state.expandedFolderIds]
+        .filter((key) => key.split("/").includes(folderId))
+        .forEach((key) => state.expandedFolderIds.delete(key));
     },
     () => itemsService.moveFolderToTrash(config.section, folderId, deletedAt),
     () => renderAfterTrashChange(container, config, state)
