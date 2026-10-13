@@ -3,6 +3,7 @@ import * as photoStorageService from "../../services/photoStorageService.js";
 import { createRichTextEditor } from "./richTextEditor.js";
 import { attachFloatingToolbar } from "./floatingToolbar.js";
 import { showContextMenu } from "./contextMenu.js";
+import { openAnchoredMenu } from "./anchoredMenu.js";
 import { openConfirm, openPrompt } from "../../utils/modal.js";
 import { escapeHtml, htmlToSearchText, isScrollContainer } from "../../utils/dom.js";
 import { toCssPx, toScrollPx } from "../../utils/uiScale.js";
@@ -556,11 +557,18 @@ function revealSelectedRow(container, state) {
 
 // Общая логика создания папки — переиспользуется и кнопкой "+" в шапке
 // (в разделе Folders), и пунктом "New folder" контекстного меню панели.
+// Спросить имя и собрать модель новой папки; null — пользователь передумал.
+// Общая часть «Создать папку» и «Add to folder → Create new folder».
+async function askNewFolder(config) {
+  const name = await openPrompt({ message: t("panel.folderNamePrompt") });
+  if (!name || !name.trim()) return null;
+  return createFolderModel({ name: name.trim(), section: config.section });
+}
+
 function createFolderFlow(container, config, state) {
   return async () => {
-    const name = await openPrompt({ message: t("panel.folderNamePrompt") });
-    if (!name || !name.trim()) return;
-    const folder = createFolderModel({ name: name.trim(), section: config.section });
+    const folder = await askNewFolder(config);
+    if (!folder) return;
     optimisticBulk(
       state,
       () => {
@@ -1834,6 +1842,12 @@ function wireNoteRow(el, container, config, state) {
           );
         },
       },
+      {
+        // Из Notes, Favorites и Unfiled папок не видно, и перетащить заметку
+        // некуда — этот пункт единственный путь положить её в папку оттуда.
+        label: t("panel.addToFolder"),
+        onClick: () => openAddToFolderMenu(event.clientX, event.clientY, item.id, container, config, state),
+      },
       // «Убрать из этой папки» — только у строки внутри папки. Перетаскивание в
       // папку добавляет, а не перемещает, поэтому убрать из одной папки можно отсюда.
       ...(isRealFolderId(context) && item.folderIds.includes(context)
@@ -1857,6 +1871,61 @@ function wireNoteRow(el, container, config, state) {
       },
     ]);
   });
+}
+
+/**
+ * Второе меню пункта «Add to folder»: только корневые папки, плоским списком,
+ * и в конце «Create new folder». Вложенные не показываем намеренно: заметка в
+ * корневой папке и так видна везде, где эта папка показана. Папка ДОБАВЛЯЕТСЯ к
+ * folderIds — из прежних папок заметка не уходит, как и при перетаскивании.
+ * openAnchoredMenu, а не showContextMenu: оно закрывается по mousedown снаружи
+ * (соглашение проекта) и умеет неактивные пункты.
+ */
+function openAddToFolderMenu(x, y, itemId, container, config, state) {
+  const item = state.items.find((i) => i.id === itemId);
+  if (!item) return;
+  const render = () => renderPanel(container, config, state);
+
+  const entries = sortPinnedFirst(rootFolders(state)).map((folder) => {
+    const already = item.folderIds.includes(folder.id);
+    return {
+      label: already ? `✓ ${folder.name}` : folder.name,
+      disabled: already,
+      onClick: () => {
+        const folderIds = [...item.folderIds, folder.id];
+        optimisticField(state, "items", item.id, { folderIds }, () => itemsService.updateItem(item.id, { folderIds }), render);
+      },
+    };
+  });
+
+  entries.push({
+    label: t("panel.createFolderForNote"),
+    onClick: async () => {
+      const folder = await askNewFolder(config);
+      if (!folder) return;
+      // Заметку перечитываем: пока было открыто окно с именем, её папки могли
+      // поменяться (например, перетаскиванием).
+      const current = state.items.find((i) => i.id === itemId);
+      if (!current) return;
+      const folderIds = [...current.folderIds, folder.id];
+      // В отличие от createFolderFlow раздел НЕ переключаем на Folders:
+      // пользователь клал заметку в папку и остаётся там, где был.
+      optimisticBulk(
+        state,
+        () => {
+          state.folders = [...state.folders, folder];
+          state.items = state.items.map((i) => (i.id === itemId ? { ...i, folderIds } : i));
+        },
+        async () => {
+          await itemsService.createFolderFromModel(folder);
+          await itemsService.updateItem(itemId, { folderIds });
+        },
+        render
+      );
+    },
+  });
+
+  openAnchoredMenu(x, y, entries);
 }
 
 function wireTrashRow(el, container, config, state) {

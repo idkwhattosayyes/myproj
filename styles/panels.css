@@ -716,6 +716,15 @@ body.is-dragging-row .item-list-row[data-item-id] { cursor: grabbing; }
 
 .context-menu-item:hover { background: var(--surface-hover); }
 
+/* Неактивный пункт (например, папка, в которой заметка уже лежит) — виден,
+   но не реагирует на наведение. */
+.context-menu-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.context-menu-item:disabled:hover { background: none; }
+
 /* Показывается вместо пустой полосы, когда openAnchoredMenu получает пустой
    items — например список тегов "+" → Add, когда все теги уже на блоке. */
 .context-menu-empty {

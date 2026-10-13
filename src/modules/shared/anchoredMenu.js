@@ -16,7 +16,7 @@ const EDGE_PAD_PX = 8;
  *
  * @param {number} x
  * @param {number} y
- * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void, keepOpenOnContextMenu?: boolean}[]} items
+ * @param {{label: string, onClick: () => void, onContextMenu?: (x: number, y: number) => void, keepOpenOnContextMenu?: boolean, disabled?: boolean}[]} items
  * @param {string} [emptyMessage] — показать вместо пустой полосы, если items пуст (например "нет доступных тегов")
  * @returns {() => void} закрыть меню programmatically
  */
@@ -34,6 +34,9 @@ export function openAnchoredMenu(x, y, items, emptyMessage) {
     btn.type = "button";
     btn.className = "context-menu-item";
     btn.textContent = item.label;
+    // disabled — пункт виден, но выбрать его нельзя (например, папка, в которой
+    // заметка уже лежит): лучше показать, чем молча выкинуть из списка.
+    if (item.disabled) btn.disabled = true;
     btn.addEventListener("click", () => {
       closeMenu();
       item.onClick();
