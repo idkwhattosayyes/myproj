@@ -1,7 +1,7 @@
 import { t } from "../i18n/i18n.js";
 import { escapeHtml } from "../utils/dom.js";
 import { pushLayer } from "../utils/escapeLayers.js";
-import { search, findMatches, MATCH_FETCH_CAP } from "./searchService.js";
+import { search, findMatches, isLineStartQuery, MATCH_FETCH_CAP } from "./searchService.js";
 import { getBlockSearchSource, onBlockSearchSource } from "./blockScope.js";
 import { getNoteSearchSource, onNoteSearchSource } from "./noteScope.js";
 import { setPendingTarget } from "./searchTarget.js";
@@ -35,6 +35,10 @@ let scopeBeforeBrowser = null;
 // случилось, ради подписи охвата («Везде · в заметке нет»). Сбрасывается на
 // каждом новом запросе.
 let fellBackToGlobal = false;
+// Запрос набран с пробелом впереди — ищем только с начала строки (см.
+// isLineStartQuery). Пересчитывается в каждом runSearch; нужен ещё и
+// отрисовке — показать подсказку, что режим включён.
+let lineStartMode = false;
 
 // Режим выбора цели для внутренней ссылки (см. openLinkPicker) — та же полоска
 // поиска, но клик по результату не переходит к нему, а возвращает выбор вызывающему
@@ -327,6 +331,9 @@ export function renderLabels() {
   if (pickerActive) inputEl.placeholder = t("search.pickNotePlaceholder");
   else if (inNote) inputEl.placeholder = t("search.placeholderNote");
   else inputEl.placeholder = t("search.placeholder");
+  // Сам режим «с начала строки» нигде не виден, пока его не включишь, —
+  // подсказка о нём живёт во всплывающей подписи поля.
+  inputEl.title = t("search.lineStartTip");
   scopeBtn.textContent = scopeLabel(inNote);
   // Другой фон поля — режим поиска виден, даже пока в поле ничего не набрано.
   barEl.querySelector(".search-field").classList.toggle("is-scope-note", inNote);
@@ -467,7 +474,11 @@ function renderPickedTags() {
 }
 
 async function runSearch() {
-  const query = inputEl.value.trim();
+  // Сырой ввод нужен ради пробела впереди (поиск с начала строки): после
+  // trim() его уже не видно. В сами поиски уходит обрезанный query.
+  const rawQuery = inputEl.value;
+  const query = rawQuery.trim();
+  lineStartMode = isLineStartQuery(rawQuery);
   const wasFallback = fellBackToGlobal;
   fellBackToGlobal = false;
   if (!query) {
@@ -486,8 +497,10 @@ async function runSearch() {
     // Само появление совпадения должно подвести список к нему, не дожидаясь
     // клика по результату. Берём первую БЛОЧНУЮ группу: выше могут стоять
     // группы-названия заметок, к ним в меню прокручивать нечего.
+    // Номер вхождения — у первого найденного, а не 0: при поиске с начала
+    // строки первое вхождение в блоке могло и не подойти.
     const firstBlock = groups.find((group) => group.kind === "block");
-    if (firstBlock) blockSource.scrollToBlock(firstBlock.id, firstBlock.blockId, query, 0);
+    if (firstBlock) blockSource.scrollToBlock(firstBlock.id, firstBlock.blockId, query, firstBlock.matches[0].index);
     return;
   }
 
@@ -510,7 +523,7 @@ async function runSearch() {
   if (wasFallback !== fellBackToGlobal) renderLabels();
 
   const myToken = ++searchToken;
-  const found = await search(query, currentScopeKey());
+  const found = await search(rawQuery, currentScopeKey());
   if (myToken !== searchToken) return;
   groups = found;
   if (pickerActive) {
@@ -555,7 +568,7 @@ function initialActiveRow() {
  * @param {ReturnType<typeof getNoteSearchSource>} source
  */
 function searchOpenNote(query, source) {
-  const found = findMatches(source.getText(), query, MATCH_FETCH_CAP);
+  const found = findMatches(source.getText(), query, MATCH_FETCH_CAP, { lineStart: lineStartMode });
   if (!found.matches.length) return [];
   return [
     {
@@ -594,7 +607,8 @@ function searchOpenBlocks(query, source) {
   blocks.forEach((block) => {
     if (seenNotes.has(block.itemId)) return;
     seenNotes.add(block.itemId);
-    if (!(block.itemTitle || "").toLowerCase().includes(needle)) return;
+    const titleKey = (block.itemTitle || "").toLowerCase();
+    if (lineStartMode ? !titleKey.startsWith(needle) : !titleKey.includes(needle)) return;
     noteGroups.push({
       kind: "blockNote",
       id: block.itemId,
@@ -610,7 +624,7 @@ function searchOpenBlocks(query, source) {
 
   const blockGroups = [];
   blocks.forEach((block) => {
-    const found = findMatches(block.text, query, MATCH_FETCH_CAP);
+    const found = findMatches(block.text, query, MATCH_FETCH_CAP, { lineStart: lineStartMode });
     if (!found.matches.length) return;
     blockGroups.push({
       kind: "block",
@@ -644,9 +658,11 @@ function renderResults() {
       // isHead отличает строку-название от строки-совпадения. Без него они
       // попадали в rows одинаково (у заголовка matchIndex тоже 0), и клик по
       // названию открывал заметку так же, как клик по первой находке — с
-      // прыжком к слову (см. openRow).
+      // прыжком к слову (см. openRow). matchIndex заголовка — номер ПЕРВОГО
+      // найденного: при поиске с начала строки это не обязательно вхождение 0.
+      const headMatchIndex = group.matches.length ? group.matches[0].index : 0;
       const head = `
-        <button type="button" class="search-row search-row--head" data-row="${rows.push({ groupIndex, matchIndex: 0, isHead: true }) - 1}">
+        <button type="button" class="search-row search-row--head" data-row="${rows.push({ groupIndex, matchIndex: headMatchIndex, isHead: true }) - 1}">
           <span class="search-kind">${kindLabel(group.kind)}</span>
           <span class="search-row-title">${escapeHtml(group.title || t("panel.untitled"))}</span>
           ${group.subtitle ? `<span class="search-row-sub">${escapeHtml(group.subtitle)}</span>` : ""}
@@ -687,7 +703,10 @@ function renderResults() {
     })
     .join("");
 
-  resultsEl.innerHTML = html || `<div class="search-empty">${t("search.nothing")}</div>`;
+  // Пробел впереди легко поставить случайно — подсказка объясняет, почему
+  // находится меньше обычного (или ничего).
+  const hint = lineStartMode ? `<div class="search-hint">${escapeHtml(t("search.lineStartHint"))}</div>` : "";
+  resultsEl.innerHTML = hint + (html || `<div class="search-empty">${t("search.nothing")}</div>`);
   resultsEl.querySelectorAll("[data-row]").forEach((btn) => {
     btn.addEventListener("click", () => openRow(Number(btn.dataset.row)));
   });

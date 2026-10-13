@@ -27,24 +27,27 @@ const MAX_GROUPS = 40;
 
 /**
  * Ищет по названиям папок, названиям и тексту заметок и по записям календаря.
- * @param {string} rawQuery
+ * @param {string} rawQuery как набран, без trim(): пробел впереди включает
+ *   поиск с начала строки (см. isLineStartQuery)
  * @param {"all" | "items" | "calendar"} scope
  * @returns {Promise<SearchGroup[]>}
  */
 export async function search(rawQuery, scope) {
   const query = rawQuery.trim();
   if (!query) return [];
+  // Режим берём из СЫРОГО ввода — после trim() пробела впереди уже не видно.
+  const opts = { lineStart: isLineStartQuery(rawQuery) };
 
   // Заметки и календарь — независимые источники (у залогиненного первый
   // ходит на сервер, второй читает localStorage), ждать их по очереди незачем.
   const [itemGroups, calendarGroups] = await Promise.all([
-    scope !== "calendar" ? searchItems(query) : [],
-    scope !== "items" ? searchCalendar(query) : [],
+    scope !== "calendar" ? searchItems(query, opts) : [],
+    scope !== "items" ? searchCalendar(query, opts) : [],
   ]);
   return [...itemGroups, ...calendarGroups].slice(0, MAX_GROUPS);
 }
 
-async function searchItems(query) {
+async function searchItems(query, opts) {
   // Общее слово "photo"/"фото" (кириллица и латиница проверяются независимо
   // от текущего языка интерфейса) находит любое фото вообще — так находятся и
   // фото без названия. Хранилище получает этот признак отдельно: по тексту
@@ -68,7 +71,7 @@ async function searchItems(query) {
   const bodyGroups = [];
 
   folders.forEach((folder) => {
-    if (!findMatches(folder.name, query, 1).matches.length) return;
+    if (!findMatches(folder.name, query, 1, opts).matches.length) return;
     groups.push({
       kind: "folder",
       id: folder.id,
@@ -85,15 +88,15 @@ async function searchItems(query) {
 
   candidates.forEach((item) => {
     const title = item.title || "";
-    const inTitle = findMatches(title, query, 1);
-    const inText = findMatches(item.text, query, MATCH_FETCH_CAP);
+    const inTitle = findMatches(title, query, 1, opts);
+    const inText = findMatches(item.text, query, MATCH_FETCH_CAP, opts);
     // Фото нигде не показывается как текст, поэтому в item.text его нет —
     // ищем по названиям отдельно: совпадение либо по названию (подстрока, как
     // раньше), либо любое фото, если запрос — общее слово.
     const photoMatches = item.photos
       .map((photo, photoIndex) => {
         if (photo.name) {
-          const found = findMatches(photo.name, query, 1);
+          const found = findMatches(photo.name, query, 1, opts);
           if (found.matches.length) return { ...found.matches[0], photoIndex, photoName: photo.name };
         }
         if (isGenericPhotoQuery) {
@@ -131,7 +134,7 @@ async function searchItems(query) {
   return [...groups, ...titleGroups, ...bodyGroups];
 }
 
-async function searchCalendar(query) {
+async function searchCalendar(query, opts) {
   const [entries, tags] = await Promise.all([
     calendarEntriesService.listAll(),
     calendarTagsService.listTags(),
@@ -142,8 +145,8 @@ async function searchCalendar(query) {
   entries.forEach((entry) => {
     const text = (entry.title || "").replace(/\s+/g, " ").trim();
     const tagName = tagNames.get(entry.tagId) || "";
-    const inText = findMatches(text, query, MATCH_FETCH_CAP);
-    const inTag = findMatches(tagName, query, 1);
+    const inText = findMatches(text, query, MATCH_FETCH_CAP, opts);
+    const inTag = findMatches(tagName, query, 1, opts);
     if (!inText.matches.length && !inTag.matches.length) return;
 
     groups.push({
@@ -169,26 +172,53 @@ async function searchCalendar(query) {
  * Экспортируется ради поиска по блокам открытого меню тегов (searchBar.js):
  * сниппеты там обязаны выглядеть так же, как у обычных результатов, поэтому
  * нарезка переиспользуется, а не дублируется.
+ *
+ * lineStart — засчитывать только вхождения в начале строки (запрос набран с
+ * пробелом впереди, см. isLineStartQuery). index и тогда считается по ВСЕМ
+ * вхождениям: редактор, переходя к найденному, отсчитывает их подряд, не зная
+ * про этот режим (noteOccurrenceRange в richTextEditor.js). total же — только
+ * подошедшие, иначе «Ещё совпадений: N» врало бы.
  */
-export function findMatches(text, query, limit) {
+export function findMatches(text, query, limit, { lineStart = false } = {}) {
   const haystack = (text || "").toLowerCase();
   const needle = query.toLowerCase();
   const matches = [];
   let total = 0;
+  let occurrence = 0;
 
   for (let from = haystack.indexOf(needle); from !== -1; from = haystack.indexOf(needle, from + needle.length)) {
-    if (matches.length < limit) {
-      matches.push({
-        index: total,
-        before: cutBefore(text, from),
-        hit: text.slice(from, from + query.length),
-        after: cutAfter(text, from + query.length),
-      });
+    if (!lineStart || startsLine(haystack, from)) {
+      if (matches.length < limit) {
+        matches.push({
+          index: occurrence,
+          before: cutBefore(text, from, lineStart),
+          hit: text.slice(from, from + query.length),
+          after: cutAfter(text, from + query.length),
+        });
+      }
+      total += 1;
     }
-    total += 1;
+    occurrence += 1;
   }
 
   return { matches, total };
+}
+
+/**
+ * Пробел перед запросом — «ищи с начала строки»: так удобно находить заголовки
+ * и первые слова абзацев. Проверяем сырой ввод, до trim().
+ */
+export function isLineStartQuery(rawQuery) {
+  return /^\s/.test(rawQuery);
+}
+
+// Стоит ли позиция at в начале строки: перед ней начало текста или перенос
+// "\n" (строки заметки разделены им, см. htmlToSearchText). Отступ в начале
+// строки — пробелы, табы, неразрывные пробелы — началу не мешает.
+function startsLine(text, at) {
+  let i = at - 1;
+  while (i >= 0 && (text[i] === " " || text[i] === "\t" || text[i] === " ")) i -= 1;
+  return i < 0 || text[i] === "\n";
 }
 
 // Граница абзаца — пустая строка редактора: в тексте заметки строки разделены
@@ -212,8 +242,12 @@ function paragraphEnd(text, at) {
   return brk === -1 ? text.length : brk;
 }
 
-function cutBefore(text, at) {
-  const floor = paragraphStart(text, at);
+// lineStart — режим «с начала строки»: контекст слева режем по началу САМОЙ
+// строки, а не абзаца. Иначе в сниппет попадал хвост предыдущей строки
+// (одиночный "\n" показывается пробелом), и найденное в начале строки
+// выглядело как найденное посередине.
+function cutBefore(text, at, lineStart = false) {
+  const floor = lineStart ? text.lastIndexOf("\n", at - 1) + 1 : paragraphStart(text, at);
   const start = Math.max(floor, at - SNIPPET_PADDING);
   // Оставшиеся одиночные "\n" — мягкие переносы; строка результата одна.
   return (start > floor ? "…" : "") + text.slice(start, at).replace(/\n/g, " ");
