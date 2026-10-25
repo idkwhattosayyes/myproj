@@ -1,6 +1,4 @@
 import * as itemsService from "../services/itemsService.js";
-import * as calendarEntriesService from "../services/calendarEntriesService.js";
-import * as calendarTagsService from "../services/calendarTagsService.js";
 
 // Сколько вхождений одного и того же слова СОБИРАЕМ внутри одной заметки. Показываем
 // по умолчанию меньше (см. INITIAL_VISIBLE в searchBar.js), а остальные прячем за
@@ -14,7 +12,7 @@ const MAX_GROUPS = 40;
 
 /**
  * @typedef {{
- *   kind: "folder" | "item" | "calendar",
+ *   kind: "folder" | "item",
  *   id: string,
  *   section: string | null,
  *   title: string,
@@ -26,25 +24,19 @@ const MAX_GROUPS = 40;
  */
 
 /**
- * Ищет по названиям папок, названиям и тексту заметок и по записям календаря.
+ * Ищет по названиям папок, названиям и тексту заметок.
  * @param {string} rawQuery как набран, без trim(): пробел впереди включает
  *   поиск с начала строки (см. isLineStartQuery)
- * @param {"all" | "items" | "calendar"} scope
  * @returns {Promise<SearchGroup[]>}
  */
-export async function search(rawQuery, scope) {
+export async function search(rawQuery) {
   const query = rawQuery.trim();
   if (!query) return [];
   // Режим берём из СЫРОГО ввода — после trim() пробела впереди уже не видно.
   const opts = { lineStart: isLineStartQuery(rawQuery) };
 
-  // Заметки и календарь — независимые источники (у залогиненного первый
-  // ходит на сервер, второй читает localStorage), ждать их по очереди незачем.
-  const [itemGroups, calendarGroups] = await Promise.all([
-    scope !== "calendar" ? searchItems(query, opts) : [],
-    scope !== "items" ? searchCalendar(query, opts) : [],
-  ]);
-  return [...itemGroups, ...calendarGroups].slice(0, MAX_GROUPS);
+  const itemGroups = await searchItems(query, opts);
+  return itemGroups.slice(0, MAX_GROUPS);
 }
 
 async function searchItems(query, opts) {
@@ -134,36 +126,6 @@ async function searchItems(query, opts) {
   return [...groups, ...titleGroups, ...bodyGroups];
 }
 
-async function searchCalendar(query, opts) {
-  const [entries, tags] = await Promise.all([
-    calendarEntriesService.listAll(),
-    calendarTagsService.listTags(),
-  ]);
-  const tagNames = new Map(tags.map((tag) => [tag.id, tag.name]));
-  const groups = [];
-
-  entries.forEach((entry) => {
-    const text = (entry.title || "").replace(/\s+/g, " ").trim();
-    const tagName = tagNames.get(entry.tagId) || "";
-    const inText = findMatches(text, query, MATCH_FETCH_CAP, opts);
-    const inTag = findMatches(tagName, query, 1, opts);
-    if (!inText.matches.length && !inTag.matches.length) return;
-
-    groups.push({
-      kind: "calendar",
-      id: entry.id,
-      section: null,
-      title: text,
-      subtitle: [formatDate(entry.date), formatTime(entry), tagName].filter(Boolean).join(" · "),
-      query,
-      matches: inText.matches,
-      moreCount: inText.total - inText.matches.length,
-    });
-  });
-
-  return groups;
-}
-
 /**
  * Находит вхождения запроса в тексте и режет вокруг каждого кусочек для показа.
  * index — порядковый номер вхождения в тексте: по нему потом ищем это же место
@@ -227,7 +189,7 @@ function startsLine(text, at) {
 // показывается без «хвоста» предыдущего, а «…» ставится только когда обрезан
 // текст ЭТОГО абзаца. Одиночный "\n" (мягкий перенос внутри абзаца) границей
 // не считается — контекст берётся с соседней строки, как и раньше.
-// У строк без "\n" (папки, названия, календарь, блоки) ничего не меняется.
+// У строк без "\n" (папки, названия, блоки) ничего не меняется.
 const PARAGRAPH_BREAK = "\n\n";
 
 function paragraphStart(text, at) {
@@ -257,14 +219,4 @@ function cutAfter(text, at) {
   const ceiling = paragraphEnd(text, at);
   const end = Math.min(ceiling, at + SNIPPET_PADDING);
   return text.slice(at, end).replace(/\n/g, " ") + (end < ceiling ? "…" : "");
-}
-
-function formatDate(iso) {
-  const [, month, day] = iso.split("-");
-  return `${day}.${month}`;
-}
-
-function formatTime(entry) {
-  if (entry.startTime && entry.endTime) return `${entry.startTime}–${entry.endTime}`;
-  return entry.startTime || entry.endTime || "";
 }

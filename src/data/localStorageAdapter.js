@@ -5,10 +5,15 @@ const STORAGE_KEYS = {
   folders: "app:folders",
   items: "app:items",
   diaryEntries: "app:diaryEntries",
-  calendarEntries: "app:calendarEntries",
-  calendarTags: "app:calendarTags",
   blockTags: "app:blockTags",
 };
+
+// Раздел «Календарь» удалён целиком (октябрь 2026), и по решению владельца —
+// вместе с данными. Записи жили только здесь, в Supabase их не было никогда.
+// Убираем ключи при каждой загрузке: после первой это ничего не делает, зато
+// не нужна отдельная отметка «уборка уже прошла».
+localStorage.removeItem("app:calendarEntries");
+localStorage.removeItem("app:calendarTags");
 
 function readCollection(key) {
   const raw = localStorage.getItem(key);
@@ -253,54 +258,10 @@ export const localStorageAdapter = {
     writeCollection(STORAGE_KEYS.diaryEntries, entries);
   },
 
-  // Calendar entries — лёгкие пункты списка на конкретную дату (не rich-text)
-  async getCalendarEntries(date) {
-    return readCollection(STORAGE_KEYS.calendarEntries).filter((entry) => entry.date === date);
-  },
-  async getAllCalendarEntryDates() {
-    return [...new Set(readCollection(STORAGE_KEYS.calendarEntries).map((entry) => entry.date))];
-  },
-  async getAllCalendarEntries() {
-    return readCollection(STORAGE_KEYS.calendarEntries);
-  },
-  async createCalendarEntry(entry) {
-    const entries = readCollection(STORAGE_KEYS.calendarEntries);
-    entries.push(entry);
-    writeCollection(STORAGE_KEYS.calendarEntries, entries);
-    return entry;
-  },
-  async updateCalendarEntry(id, patch) {
-    const entries = readCollection(STORAGE_KEYS.calendarEntries);
-    const index = entries.findIndex((entry) => entry.id === id);
-    if (index === -1) return null;
-    entries[index] = { ...entries[index], ...patch };
-    writeCollection(STORAGE_KEYS.calendarEntries, entries);
-    return entries[index];
-  },
-  async deleteCalendarEntry(id) {
-    const entries = readCollection(STORAGE_KEYS.calendarEntries).filter((entry) => entry.id !== id);
-    writeCollection(STORAGE_KEYS.calendarEntries, entries);
-  },
-
   // Полный сброс пользовательских данных. Настройки (язык, обводка) живут под
   // своими ключами и намеренно переживают очистку — это не данные, а вид приложения.
   async clearAll() {
     Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
-  },
-
-  // Calendar tags — пользовательские метки {id, name, color}, привязываются к записям
-  async getCalendarTags() {
-    return readCollection(STORAGE_KEYS.calendarTags);
-  },
-  async createCalendarTag(tag) {
-    const tags = readCollection(STORAGE_KEYS.calendarTags);
-    tags.push(tag);
-    writeCollection(STORAGE_KEYS.calendarTags, tags);
-    return tag;
-  },
-  async deleteCalendarTag(id) {
-    const tags = readCollection(STORAGE_KEYS.calendarTags).filter((tag) => tag.id !== id);
-    writeCollection(STORAGE_KEYS.calendarTags, tags);
   },
 
   // Block tags — глобальный реестр тегов для блоков текста в заметках

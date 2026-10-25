@@ -54,19 +54,9 @@
      не зависит, поэтому и текст на нём — тоже) --- */
   --text-on-tag: #ffffff;
 
-  /* --- Подпись на пастельных кружках месяцев в календаре: кружки светлые во
-     всех темах, поэтому и подпись на них постоянная, тёмная. (Кружки главной —
-     свои у каждой темы, см. --home-circle-* в блоках тем ниже.) --- */
-  --home-circle-ink: #22303b;
-  --home-circle-ink-muted: #55606b;
   /* Затемнение поверх кружка главной с подсказкой «скоро» — тёмное в любой
      теме, белый текст на нём читается всегда. */
   --home-circle-scrim: oklch(0 0 0 / 0.55);
-
-  /* --- Календарь: кружки месяцев (той же пастельной породы, что кружки
-     главной) и маркер «в этот день есть записи». --- */
-  --calendar-month-circle: #cfe1f0;
-  --calendar-marker: #e8590c;
 
   /* --- Подсветка найденного поиском: жёлтая во всех темах, текст на ней всегда тёмный --- */
   --search-hit-bg: #ffd43b;
@@ -103,9 +93,11 @@
   --scrollbar-thumb: color-mix(in oklch, var(--text-muted) 45%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklch, var(--text-muted) 70%, transparent);
   /* Карандаш и ярлыки заметок на главной — в прототипе их нет, поэтому их
-     цвет смешан из трёх кружков темы: он всегда в одной гамме с ними. */
-  --home-circle-pencil: color-mix(in oklch, var(--home-circle-notes) 50%, var(--home-circle-calendar));
-  --home-circle-custom: color-mix(in oklch, var(--home-circle-ai) 50%, var(--home-circle-calendar));
+     цвет смешан из трёх цветов кружков темы: он всегда в одной гамме с ними.
+     --home-circle-third — цвет бывшего кружка Календаря: самого кружка больше
+     нет, но без этого цвета смеси выше изменились бы. */
+  --home-circle-pencil: color-mix(in oklch, var(--home-circle-notes) 50%, var(--home-circle-third));
+  --home-circle-custom: color-mix(in oklch, var(--home-circle-ai) 50%, var(--home-circle-third));
 }
 
 /* ------------------------------------------------------------------
@@ -155,10 +147,11 @@
   --theme-swatch-mark: oklch(0.89 0.08 70);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.9 0.04 170);
   --home-circle-ai: oklch(0.89 0.015 280);
-  --home-circle-calendar: oklch(0.89 0.04 295);
+  --home-circle-third: oklch(0.89 0.04 295);
   --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
   --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
 }
@@ -218,10 +211,11 @@
   --theme-swatch-mark: oklch(0.8 0.1 70 / 0.16);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.32 0.04 170);
   --home-circle-ai: oklch(0.3 0.015 280);
-  --home-circle-calendar: oklch(0.32 0.035 50);
+  --home-circle-third: oklch(0.32 0.035 50);
   --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
   --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
 
@@ -277,10 +271,11 @@
   --theme-swatch-mark: oklch(0.92 0.07 95);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.88 0.05 155);
   --home-circle-ai: oklch(0.9 0.03 110);
-  --home-circle-calendar: oklch(0.88 0.035 200);
+  --home-circle-third: oklch(0.88 0.035 200);
   --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
   --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
 }
@@ -332,10 +327,11 @@
   --theme-swatch-mark: oklch(0.86 0.1 85);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.84 0.05 70);
   --home-circle-ai: oklch(0.85 0.04 40);
-  --home-circle-calendar: oklch(0.84 0.035 110);
+  --home-circle-third: oklch(0.84 0.035 110);
   --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
   --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
 }
@@ -398,10 +394,11 @@
   --theme-swatch-mark: oklch(0.8 0.12 90 / 0.18);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.32 0.07 190);
   --home-circle-ai: oklch(0.3 0.05 260);
-  --home-circle-calendar: oklch(0.32 0.07 300);
+  --home-circle-third: oklch(0.32 0.07 300);
   --shadow-circle: 0 20px 40px -20px oklch(0 0 0 / 0.5);
   --shadow-circle-hover: 0 26px 48px -20px oklch(0 0 0 / 0.6);
 
@@ -457,10 +454,11 @@
   --theme-swatch-mark: oklch(0.9 0.06 80);
 
   /* Кружки главной — свои три цвета у каждой темы, как в прототипе (Заметки,
-     AI, Календарь), и своя тень: у тёмных тем глубже. */
+     AI и третий — см. --home-circle-pencil выше), и своя тень: у тёмных тем
+     глубже. */
   --home-circle-notes: oklch(0.89 0.04 20);
   --home-circle-ai: oklch(0.9 0.02 70);
-  --home-circle-calendar: oklch(0.89 0.035 120);
+  --home-circle-third: oklch(0.89 0.035 120);
   --shadow-circle: 0 20px 40px -24px oklch(0.3 0.02 250 / 0.3);
   --shadow-circle-hover: 0 26px 48px -24px oklch(0.3 0.02 250 / 0.38);
 }

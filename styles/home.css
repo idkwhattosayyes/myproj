@@ -93,20 +93,14 @@
 }
 
 /* Смещения --tx/--ty задаются случайно в JS (applyJitter) при каждом заходе.
-   Три кружка вместо прежних четырёх — треугольником вокруг центра. */
+   Системных кружков два — Notes и AI; место справа снизу, где раньше стоял
+   Календарь, свободно, и его первым занимает карандаш или ярлык заметки
+   (см. findPosition в circleLayout.js). */
 .home-circle--notes {
   top: 20%;
   left: 50%;
   background: var(--home-circle-notes);
   animation-duration: 9s;
-}
-
-.home-circle--calendar {
-  top: 65%;
-  left: 76%;
-  background: var(--home-circle-calendar);
-  animation-duration: 10s;
-  animation-delay: -6s;
 }
 
 /* AI пока недоступен — подпись приглушённая. */

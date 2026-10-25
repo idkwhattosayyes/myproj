@@ -26,11 +26,11 @@ modules/ (UI)  →  services/ (логика)  →  data/storageAdapter.js (ко�
 
 UI никогда не трогает `localStorage` напрямую (исключение — мелкие UI-настройки вроде последнего выбранного цвета). При переходе на Supabase меняется ровно одна строка — `ACTIVE_ADAPTER` в `storageAdapter.js`; JSDoc-typedef там же описывает контракт, который обязан реализовать новый адаптер.
 
-**Роутер** (`app.js`) — hash-based (`#/notes`, `#/calendar`, пусто = главная). Каждый переход полностью очищает `#app-view` и перерисовывает раздел заново. Состояние живёт в модульных переменных вьюх, не в DOM.
+**Роутер** (`app.js`) — hash-based (`#/notes`, пусто = главная). Каждый переход полностью очищает `#app-view` и перерисовывает раздел заново. Состояние живёт в модульных переменных вьюх, не в DOM.
 
 **Notes** (`modules/notes/notesView.js`) — единственный раздел заметок, раньше разделённый на Задачи и Документы, теперь слитый в один. Он вызывает `renderPanelSection(container, config)` из `modules/shared/panelSection.js` с `section: "notes"`. Тулбар сворачиваемый: `config.toolbarButtons` — полный набор, `config.basicToolbarButtons` — сокращённый (бывший набор Задач), кнопка "+/−" в тулбаре переключает между ними, состояние живёт в `localStorage` (`app:toolbarExpanded`). В хранилище `matchesSection()` в `localStorageAdapter.js` считает `"tasks"`, `"documents"` и `"notes"` алиасами — старые записи с легаси-метками `tasks`/`documents` остаются доступны под текущим `"notes"` без миграции.
 
-**Ключи localStorage:** `app:folders`, `app:items`, `app:diaryEntries`, `app:calendarEntries`, `app:calendarTags`. Настройки (`app:lang`, обводка, последние цвета) живут под своими ключами и намеренно переживают «очистить данные».
+**Ключи localStorage:** `app:folders`, `app:items`, `app:diaryEntries`, `app:blockTags`, `app:homeCircles`. Раздел «Календарь» удалён вместе с данными: его ключи `app:calendarEntries`/`app:calendarTags` стираются при каждой загрузке `localStorageAdapter.js`. Настройки (`app:lang`, обводка, последние цвета) живут под своими ключами и намеренно переживают «очистить данные».
 
 ## Сквозные соглашения
 

@@ -506,12 +506,11 @@ export function openBlockTagsBrowser(tagIds) {
   reload();
 }
 
-// Дата последней правки заметки — тот же ручной разбор, что formatDateLabel в
-// calendarView.js, но от полного таймстампа (new Date(iso)), а не от даты без
-// времени. Месяцы переиспользуют существующий i18n-ключ calendar.months —
-// заводить копию перевода ради одного нового потребителя незачем.
+// Дата последней правки заметки, собранная вручную: день, месяц, год. Названия
+// месяцев — в i18n (common.months; раньше ключ принадлежал удалённому
+// Календарю, этот потребитель остался единственным).
 function formatUpdatedAt(iso) {
   const date = new Date(iso);
-  const months = t("calendar.months");
+  const months = t("common.months");
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }

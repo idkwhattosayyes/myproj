@@ -396,20 +396,14 @@ async function runExport() {
       const name = await openPrompt({ message: t("settings.exportFilenamePrompt"), defaultValue: "myproj-export" });
       if (!name || !name.trim()) return; // отмена — экспорт не происходит
       const filename = name.trim().endsWith(".json") ? name.trim() : `${name.trim()}.json`;
-      // Кружки главной, календарь и теги блоков в дереве выбора не участвуют:
-      // кружки берём те, что указывают на выгружаемые заметки, календарь и
-      // реестр тегов блоков — целиком.
-      const [calendarEntries, calendarTags, blockTags] = await Promise.all([
-        storage.getAllCalendarEntries(),
-        storage.getCalendarTags(),
-        storage.getBlockTags(),
-      ]);
+      // Кружки главной и теги блоков в дереве выбора не участвуют: кружки берём
+      // те, что указывают на выгружаемые заметки, реестр тегов блоков — целиком.
+      const blockTags = await storage.getBlockTags();
       downloadJson(
         buildExportFrom({
           folders: pickedFolders,
           items: pickedItems,
           homeCircles: circlesForItems((await getHomeCirclesState()).circles, pickedItems),
-          calendar: { entries: calendarEntries, tags: calendarTags },
           blockTags,
         }),
         filename
@@ -440,14 +434,15 @@ async function runImport() {
     items: data.items,
     onConfirm: async ({ folders, items }) => {
       if (!folders.length && !items.length) return;
-      // Дерево выбирает только папки и заметки — кружки, календарь и теги блоков
-      // берём из файла как есть. Кружок на невыбранную заметку importData отбросит сам.
+      // Дерево выбирает только папки и заметки — кружки и теги блоков берём из
+      // файла как есть (поле calendar старых файлов игнорируется). Кружок на
+      // невыбранную заметку importData отбросит сам.
       // transferPicker уже закрылся к этому моменту — без оверлея тяжёлый
       // importData (последовательные записи по всем папкам/заметкам) крутится
       // за голым пустым экраном без единого признака, что что-то происходит.
       const hideLoading = showLoadingOverlay();
       try {
-        await importData({ folders, items, homeCircles: data.homeCircles, calendar: data.calendar, blockTags: data.blockTags });
+        await importData({ folders, items, homeCircles: data.homeCircles, blockTags: data.blockTags });
       } catch {
         hideLoading();
         // Конфликт имени тега сам по себе больше не валит импорт (см.

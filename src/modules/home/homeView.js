@@ -48,9 +48,6 @@ export async function renderHomeView(container) {
         <a href="#/notes" class="home-circle home-circle--notes" draggable="false">
           <span class="home-circle-label">${t("home.notes")}</span>
         </a>
-        <a href="#/calendar" class="home-circle home-circle--calendar" draggable="false">
-          <span class="home-circle-label">${t("home.calendar")}</span>
-        </a>
         <div class="home-circle home-circle--ai" tabindex="0">
           <span class="home-circle-label">${t("home.ai")}</span>
           <span class="home-circle-overlay">${t("home.aiUnavailable")}</span>
@@ -144,7 +141,7 @@ function wirePencil(container) {
   });
 }
 
-// Notes/Calendar/AI и кружок-плюс не получают этот слушатель вообще — у них
+// Notes/AI и кружок-плюс не получают этот слушатель вообще — у них
 // просто нет пункта "Удалить" (см. ТЗ, п.7: дефолтные кружки нельзя удалить).
 function wireCustomCircles(container, circles) {
   circles.forEach((circle) => {
@@ -226,7 +223,7 @@ function positionExtraCircles(container, customCirclesData) {
   // молча разъедется при любой правке стилей. applyJitter вызывается уже
   // после нас, так что ректы дают чистые базовые позиции без смещения.
   const obstacles = [
-    ...box.querySelectorAll(".home-circle--notes, .home-circle--calendar, .home-circle--ai"),
+    ...box.querySelectorAll(".home-circle--notes, .home-circle--ai"),
   ].map((el) => ({
     ...toPolar(el, boxRect),
     diameterPx: el.getBoundingClientRect().width,
@@ -268,14 +265,15 @@ function positionExtraCircles(container, customCirclesData) {
 // их максимум в зазор заранее, поэтому никакой бросок не может схлопнуть
 // расстояние между доп. кружками и соседями.
 //
-// А вот друг относительно друга три системных кружка раскладку не проходят —
+// А вот друг относительно друга системные кружки раскладку не проходят —
 // их top/left жёстко заданы в home.css, и единственное, что их сближает, это
 // как раз джиттер. Считаем допустимый потолок: центры стоят на 30% ширины
 // .home-circles и разнесены на 120°, то есть на 2*0.3*460*sin60° ≈ 239px;
 // минус диаметр 172px остаётся ≈67px зазора. Бросок независим по x и y, так
 // что каждый кружок уходит максимум на J*√2, и навстречу они съедают 2*J*√2.
-// При J=32 это ≈90px — больше зазора, и Notes с Calendar иногда налезали друг
-// на друга. J=16 съедает ≈45px и оставляет ≈22px гарантированно.
+// При J=32 это ≈90px — больше зазора, и соседние кружки иногда налезали друг
+// на друга. J=16 съедает ≈45px и оставляет ≈22px гарантированно. (Расчёт —
+// со времён, когда системных кружков было три; с двумя зазор только больше.)
 const SYSTEM_JITTER = 16;
 const EXTRA_JITTER = 10;
 
@@ -296,7 +294,7 @@ function applyJitter(container) {
     circle.style.transition = "";
   };
   container
-    .querySelectorAll(".home-circle--notes, .home-circle--calendar, .home-circle--ai")
+    .querySelectorAll(".home-circle--notes, .home-circle--ai")
     .forEach((circle) => jitterOne(circle, SYSTEM_JITTER));
   container
     .querySelectorAll(".home-circle--pencil, .home-circle--custom")

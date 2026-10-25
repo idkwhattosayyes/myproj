@@ -46,28 +46,6 @@ export function createItemModel({ title = "", content = "", folderIds = [], sect
   };
 }
 
-export function createCalendarEntryModel({ date, title = "", type = "todo", startTime = "", endTime = "", tagId = null }) {
-  return {
-    id: generateId(),
-    date,
-    title,
-    type, // "note" | "todo"
-    startTime,
-    endTime,
-    tagId, // id тега из app:calendarTags или null
-    done: false,
-    createdAt: new Date().toISOString(),
-  };
-}
-
-export function createCalendarTagModel({ name = "", color = "#33507e" }) {
-  return {
-    id: generateId(),
-    name,
-    color,
-  };
-}
-
 // id — необязательный параметр (единственная модель, которой он нужен снаружи):
 // форма создания тега блока показывает read-only ID ещё до сохранения, поэтому
 // id генерируется при открытии формы, а не здесь неявно.

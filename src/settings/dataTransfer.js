@@ -11,15 +11,17 @@ import { downloadText } from "../utils/download.js";
 // глобальный реестр тегов блока (app:blockTags, сами блоки хранятся внутри
 // content каждой заметки, см. remapBlockTags). Файлы более старых версий
 // читаются по-прежнему: новых полей в них просто нет, и импорт их пропускает.
+// Раздел «Календарь» удалён: поле calendar в старых файлах импорт просто не
+// читает, а новые файлы его не содержат.
 const EXPORT_VERSION = 3;
 
 /**
  * Экспорт из выбранного набора (дерево с галочками). Набор папок/заметок приходит
  * уже согласованным: дерево добавляет папки-владельцев выбранных заметок само.
- * Кружки, календарь и теги блоков собирает вызывающий код — здесь только сборка
- * файла. blockTags — реестр целиком, как и calendar, в дереве выбора не участвует.
+ * Кружки и теги блоков собирает вызывающий код — здесь только сборка файла.
+ * blockTags — реестр целиком, в дереве выбора не участвует.
  */
-export function buildExportFrom({ folders, items, homeCircles = [], calendar = null, blockTags = [] }) {
+export function buildExportFrom({ folders, items, homeCircles = [], blockTags = [] }) {
   return {
     app: "myproj",
     version: EXPORT_VERSION,
@@ -28,7 +30,6 @@ export function buildExportFrom({ folders, items, homeCircles = [], calendar = n
     folders,
     items,
     homeCircles,
-    calendar,
     blockTags,
   };
 }
@@ -148,29 +149,6 @@ async function importHomeCircles(circles, folderIdMap, itemIdMap) {
   return restored.length;
 }
 
-// Календарь идёт в файл целиком (в дереве выбора его нет). Записи ссылаются на тег
-// по id, поэтому сначала теги — и запись получает уже новый tagId.
-async function importCalendar(calendar) {
-  const storage = getStorage();
-  const tagIdMap = new Map();
-
-  for (const tag of (calendar && calendar.tags) || []) {
-    const newId = crypto.randomUUID();
-    tagIdMap.set(tag.id, newId);
-    await storage.createCalendarTag({ ...tag, id: newId });
-  }
-
-  const entries = (calendar && calendar.entries) || [];
-  for (const entry of entries) {
-    await storage.createCalendarEntry({
-      ...entry,
-      id: crypto.randomUUID(),
-      tagId: entry.tagId ? tagIdMap.get(entry.tagId) || null : null,
-    });
-  }
-  return entries.length;
-}
-
 // Создаёт новые записи, не затирая существующие. Старые id перемаппливаем на
 // свежие — и папкам, и заметкам, — чтобы все связи указывали на вновь созданные
 // записи, а не на возможно чужие/несуществующие. Поддерживаем и старый формат
@@ -184,8 +162,8 @@ export async function importData(data) {
   // объявленную позже), а на момент создания все id уже должны быть известны.
   const folderIdMap = new Map((data.folders || []).map((folder) => [folder.id, crypto.randomUUID()]));
   const itemIdMap = new Map(data.items.map((item) => [item.id, crypto.randomUUID()]));
-  // Заранее, а не отложенно (как tagIdMap календаря) — нужна уже на шаге ремапа
-  // content ниже, а не после того, как все заметки записаны.
+  // Заранее — нужна уже на шаге ремапа content ниже, а не после того, как все
+  // заметки записаны.
   const blockTagIdMap = new Map((data.blockTags || []).map((tag) => [tag.id, crypto.randomUUID()]));
   // Снимаем занятые имена один раз и пополняем вручную по ходу цикла — иначе
   // коллизия МЕЖДУ двумя тегами одного файла (оба "DAILY") не будет замечена:
@@ -242,13 +220,11 @@ export async function importData(data) {
   }
 
   const circles = await importHomeCircles(data.homeCircles, folderIdMap, itemIdMap);
-  const calendarEntries = await importCalendar(data.calendar);
 
   return {
     folders: (data.folders || []).length,
     items: data.items.length,
     circles,
-    calendarEntries,
     blockTags: (data.blockTags || []).length,
   };
 }

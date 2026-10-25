@@ -37,15 +37,7 @@ import { getCachedSession } from "../auth/authService.js";
  * @property {(date: string) => Promise<Object|null>} getDiaryEntryByDate
  * @property {(date: string, content: string) => Promise<Object>} upsertDiaryEntry
  * @property {(id: string) => Promise<void>} deleteDiaryEntry
- * @property {(date: string) => Promise<Object[]>} getCalendarEntries
- * @property {() => Promise<string[]>} getAllCalendarEntryDates
- * @property {(entry: Object) => Promise<Object>} createCalendarEntry
- * @property {(id: string, patch: Object) => Promise<Object|null>} updateCalendarEntry
- * @property {(id: string) => Promise<void>} deleteCalendarEntry
  * @property {() => Promise<void>} clearAll
- * @property {() => Promise<Object[]>} getCalendarTags
- * @property {(tag: Object) => Promise<Object>} createCalendarTag
- * @property {(id: string) => Promise<void>} deleteCalendarTag
  * @property {() => Promise<Object[]>} getBlockTags
  * @property {(tag: Object) => Promise<Object>} createBlockTag
  * @property {(id: string, patch: Object) => Promise<Object|null>} updateBlockTag
@@ -59,7 +51,7 @@ import { getCachedSession } from "../auth/authService.js";
 // Заметки/папки, справочник тегов блоков и полная очистка данных — сущности,
 // уже перенесённые на Supabase, и только для залогиненных: проверка идёт на
 // каждый вызов, а не один раз при загрузке, поэтому гость никогда не задевает
-// supabaseAdapter.js. Остальной контракт (дневник, календарь) пока всегда
+// supabaseAdapter.js. Остальной контракт (легаси-дневник) пока всегда
 // localStorage — так и останется, пока не приедут следующие модули.
 const NOTES_AND_FOLDERS_METHODS = [
   "getFolders",

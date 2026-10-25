@@ -7,7 +7,7 @@
  * Через хеш это не тащим: маршруты засорились бы идентификаторами, а ссылка на
  * конкретное совпадение никому не нужна.
  *
- * @typedef {{kind: "folder" | "item" | "calendar", id: string, query: string, matchIndex: number, photoIndex?: number, date?: string, folderId?: string, blockId?: string}} SearchTarget
+ * @typedef {{kind: "folder" | "item", id: string, query: string, matchIndex: number, photoIndex?: number, folderId?: string, blockId?: string}} SearchTarget
  */
 let pending = null;
 
@@ -17,7 +17,7 @@ export function setPendingTarget(target) {
 }
 
 /**
- * @param {...("folder" | "item" | "calendar")} kinds какие цели умеет открыть раздел
+ * @param {...("folder" | "item")} kinds какие цели умеет открыть раздел
  * @returns {SearchTarget | null}
  */
 export function consumePendingTarget(...kinds) {

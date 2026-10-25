@@ -1,6 +1,5 @@
 import { renderHomeView } from "./modules/home/homeView.js";
 import { renderNotesView } from "./modules/notes/notesView.js";
-import { renderCalendarView } from "./modules/calendar/calendarView.js";
 import { getLang, t } from "./i18n/i18n.js";
 import { mountSettings, applyBorderSetting } from "./settings/settingsPanel.js";
 import { closeTopLayer, getViewEscape, setViewEscape } from "./utils/escapeLayers.js";
@@ -29,7 +28,6 @@ const DEFAULT_ROUTE = "home";
 const routes = {
   home: renderHomeView,
   notes: renderNotesView,
-  calendar: renderCalendarView,
 };
 
 const view = document.getElementById("app-view");
@@ -53,8 +51,8 @@ async function renderRoute() {
   // Полоска поиска живёт вне маршрутов, но её охват зависит от раздела.
   refreshSearchScope(route);
   // Спиннер — только если рендер реально затянется (плохая сеть и т.п.), а не
-  // на каждый переход: ни один из трёх роутов (renderPanelSection/
-  // renderHomeView/renderCalendarView) не чистит view до готовности своих
+  // на каждый переход: ни один из роутов (renderPanelSection/
+  // renderHomeView) не чистит view до готовности своих
   // данных, так что старое содержимое спокойно остаётся на экране, пока
   // routes[route] не заменит его целиком — мгновенные переходы (гость, уже
   // прогретый кэш) не мигают спиннером, которого никто не успел бы разглядеть.

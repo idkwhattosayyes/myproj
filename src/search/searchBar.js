@@ -292,7 +292,7 @@ function rememberFocusTarget() {
 export function returnFocusFromSearch() {
   const target = focusReturn;
   focusReturn = null;
-  // Только из самого поля поиска: Esc в названии заметки или в поле календаря
+  // Только из самого поля поиска: Esc в названии заметки или в другом поле
   // к этому механизму отношения не имеет.
   if (!target || !inputEl || document.activeElement !== inputEl) return false;
   if (!target.el.isConnected) return false;
@@ -339,18 +339,6 @@ export function renderLabels() {
   barEl.querySelector(".search-field").classList.toggle("is-scope-note", inNote);
   scopeBtn.title = t("search.scopeHint");
   scopeBtn.disabled = (currentRoute === "home" && !getBlockSearchSource()) || pickerActive;
-}
-
-// Какие данные перебирать: "all" — всё, "items" — папки и заметки,
-// "calendar" — записи календаря. В режиме выбора цели ссылки — только
-// заметки, папки и записи календаря ссылкой быть не могут. На странице Notes
-// поиск «в разделе» — это поиск по открытой заметке (см. runSearch); сюда он
-// попадает, только когда в ней ничего не нашлось, и тогда ищем по всему сайту.
-function currentScopeKey() {
-  if (pickerActive) return "items";
-  if (scope === "global") return "all";
-  if (currentRoute === "calendar") return "calendar";
-  return "all";
 }
 
 function scopeLabel(inNote) {
@@ -523,7 +511,10 @@ async function runSearch() {
   if (wasFallback !== fellBackToGlobal) renderLabels();
 
   const myToken = ++searchToken;
-  const found = await search(rawQuery, currentScopeKey());
+  // По всему сайту — по папкам и заметкам. Поиск «в разделе» на странице Notes
+  // — это поиск по открытой заметке (выше); сюда он попадает, только когда в
+  // ней ничего не нашлось.
+  const found = await search(rawQuery);
   if (myToken !== searchToken) return;
   groups = found;
   if (pickerActive) {
@@ -808,8 +799,7 @@ function openRow(rowIndex) {
     photoIndex: row.photoIndex,
   });
   closeResults();
-  const route = group.kind === "calendar" ? "calendar" : "notes";
-  onNavigateCallback(route);
+  onNavigateCallback("notes");
 }
 
 function openResults() {
@@ -908,7 +898,6 @@ function finishPicker(result) {
 
 function kindLabel(kind) {
   if (kind === "folder") return t("search.kindFolder");
-  if (kind === "calendar") return t("search.kindEvent");
   if (kind === "block") return t("search.kindBlock");
   // Совпало название заметки, а не текст блока — бейдж тот же, что у обычного
   // результата-заметки: по смыслу это она и есть.
