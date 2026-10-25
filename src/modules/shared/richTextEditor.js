@@ -56,6 +56,12 @@ const TOOLBAR_COLLAPSED_KEY = "app:toolbarCollapsed";
 // выделения — та же логика, что у TOOLBAR_COLLAPSED_KEY выше.
 const SELECTION_ACTIONS_COLLAPSED_KEY = "app:selectionActionsCollapsed";
 
+// Включена ли подсветка вокруг курсора (см. setSpotlight). Живёт вне редактора:
+// при переходе к другой заметке редактор создаётся заново, а режим чтения —
+// выбор человека, а не заметки, и должен пережить переключение. В localStorage
+// не пишем: после перезагрузки страницы сайт открывается в обычном виде.
+let readingSpotlightOn = false;
+
 // Тулбар сменил набор видимых кнопок — значит сменил и габариты. Тому, кто держит
 // его на экране (floatingToolbar.js), это надо знать: у прилипшей к краю полосы от
 // числа кнопок зависит число колонок, а от него — ширина и левая координата.
@@ -277,6 +283,10 @@ function getButtonDefs() {
     // storageKey/defaultColor — только для индикатора цвета на самой кнопке
     // (тот же приём, что у textColor/highlight, см. updateSwatch).
     draw: { icon: "ph-pencil-simple", label: "✏", title: t("editor.draw"), isDraw: true, storageKey: DRAW_COLOR_KEY, defaultColor: DRAW_DEFAULT_COLOR },
+    // Подсветка вокруг курсора для чтения — тоже переключатель режима, а не
+    // формат: в текст заметки ничего не пишет. Палитра — та же, что у заливки.
+    // Обрабатывается отдельно в createRichTextEditor (см. isSpotlight).
+    readingSpotlight: { icon: "ph-eye", label: "◎", title: t("editor.spotlightHint"), isSpotlight: true, colors: HIGHLIGHT_COLORS, storageKey: "app:lastSpotlightColor", defaultColor: HIGHLIGHT_COLORS[0] },
     // Отмена/повтор — свой стек снимков (нативный execCommand("undo") не
     // откатывает наши <u>/<s> и заголовки-span). Обрабатываются в createRichTextEditor.
     undo: { icon: "ph-arrow-counter-clockwise", label: "↶", title: t("editor.undo"), isHistory: "undo" },
@@ -3030,6 +3040,123 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     setDrawing(!drawingActive);
   }
 
+  // --- Подсветка вокруг курсора (режим чтения) --------------------------
+  // Пятно цвета под курсором — глазу проще держать строку.
+  //
+  // Пятно — слой поверх всей заметки (.rte-spotlight в editor.css), но со
+  // смешиванием цветов, а не обычным наложением: так оно ложится и на бумагу,
+  // и поверх заливки, а буквы остаются своего цвета (почему — см. editor.css).
+  // Пятно фоном листа не годится: заливка текста рисуется поверх фона и его
+  // закрывала.
+  //
+  // Слой лежит прямо в contentEl, рядом с листами, а не внутри .rte-page —
+  // serializeEditor собирает только листы, в заметку он не попадёт.
+  //
+  // Включённость общая для всех заметок (readingSpotlightOn), а spotlightActive
+  // — состояние именно этого редактора: старый редактор при уходе с заметки
+  // убирает своё, не выключая режим для нового.
+  let spotlightActive = false;
+  let spotlightEl = null;
+  let spotlightPoint = null; // последняя позиция мыши в пикселях экрана
+  let spotlightFrame = 0;
+
+  function hideSpotlight() {
+    if (spotlightEl) spotlightEl.classList.add("is-hidden");
+  }
+
+  // Кнопка и палитра: меняют выбор человека и показывают его здесь.
+  function setSpotlight(on) {
+    readingSpotlightOn = on;
+    applySpotlight(on);
+  }
+
+  function applySpotlight(on) {
+    spotlightActive = on;
+    toolbarEl
+      .querySelectorAll('.rte-btn[data-command="readingSpotlight"]')
+      .forEach((btn) => btn.classList.toggle("is-active", on));
+    contentEl.classList.toggle("is-spotlight", on);
+    if (on) {
+      if (!spotlightEl) {
+        spotlightEl = document.createElement("div");
+        spotlightEl.className = "rte-spotlight is-hidden";
+        contentEl.appendChild(spotlightEl);
+      }
+      spotlightEl.style.setProperty(
+        "--spotlight-color",
+        getLastColor(buttonDefs.readingSpotlight.storageKey, buttonDefs.readingSpotlight.defaultColor)
+      );
+      // Прокрутка двигает текст под неподвижной мышью — пятно должно остаться
+      // под курсором, а не уехать вместе со строкой. capture: прокручивается
+      // не window, а контейнер раздела, и scroll от него не всплывает.
+      document.addEventListener("scroll", scheduleSpotlightMove, true);
+    } else {
+      document.removeEventListener("scroll", scheduleSpotlightMove, true);
+      if (spotlightFrame) {
+        cancelAnimationFrame(spotlightFrame);
+        spotlightFrame = 0;
+      }
+      if (spotlightEl) {
+        spotlightEl.remove();
+        spotlightEl = null;
+      }
+      spotlightPoint = null;
+    }
+  }
+
+  function toggleSpotlight() {
+    setSpotlight(!spotlightActive);
+  }
+
+  // Двигаем не чаще кадра — mousemove приходит чаще, чем экран перерисовывается.
+  function scheduleSpotlightMove() {
+    if (!spotlightActive) return;
+    // Поле убрали со страницы (открыли другую заметку или раздел) — снимаем
+    // свой слушатель прокрутки на document, иначе он висел бы от каждой
+    // открытой когда-то заметки. Режим при этом остаётся включённым.
+    if (!contentEl.isConnected) {
+      applySpotlight(false);
+      return;
+    }
+    if (!spotlightPoint || spotlightFrame) return;
+    spotlightFrame = requestAnimationFrame(() => {
+      spotlightFrame = 0;
+      moveSpotlight();
+    });
+  }
+
+  function moveSpotlight() {
+    if (!spotlightEl || !spotlightPoint) return;
+    // Поле могли убрать, пока кадр ждал своей очереди, — см. scheduleSpotlightMove.
+    if (!contentEl.isConnected) {
+      applySpotlight(false);
+      return;
+    }
+    const rect = contentEl.getBoundingClientRect();
+    // Мышь и рект — в пикселях экрана, слой живёт под масштабом сайта. Слой
+    // отсчитывается от внутренней стороны рамки поля, её толщину вычитаем.
+    spotlightEl.style.setProperty("--spotlight-x", `${toCssPx(spotlightPoint.x - rect.left) - contentEl.clientLeft}px`);
+    spotlightEl.style.setProperty("--spotlight-y", `${toCssPx(spotlightPoint.y - rect.top) - contentEl.clientTop}px`);
+  }
+
+  contentEl.addEventListener("mousemove", (event) => {
+    if (!spotlightActive) return;
+    spotlightPoint = { x: event.clientX, y: event.clientY };
+    spotlightEl.classList.remove("is-hidden");
+    scheduleSpotlightMove();
+  });
+  contentEl.addEventListener("mouseleave", () => {
+    spotlightPoint = null;
+    hideSpotlight();
+  });
+  // Пока печатают, пятно мешает видеть строку под кареткой — прячем его до
+  // следующего движения мыши. Сам режим при этом не выключается: вернулся к
+  // чтению — подсветка уже на месте.
+  contentEl.addEventListener("keydown", () => {
+    spotlightPoint = null;
+    hideSpotlight();
+  });
+
   function currentDrawWidth() {
     return getLastWidth(DRAW_WIDTH_KEY, DRAW_DEFAULT_WIDTH);
   }
@@ -3802,6 +3929,29 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       btn.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         toggleDrawPopover(btn, def);
+      });
+    } else if (def.isSpotlight) {
+      updateSwatch(btn, def); // полоска снизу — текущий цвет подсветки
+      btn.addEventListener("click", () => {
+        toggleSpotlight();
+        onApplied();
+      });
+      // ПКМ — общая палитра цвета. Цвет здесь красит не текст, а пятно, поэтому
+      // apply/reset свои: выбор цвета включает режим, крестик сброса — выключает.
+      // onChange и фокус — пустые: заметка не менялась, сохранять нечего.
+      const paletteDef = {
+        ...def,
+        // Палитра запоминает цвет уже ПОСЛЕ apply, а setSpotlight читает его
+        // сразу — пишем сами, иначе первый выбор показал бы прежний цвет.
+        apply: (color) => {
+          setLastColor(def.storageKey, color);
+          setSpotlight(true);
+        },
+        reset: () => setSpotlight(false),
+      };
+      btn.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        toggleColorPopover(btn, paletteDef, contentEl, () => {}, () => {}, () => {}, onApplied);
       });
     } else if (def.isPrintExport) {
       // Меню под кнопкой — та же схема, что у ссылки ниже: несколько способов
@@ -4930,6 +5080,9 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   });
 
   applyPageMode();
+  // Подсветку включили в предыдущей заметке — новая открывается уже с ней.
+  // Кнопки тулбара к этому моменту собраны, applySpotlight зажжёт свою.
+  if (readingSpotlightOn) applySpotlight(true);
 
   return {
     toolbarEl,

@@ -8,6 +8,9 @@ export async function renderNotesView(container) {
     toolbarButtons: [
       "undo", "redo",
       "bold", "underline", "strikethrough", "textColor", "highlight",
+      // Подсветка вокруг курсора для чтения — рядом с заливкой: та же палитра
+      // и та же схема ЛКМ/ПКМ.
+      "readingSpotlight",
       // textDirection — переворот строки RTL/LTR, стоит рядом с выравниванием как
       // родственный инструмент. В сокращённый набор намеренно не входит:
       // направление и так определяется само, кнопка нужна только на промахах.

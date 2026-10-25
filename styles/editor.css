@@ -347,6 +347,7 @@
    кнопки уже занята под активное состояние, а рамка меняла бы размер. */
 .rte-btn[data-command="textColor"]::after,
 .rte-btn[data-command="highlight"]::after,
+.rte-btn[data-command="readingSpotlight"]::after,
 .rte-btn[data-command="draw"]::after,
 .rte-btn[data-command="photoDraw"]::after,
 .rte-btn[data-command="divider"]::after {
@@ -745,6 +746,63 @@ button.rte-link-preview-row:hover {
 }
 
 .rte-content.is-drawing .rte-page { cursor: crosshair; }
+
+/* Подсветка вокруг курсора (режим чтения, см. setSpotlight в richTextEditor.js).
+   Слой во всё поле поверх листов, клики проходят сквозь него. Поверх — чтобы
+   пятно ложилось и на заливку текста, а не пряталось под ней.
+
+   Буквы при этом не перекрашиваются благодаря смешиванию (mix-blend-mode):
+   - светлые темы — multiply («умножение»): цвет пятна умножается на то, что
+     под ним. Светлая бумага и заливка окрашиваются, а тёмные буквы остаются
+     тёмными — тёмное, умноженное на что угодно, остаётся тёмным;
+   - тёмные темы — color («цветность»): от пятна берётся только оттенок, а
+     яркость остаётся прежней. Здесь буквы бывают и светлые (на бумаге), и
+     тёмные (на заливке, см. блок «Тёмная бумага» выше) — multiply стёр бы
+     первые, screen высветлил бы вторые. При неизменной яркости контраст букв
+     с фоном не меняется ни там, ни там.
+   Обычное наложение красило бы и буквы — с этого всё и началось.
+
+   Только пятно, без затенения остального поля — затемнение всей заметки при
+   наведении мыши отвлекало сильнее, чем помогало. Круг около 2 см в поперечнике
+   (76px при стандартных 96 точках на дюйм): глазу хватает нескольких слов
+   вокруг курсора, а большее пятно уже отвлекает. */
+.rte-content.is-spotlight { position: relative; }
+
+.rte-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  mix-blend-mode: multiply;
+  background: radial-gradient(
+    circle 38px at var(--spotlight-x, -999px) var(--spotlight-y, -999px),
+    color-mix(in srgb, var(--spotlight-color) var(--spotlight-core, 85%), transparent) 0%,
+    color-mix(in srgb, var(--spotlight-color) var(--spotlight-edge, 70%), transparent) 75%,
+    transparent 100%
+  );
+}
+
+.rte-spotlight.is-hidden { display: none; }
+
+/* Курсор мыши над листом прячем: его место занимает само пятно, а стрелка или
+   «I» посреди круга закрывали бы как раз те буквы, что читают. Только над
+   листами — тулбар и панели с курсором, иначе не попасть по кнопке выключения.
+   Звёздочка — потому что ссылки и фото внутри задают свой cursor. В режиме
+   рисования крестик нужен, чтобы видеть, куда ведёшь линию, — его не трогаем. */
+.rte-content.is-spotlight:not(.is-drawing) .rte-page,
+.rte-content.is-spotlight:not(.is-drawing) .rte-page * {
+  cursor: none;
+}
+
+/* Тёмная бумага (Тёмная, Полночь): цветность вместо умножения, см. выше.
+   Плотность полная: режим color и так не трогает яркость, ослаблять нечего. */
+:root[data-theme="dark"] .rte-spotlight,
+:root[data-theme="midnight"] .rte-spotlight {
+  mix-blend-mode: color;
+  --spotlight-core: 100%;
+  --spotlight-edge: 100%;
+}
 
 /* В сплошном режиме страница по умолчанию высотой ровно в свой текст — рисовать
    ниже последней строки было бы некуда (слой рисования размером inset:0 обрезан
