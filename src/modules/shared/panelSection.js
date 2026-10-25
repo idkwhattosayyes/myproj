@@ -719,7 +719,12 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
 
   const startX = event.clientX;
   const startY = event.clientY;
+  const pressedAt = performance.now();
   const DRAG_THRESHOLD = 4; // px — как порог нативного DnD
+  // Зажали строку, подержали и отпустили на месте — это передумавший перенос,
+  // а не клик: браузер же засчитал бы его кликом и открыл папку/заметку.
+  // Отличить от обычного клика можно только по длительности нажатия.
+  const CANCEL_HOLD_MS = 500;
 
   let dragging = false;
   let ghost = null;
@@ -859,6 +864,19 @@ function startRowDrag(event, { sourceEl, prepareGhost, onBeginDrag, findTarget, 
     const target = wasDragging ? updateTarget(e.clientX, e.clientY) : null;
     cleanup();
     if (wasDragging && target) onDrop(target);
+    // Клик глушим заново уже после cleanup(): она снимает глушилку из beginDrag,
+    // а click приходит позже mouseup. Без этого строка, которую поводили и
+    // вернули на исходное место, открывалась — mousedown и mouseup на одном
+    // элементе браузер считает кликом, как бы далеко мышь ни уходила между ними.
+    // Второй случай — мышь не ушла дальше порога, но кнопку держали долго:
+    // это передумавший перенос, а не клик.
+    if (wasDragging || performance.now() - pressedAt >= CANCEL_HOLD_MS) {
+      document.addEventListener("click", suppressNextClick, { capture: true, once: true });
+      // click приходит сразу за mouseup, в той же задаче. Если его не будет
+      // (отпустили над другим элементом), снимаем слушатель — иначе он съел бы
+      // следующий, никак не связанный клик.
+      setTimeout(() => document.removeEventListener("click", suppressNextClick, { capture: true }), 0);
+    }
   }
 
   function onBlur() {
