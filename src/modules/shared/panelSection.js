@@ -1011,6 +1011,10 @@ const SECTIONS = [
 // Сколько ждать над целью, пока перетаскивание само откроет раздел Folders или
 // раскроет свёрнутую папку (см. createSpringLoader).
 const SPRING_DELAY = 600;
+// Папке — заметно дольше: папок в списке много, и курсор по дороге к цели
+// пролетает над несколькими. При 600 мс они раскрывались по пути и сдвигали
+// строки из-под руки; ~1,3 с — это уже намерение, а не случайный пролёт.
+const FOLDER_SPRING_DELAY = 1300;
 
 // Что сейчас перетаскивают — { kind: "folder" | "item", id } или null. Нужно
 // отрисовке: пружинка перерисовывает панель посреди переноса, и новые строки
@@ -1427,14 +1431,14 @@ function renderDetailIfIdle(container, config, state) {
  * видно, класть заметку некуда), а над свёрнутой папкой — раскрывает её (иначе
  * до вложенных папок не дотянуться).
  *
- * hover(key, action) зовётся на каждом кадре движения; таймер заводится, только
- * когда цель сменилась, и срабатывает один раз, пока курсор на ней.
+ * hover(key, action, delay) зовётся на каждом кадре движения; таймер заводится,
+ * только когда цель сменилась, и срабатывает один раз, пока курсор на ней.
  */
 function createSpringLoader() {
   let currentKey = null;
   let timer = 0;
   return {
-    hover(key, action) {
+    hover(key, action, delay = SPRING_DELAY) {
       if (key === currentKey) return;
       clearTimeout(timer);
       timer = 0;
@@ -1443,7 +1447,7 @@ function createSpringLoader() {
         timer = setTimeout(() => {
           timer = 0;
           action();
-        }, SPRING_DELAY);
+        }, delay);
       }
     },
     cancel() {
@@ -1551,7 +1555,11 @@ function wireFolderRow(el, container, config, state) {
         // перестановке раскрывшаяся папка сдвигала бы строки из-под курсора.
         const hitKey = hitEl.dataset.expandKey;
         const canSpring = into && !state.expandedFolderIds.has(hitKey);
-        spring.hover(canSpring ? `folder:${hitKey}` : null, () => springExpandFolder(container, config, state, hitKey));
+        spring.hover(
+          canSpring ? `folder:${hitKey}` : null,
+          () => springExpandFolder(container, config, state, hitKey),
+          FOLDER_SPRING_DELAY
+        );
         if (into) hitEl.classList.add("is-drop-into");
         else markDropSide(hitEl, after);
         return { el: hitEl, folderId: hitId, into, after };
@@ -1727,8 +1735,10 @@ function wireNoteRow(el, container, config, state) {
         if (targetFolderId) {
           const targetKey = hitEl.dataset.expandKey;
           const collapsed = !state.expandedFolderIds.has(targetKey);
-          spring.hover(collapsed ? `folder:${targetKey}` : null, () =>
-            springExpandFolder(container, config, state, targetKey)
+          spring.hover(
+            collapsed ? `folder:${targetKey}` : null,
+            () => springExpandFolder(container, config, state, targetKey),
+            FOLDER_SPRING_DELAY
           );
           hitEl.classList.add("is-drop-target");
           return { el: hitEl, kind: "folder", id: targetFolderId };
