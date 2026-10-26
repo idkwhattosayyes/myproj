@@ -452,6 +452,11 @@ function stripEditingLeftovers(page) {
     .forEach((el) => {
       if (!el.childNodes.length) el.remove();
     });
+
+  // Фото, найденное поиском, 2,5 секунды мигает классом на самом <img> (см.
+  // showPhotoHighlight). Начни печатать в эти секунды — и класс уехал бы в
+  // сохранённую заметку, а фото мигало бы при каждом открытии.
+  page.querySelectorAll(".rte-photo.is-search-hit").forEach((img) => img.classList.remove("is-search-hit"));
 }
 
 // Заметки, сохранённые до появления страниц, лежат одним куском HTML — такой
