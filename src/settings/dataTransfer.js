@@ -136,11 +136,18 @@ function uniqueName(name, takenKeys) {
 // невосстановленную заметку отбрасываем. Позицию переносим как есть — если
 // импортированный кружок сядет поверх существующего, раскладка главной разведёт
 // их сама (см. fitsAt/findPosition в homeView.js).
+//
+// Контекст кружка — не всегда папка: это может быть и раздел «Избранное»,
+// «Все» или «Без папки» (см. notePicker.js). Такие ключи в folderIdMap нет, и
+// раньше они превращались в null — после импорта кружок открывал заметку уже
+// не в том разделе. Особые разделы переносим как есть.
+const CIRCLE_SECTIONS = ["favorites", "all", "unfiled"];
+
 async function importHomeCircles(circles, folderIdMap, itemIdMap) {
   const restored = (circles || [])
     .map((circle) => ({
       noteId: itemIdMap.get(circle.noteId),
-      folderId: folderIdMap.get(circle.folderId) || null,
+      folderId: CIRCLE_SECTIONS.includes(circle.folderId) ? circle.folderId : folderIdMap.get(circle.folderId) || null,
       angle: circle.angle,
       radius: circle.radius,
     }))
