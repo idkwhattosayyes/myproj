@@ -77,9 +77,8 @@ export async function renderHomeView(container) {
 }
 
 // Заметка, к которой привязан кружок, могла исчезнуть или уйти в Корзину —
-// pruneDeadCircles убирает такой кружок ИЗ ХРАНИЛИЩА навсегда (а не просто
-// прячет на этот рендер), поэтому восстановление заметки из Корзины кружок
-// не возвращает (ТЗ, п.8).
+// pruneDeadCircles отдаёт только кружки живых заметок. Кружок заметки из
+// Корзины остаётся в хранилище и вернётся вместе с ней.
 async function loadCustomCirclesData() {
   const circles = await customCircles.pruneDeadCircles();
   return Promise.all(

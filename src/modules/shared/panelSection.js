@@ -72,7 +72,7 @@ function localTrashFolder(state, folderId, deletedAt) {
   state.folders = state.folders.map((f) =>
     parentIdsOf(f).includes(folderId) ? { ...f, parentFolderIds: parentIdsOf(f).filter((p) => p !== folderId) } : f
   );
-  const trashedFolder = { ...folder, deletedAt, isFavorite: false, pinned: false, parentFolderIds: [] };
+  const trashedFolder = { ...folder, deletedAt };
   state.folders = state.folders.filter((f) => f.id !== folderId);
   state.trash = { ...state.trash, folders: [trashedFolder, ...state.trash.folders] };
 }
@@ -81,23 +81,32 @@ function localTrashFolder(state, folderId, deletedAt) {
 function localTrashItem(state, itemId, deletedAt) {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return;
-  const trashedItem = { ...item, deletedAt, isFavorite: false, pinnedIn: [], folderIds: [] };
+  const trashedItem = { ...item, deletedAt };
   state.items = state.items.filter((i) => i.id !== itemId);
   state.trash = { ...state.trash, items: [trashedItem, ...state.trash.items] };
 }
 
-function localRestoreFolder(state, folderId) {
+// Зеркало itemsService.restoreFolder (alsoRestoring — см. там же).
+function localRestoreFolder(state, folderId, alsoRestoring = []) {
   const folder = state.trash.folders.find((f) => f.id === folderId);
   if (!folder) return;
+  const liveIds = new Set([...state.folders.map((f) => f.id), ...alsoRestoring]);
+  const parentFolderIds = parentIdsOf(folder).filter((parentId) => liveIds.has(parentId));
   state.trash = { ...state.trash, folders: state.trash.folders.filter((f) => f.id !== folderId) };
-  state.folders = [...state.folders, { ...folder, deletedAt: null }];
+  state.folders = [...state.folders, { ...folder, deletedAt: null, parentFolderIds }];
 }
+
+// Зеркало itemsService.restoreItem.
+const PIN_PLACES = ["all", "favorites", "unfiled"];
 
 function localRestoreItem(state, itemId) {
   const item = state.trash.items.find((i) => i.id === itemId);
   if (!item) return;
+  const liveIds = new Set(state.folders.map((f) => f.id));
+  const folderIds = item.folderIds.filter((folderId) => liveIds.has(folderId));
+  const pinnedIn = item.pinnedIn.filter((place) => PIN_PLACES.includes(place) || liveIds.has(place));
   state.trash = { ...state.trash, items: state.trash.items.filter((i) => i.id !== itemId) };
-  state.items = [...state.items, { ...item, deletedAt: null }];
+  state.items = [...state.items, { ...item, deletedAt: null, folderIds, pinnedIn }];
 }
 
 // Реальные версии тривиальны (каскад по parentFolderIds уже снят в момент
@@ -1236,7 +1245,7 @@ function renderSections(container, config, state) {
             optimisticBulk(
               state,
               () => {
-                folderIds.forEach((id) => localRestoreFolder(state, id));
+                folderIds.forEach((id) => localRestoreFolder(state, id, folderIds));
                 itemIds.forEach((id) => localRestoreItem(state, id));
                 state.selectedTrash = null;
               },
@@ -1984,7 +1993,7 @@ function wireTrashRow(el, container, config, state) {
               else localRestoreItem(state, id);
               if (state.selectedTrash && state.selectedTrash.id === id) state.selectedTrash = null;
             },
-            () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
+            () => (kind === "folder" ? itemsService.restoreFolder(config.section, id) : itemsService.restoreItem(id)),
             () => renderAfterTrashChange(container, config, state)
           );
         },
@@ -2181,7 +2190,7 @@ function renderTrashDetail(detailEl, container, config, state) {
           else localRestoreItem(state, id);
           state.selectedTrash = null;
         },
-        () => (kind === "folder" ? itemsService.restoreFolder(id) : itemsService.restoreItem(id)),
+        () => (kind === "folder" ? itemsService.restoreFolder(config.section, id) : itemsService.restoreItem(id)),
         () => renderAfterTrashChange(container, config, state)
       );
     });

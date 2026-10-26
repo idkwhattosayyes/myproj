@@ -274,17 +274,25 @@ export const supabaseAdapter = {
     );
   },
 
-  // Корзина: попадание в неё гарантированно уже сбросило isFavorite/pinned до
-  // false — deletedAt ставит только itemsService.moveFolderToTrash, тем же
-  // вызовом updateFolder, что и сброс избранного/закрепления. Поэтому здесь
-  // без доп. запросов, false литералом.
+  // Корзина: папка в ней помнит избранное и закрепление (moveFolderToTrash
+  // их больше не сбрасывает) — после восстановления она вернётся с ними же,
+  // поэтому читаем настоящие значения, как getFolders.
   async getTrashedFolders() {
-    const [foldersResult, parentIdsByFolder] = await Promise.all([
+    const [foldersResult, parentIdsByFolder, favoriteIds, pinsByFolder] = await Promise.all([
       supabaseClient.from("folders").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
       fetchParentFolderIdsByFolderId(),
+      fetchFavoriteIdSet("folder"),
+      fetchPinsByItemId("folder"),
     ]);
     if (foldersResult.error) throw foldersResult.error;
-    return foldersResult.data.map((row) => mapFolderRow(row, parentIdsByFolder.get(row.id) || [], false, false));
+    return foldersResult.data.map((row) =>
+      mapFolderRow(
+        row,
+        parentIdsByFolder.get(row.id) || [],
+        favoriteIds.has(row.id),
+        (pinsByFolder.get(row.id) || []).includes("global")
+      )
+    );
   },
 
   async createFolder(folder) {
@@ -344,14 +352,10 @@ export const supabaseAdapter = {
   },
 
   // favorites/pins не имеют FK на folders (item_id полиморфный — общая колонка
-  // на note/folder), поэтому Postgres не каскадит сюда сам. Структурно эти
-  // строки уже пусты к этому моменту (moveFolderToTrash сбрасывает isFavorite/
-  // pinned до постановки deletedAt), но фоновый persist() позднего клика
-  // "избранное"/"закрепить", отправленный ДО ухода в Корзину и доехавший до
-  // сервера ПОСЛЕ — теоретически мог воскресить строку уже после трэша.
-  // Удаление 0 строк — бесплатный no-op, чистим здесь как страховку от этой
-  // гонки (permanent delete необратим, в отличие от обычного дрейфа
-  // состояния при гонке кликов).
+  // на note/folder), поэтому Postgres не каскадит сюда сам — эти
+  // строки удаляем сами. Папка в Корзине их намеренно хранит (избранное и
+  // закрепление возвращаются при восстановлении), так что при удалении
+  // насовсем их обязательно надо подчистить здесь.
   async deleteFolder(id) {
     await withSaveStatus(async () => {
       const { error } = await supabaseClient.from("folders").delete().eq("id", id);
@@ -429,15 +433,19 @@ export const supabaseAdapter = {
     }));
   },
 
-  // См. комментарий у getTrashedFolders — тот же инвариант для заметок
-  // (itemsService.moveItemToTrash).
+  // См. комментарий у getTrashedFolders — заметка в Корзине тоже помнит
+  // избранное и закрепления (itemsService.moveItemToTrash).
   async getTrashedItems() {
-    const [itemsResult, folderIdsByNote] = await Promise.all([
+    const [itemsResult, folderIdsByNote, favoriteIds, pinsByItem] = await Promise.all([
       supabaseClient.from("notes").select(NOTE_COLUMNS).not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
       fetchFolderIdsByNoteId(),
+      fetchFavoriteIdSet("note"),
+      fetchPinsByItemId("note"),
     ]);
     if (itemsResult.error) throw itemsResult.error;
-    return itemsResult.data.map((row) => mapItemRow(row, folderIdsByNote.get(row.id) || [], false, []));
+    return itemsResult.data.map((row) =>
+      mapItemRow(row, folderIdsByNote.get(row.id) || [], favoriteIds.has(row.id), pinsByItem.get(row.id) || [])
+    );
   },
 
   async getItem(id) {

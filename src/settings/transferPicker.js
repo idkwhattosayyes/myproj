@@ -18,8 +18,8 @@ import { escapeHtml } from "../utils/dom.js";
 export function openTransferPicker({ mode, folders, items, onConfirm }) {
   // Заметки, сгруппированные по папке. Ключ null-папки — отдельная псевдо-группа
   // «Без папки», как и в самих разделах. Удалённое (deletedAt) в обычные группы
-  // не попадает — у удалённых заметок folderIds уже пуст (см. moveItemToTrash),
-  // и без этой развилки они неотличимо утонули бы среди обычных «без папки».
+  // не попадает — удалённая заметка помнит свои папки (см. moveItemToTrash), и
+  // без этой развилки она показалась бы в них как живая.
   const UNFILED = "__unfiled__";
   const TRASH = "__trash__";
   const itemsByGroup = new Map();

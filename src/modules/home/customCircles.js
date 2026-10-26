@@ -75,23 +75,22 @@ export async function updatePositions(updates) {
 }
 
 // Заметка, к которой привязан кружок, могла быть удалена насовсем или уйти в
-// Корзину — в обоих случаях убираем кружок ИЗ ХРАНИЛИЩА (не просто прячем),
-// чтобы восстановление заметки из Корзины его не вернуло (так требует ТЗ).
-// Для Supabase-стороны "удалена насовсем" уже подчищена каскадом на note_id
-// (see supabase/007_home_circles.sql) — эта проверка остаётся нужна для
-// "ушла в Корзину" (мягкое удаление, каскад тут не срабатывает) и для гостя,
-// у которого каскада нет вообще.
+// Корзину. Удалена насовсем — кружок убираем ИЗ ХРАНИЛИЩА: возвращать его
+// некуда. Для Supabase это уже сделал каскад на note_id (см.
+// supabase/007_home_circles.sql), проверка нужна гостю, у которого каскада нет.
+// Ушла в Корзину — кружок только прячем: после восстановления заметки он
+// вернётся на своё место и откроет её в той же папке. Раньше стирали и тут.
 export async function pruneDeadCircles() {
   const storage = getStorage();
   const circles = await storage.getHomeCircles();
-  const alive = [];
+  const visible = [];
   for (const circle of circles) {
     const item = await getItem(circle.noteId);
-    if (item && !item.deletedAt) {
-      alive.push(circle);
-    } else {
+    if (!item) {
       await storage.deleteHomeCircle(circle.id);
+    } else if (!item.deletedAt) {
+      visible.push(circle);
     }
   }
-  return alive;
+  return visible;
 }

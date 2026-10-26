@@ -38,6 +38,9 @@ export async function setItemsOrder(orderById) {
 // членства (id из folderIds), а не выкидываем заметку в «Без папки» целиком;
 // вложенные заметки в Корзину НЕ уходят.
 //
+// Своё сама папка помнит: избранное, закрепление и родителей не сбрасываем —
+// после восстановления она возвращается туда же (см. restoreFolder).
+//
 // deletedAt — необязательный: оптимистичный UI (panelSection.js) считает его
 // ОДИН раз и передаёт сюда же, чтобы локальная и сохранённая версии не
 // разъехались на пару миллисекунд (иначе при пакетном удалении может съехать
@@ -57,18 +60,24 @@ export async function moveFolderToTrash(section, id, deletedAt = new Date().toIS
       storage.updateFolder(f.id, { parentFolderIds: parentIdsOf(f).filter((p) => p !== id) })
     )
   );
-  return storage.updateFolder(id, {
-    deletedAt,
-    isFavorite: false,
-    pinned: false,
-    parentFolderIds: [], // и сама папка выходит из ВСЕХ своих родителей
-  });
+  return storage.updateFolder(id, { deletedAt });
 }
 
-// Восстановленная папка возвращается «неприкреплённой» — избранное, закрепление
-// и родительские связи уже сброшены в момент удаления и здесь не трогаются.
-export async function restoreFolder(id) {
-  return storage.updateFolder(id, { deletedAt: null });
+// Папка возвращается на прежнее место. Родитель, которого за это время
+// удалили (в Корзину или насовсем), отпадает — иначе папка ссылалась бы на
+// невидимую папку и пропала бы с верхнего уровня. Остальные родители
+// остаются; если не осталось ни одного — папка просто на верхнем уровне.
+//
+// alsoRestoring — папки, которые восстанавливаются тем же действием
+// («Восстановить всё»): родитель из их числа живой, хоть и вернётся на
+// мгновение позже — без этого связь зависела бы от порядка восстановления.
+export async function restoreFolder(section, id, alsoRestoring = []) {
+  const [trashed, folders] = await Promise.all([storage.getTrashedFolders(section), storage.getFolders(section)]);
+  const folder = trashed.find((f) => f.id === id);
+  if (!folder) return null;
+  const liveIds = new Set([...folders.map((f) => f.id), ...alsoRestoring]);
+  const parentFolderIds = parentIdsOf(folder).filter((parentId) => liveIds.has(parentId));
+  return storage.updateFolder(id, { deletedAt: null, parentFolderIds });
 }
 
 // Каскад по parentFolderIds уже выполнен в moveFolderToTrash в момент
@@ -175,15 +184,28 @@ export async function updateItem(id, patch) {
   return updated;
 }
 
-// Заметка отправляется в Корзину: связи (папки, избранное, закрепление)
-// сбрасываются сразу — при восстановлении они не возвращаются. deletedAt —
-// см. комментарий у moveFolderToTrash.
+// Заметка отправляется в Корзину со всеми связями (папки, избранное,
+// закрепление) — после восстановления она возвращается туда же, где была.
+// Кружок главной тоже не стирается, а только прячется (см. pruneDeadCircles).
+// deletedAt — см. комментарий у moveFolderToTrash.
 export async function moveItemToTrash(id, deletedAt = new Date().toISOString()) {
-  return storage.updateItem(id, { deletedAt, isFavorite: false, pinnedIn: [], folderIds: [] });
+  return storage.updateItem(id, { deletedAt });
 }
 
+// Особые места закрепления — не папки, проверять их не на что.
+const PIN_PLACES = ["all", "favorites", "unfiled"];
+
+// Папка заметки могла за это время уйти в Корзину или удалиться насовсем —
+// такую связь отбрасываем, остальные папки и закрепления возвращаем как
+// были. Не осталось ни одной папки — заметка окажется в «Без папки».
 export async function restoreItem(id) {
-  return storage.updateItem(id, { deletedAt: null });
+  const item = await storage.getItem(id);
+  if (!item) return null;
+  const folders = await storage.getFolders(item.section);
+  const liveIds = new Set(folders.map((f) => f.id));
+  const folderIds = item.folderIds.filter((folderId) => liveIds.has(folderId));
+  const pinnedIn = item.pinnedIn.filter((place) => PIN_PLACES.includes(place) || liveIds.has(place));
+  return storage.updateItem(id, { deletedAt: null, folderIds, pinnedIn });
 }
 
 export async function deleteItemForever(id) {
@@ -202,5 +224,9 @@ export async function emptyTrash(section) {
 
 export async function restoreAllTrash(section) {
   const { folders, items } = await listTrash(section);
-  await Promise.all([...folders.map((f) => restoreFolder(f.id)), ...items.map((i) => restoreItem(i.id))]);
+  const folderIds = folders.map((f) => f.id);
+  // Сначала папки, потом заметки: restoreItem оставляет заметке только живые
+  // папки, а папки из этой же корзины должны к тому моменту уже вернуться
+  await Promise.all(folderIds.map((id) => restoreFolder(section, id, folderIds)));
+  await Promise.all(items.map((i) => restoreItem(i.id)));
 }
