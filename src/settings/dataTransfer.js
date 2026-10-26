@@ -188,12 +188,19 @@ export async function importData(data) {
   // суффикс "(N)", чтобы её было видно отдельно от уже существующей.
   const takenTitleKeys = new Set((await storage.getItems("notes")).map((item) => item.title.trim().toLowerCase()));
 
+  // Папки — в два прохода: сначала все сами по себе, потом вложенность.
+  // Вложенная папка может стоять в файле раньше своей родительской, а у
+  // залогиненного Supabase не даёт вложить папку в ещё не созданную
+  // (политика folder_folder_links) — импорт падал целиком.
+  for (const folder of data.folders || []) {
+    await storage.createFolder({ ...folder, id: folderIdMap.get(folder.id), parentFolderIds: [] });
+  }
   for (const folder of data.folders || []) {
     // Вложенность папки живёт в parentFolderIds (папка может лежать сразу в
     // нескольких). Раньше поле копировалось как есть — со ссылками на исчезнувшие
     // id, из-за чего вложенные папки после импорта всплывали на верхний уровень.
     const parentFolderIds = (folder.parentFolderIds || []).map((id) => folderIdMap.get(id)).filter(Boolean);
-    await storage.createFolder({ ...folder, id: folderIdMap.get(folder.id), parentFolderIds });
+    if (parentFolderIds.length) await storage.updateFolder(folderIdMap.get(folder.id), { parentFolderIds });
   }
 
   for (const item of data.items) {

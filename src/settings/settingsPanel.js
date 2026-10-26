@@ -443,14 +443,17 @@ async function runImport() {
       const hideLoading = showLoadingOverlay();
       try {
         await importData({ folders, items, homeCircles: data.homeCircles, blockTags: data.blockTags });
-      } catch {
+      } catch (error) {
         hideLoading();
+        console.error("Import failed:", error);
         // Конфликт имени тега сам по себе больше не валит импорт (см.
         // uniqueTagName в dataTransfer.js) — сюда попадают только настоящие сбои
         // (сеть, квота и т.п.). Общий индикатор сохранения в углу в этот момент
         // уже покажет "Couldn't save" от withSaveStatus — это не специфично для
         // импорта и не объясняет причину, поэтому даём своё, отдельное сообщение.
-        await openConfirm({ message: t("settings.importFailed") });
+        // Текст ошибки — в конце сообщения: по нему видно, что именно не так
+        const detail = error && error.message ? error.message : String(error);
+        await openConfirm({ message: `${t("settings.importFailed")}\n\n${detail}` });
         return;
       }
       // Оверлей нарочно не скрываем на успехе — reload и так сотрёт всё.
