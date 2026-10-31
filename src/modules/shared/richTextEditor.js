@@ -1411,6 +1411,14 @@ function fillEmptyLine(line) {
   }
 }
 
+// То же для пунктов списка. Совсем пустой <li></li> (без <br>) — нулевой
+// высоты, а его номер или квадратик всё равно рисуется и ложится на строку ниже:
+// так «4.» налезал на первый пункт чек-листа под нумерованным списком. Такие
+// пункты остаются после стирания текста и приходят с телефона.
+function fillEmptyItems(editorEl) {
+  editorEl.querySelectorAll("li").forEach(fillEmptyLine);
+}
+
 // Заметки, сохранённые до перехода на data-indent, держат отступ браузерным
 // <blockquote>. Разворачиваем при открытии: каждая строка внутри получает свой
 // уровень (вложенные blockquote суммируются), после чего blockquote в заметке
@@ -1534,6 +1542,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
   // Слипшиеся строки уже разошлись по сохранённым заметкам — чиним при открытии,
   // отдельной миграции для этого не нужно.
   normalizeLines(contentEl);
+  fillEmptyItems(contentEl);
 
   // Фото залогиненного пользователя, уже залитые в Storage (data-storage-path
   // проставлен вставкой/повторным редактированием — см. attachBackgroundUpload
@@ -2512,6 +2521,7 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
     // ниже выставляется явно из entry.caret/caretOffset, отдельно её снимать
     // незачем.
     normalizeLines(contentEl);
+    fillEmptyItems(contentEl);
     activePageEl = getPages()[0] || null;
     // Курсор — туда, где выполнялось отменяемое (или повторяемое) действие, а не
     // в начало. Куда именно, решают undo/redo: у снимка два положения каретки.
@@ -4362,6 +4372,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       // вплотную, а значит одним списком. Только на удалении: пока разделитель
       // на месте, склеивать нечего (см. mergeAdjacentLists).
       if (mergeAdjacentLists(contentEl)) recordHistory();
+      // Стёрли весь текст пункта вместе с <br> — пункт схлопнулся бы
+      fillEmptyItems(contentEl);
     }
     // Выход из списка по Enter — та же чистка, что и после удаления. Отметка
     // «выполнено» рисуется CSS (line-through и серый цвет на li.is-done), а
@@ -5529,9 +5541,15 @@ function createList(kind) {
 // Список того же вида, стоящий вплотную — только с таким и сливаемся. Проверка
 // именно на непосредственного соседа: между двумя списками может лежать пустая
 // строка, и тогда это два РАЗНЫХ списка, сколько бы одинаковыми они ни выглядели.
+//
+// Сосед обязан быть настоящим списком: listKind про любой элемент, кроме <ol>,
+// отвечает «bullet». Без этой проверки обычная строка под маркированным списком
+// считалась «таким же списком» — и mergeAdjacentLists после любого стирания
+// вливал в список все строки ниже до конца заметки, голым текстом без <li>.
 function adjacentList(el, side, kind) {
   const neighbour = side === "before" ? el.previousElementSibling : el.nextElementSibling;
-  return neighbour && listKind(neighbour) === kind ? neighbour : null;
+  if (!neighbour || !neighbour.matches("ul,ol")) return null;
+  return listKind(neighbour) === kind ? neighbour : null;
 }
 
 /**
@@ -5560,6 +5578,7 @@ function toggleList(editorEl, kind) {
     wrapLinesInList(lines, kind);
   }
 
+  fillEmptyItems(editorEl);
   restoreCaret(caret);
 }
 
