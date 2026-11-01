@@ -672,6 +672,27 @@ button.rte-link-preview-row:hover {
   color: var(--paper-ink);
 }
 
+/* Заливка внутри покрашенного текста. Chrome кладёт её ВНУТРЬ <font color>
+   (сначала цвет, потом заливка), и правило выше перебивало выбранный цвет
+   тёмным: красный текст под подсветкой становился чёрным. Свой цвет человека
+   важнее — заливка его наследует, как в приложении. Тёмный «Сбросить цвет»
+   (#1f2328) сюда не входит: у него своё правило выше. */
+:root[data-theme="dark"] .rte-content:not(.is-exporting) :is(font[color]:not([color="#1f2328"]), [style^="color"]) [style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]),
+:root[data-theme="midnight"] .rte-content:not(.is-exporting) :is(font[color]:not([color="#1f2328"]), [style^="color"]) [style*="background-color"]:not([style*="background-color: transparent"]):not([style*="background-color: rgba(0, 0, 0, 0)"]) {
+  color: inherit;
+}
+
+/* Палочка ввода берёт цвет текста там, где стоит, — на заливке это тёмный
+   #1f2328 из правила выше. Посреди подсвеченного текста он хорошо виден на
+   светлой заливке, а вот на правом краю заливки (и в только что включённой,
+   ещё пустой) палочка стоит уже на тёмной бумаге и пропадала. Там красим её
+   акцентом темы: виден на тёмной бумаге и заодно показывает, что заливка
+   включена. Класс ставит refreshToolbarState (richTextEditor.js). */
+:root[data-theme="dark"] .rte-content.is-caret-at-fill-edge,
+:root[data-theme="midnight"] .rte-content.is-caret-at-fill-edge {
+  caret-color: var(--paper-accent);
+}
+
 /* То же с рисунками: перо по умолчанию тёмное (#1f2328), и штрих им на тёмной
    бумаге не виден. CSS-свойство stroke сильнее атрибута stroke у <path>, так
    что в заметке цвет остаётся прежним, меняется только отображение. */
@@ -702,9 +723,11 @@ button.rte-link-preview-row:hover {
 }
 
 /* Редактируется не контейнер, а страницы внутри него, поэтому подсветка рамки
-   вешается на focus-within. */
+   вешается на focus-within. Цвет — не синий цвет ссылки (остаток до
+   редизайна, в тёмной теме он горел голубой рамкой), а та же рамка, только
+   чуть ближе к цвету текста: фокус заметен в любой теме и не спорит с ней. */
 .rte-content:focus-within {
-  border-color: var(--paper-link, #0969da);
+  border-color: color-mix(in oklch, var(--paper-line, #d0d7de) 80%, var(--paper-ink, #1f2328));
 }
 
 .rte-page:focus { outline: none; }

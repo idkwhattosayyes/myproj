@@ -144,8 +144,10 @@
   gap: 0.3rem;
 }
 
+/* Фокус — не акцентом темы (в тёмной он голубой и горел синей рамкой), а
+   той же рамкой, только ближе к цвету текста: как у поля заметки в editor.css. */
 .search-field:focus-within {
-  border-color: var(--text-accent);
+  border-color: color-mix(in oklch, var(--color-border) 78%, var(--text-primary));
 }
 
 /* Поиск идёт по открытой заметке, а не по всему сайту — поле чуть подкрашено,

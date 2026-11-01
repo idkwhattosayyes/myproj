@@ -1502,6 +1502,22 @@ function isColorActive(editorEl, cssProp) {
   return value !== window.getComputedStyle(editorEl).color;
 }
 
+// Каретка на правом краю заливки: в только что включённой (пустой, с одним
+// якорем) или в конце набранного подсвеченного текста — дальше в носителе букв
+// нет. Палочка здесь стоит уже не на заливке, а на бумаге (см. правило
+// .is-caret-at-fill-edge в editor.css).
+function isCaretAtFillEdge(editorEl) {
+  const selection = window.getSelection();
+  if (!selection.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  const carrier = colorCarrier(editorEl, range.startContainer, "backgroundColor");
+  if (!carrier || !isColorActive(editorEl, "backgroundColor")) return false;
+  const rest = document.createRange();
+  rest.selectNodeContents(carrier);
+  rest.setStart(range.startContainer, range.startOffset);
+  return rest.toString().split(CARET_ANCHOR).join("") === "";
+}
+
 /**
  * Собирает тулбар и contenteditable-область как отдельные DOM-узлы, не
  * привязываясь к порядку в разметке — вызывающий код (panelSection.js)
@@ -2282,6 +2298,8 @@ export function createRichTextEditor({ content, buttons, basicButtons = null, pa
       if (!btnDef || !btnDef.isActive) return;
       btn.classList.toggle("is-active", !!btnDef.isActive(contentEl));
     });
+    // Цвет палочки ввода у края заливки — в тёмных темах (см. editor.css)
+    contentEl.classList.toggle("is-caret-at-fill-edge", isCaretAtFillEdge(contentEl));
   }
 
   // --- История отмены/повтора ------------------------------------------
