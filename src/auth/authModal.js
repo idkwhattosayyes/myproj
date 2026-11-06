@@ -10,6 +10,7 @@ import {
   sendResetCode,
   resetPasswordWithCode,
   confirmSignUp,
+  takeSessionEndedNotice,
 } from "./authService.js";
 
 // Тот же минимум, что требует Supabase
@@ -86,6 +87,9 @@ export function openAuthModal() {
     let step = "start";
     // Email, введённый на шаге логина/регистрации, переживает переключение между ними.
     let email = "";
+    // Окно открылось, потому что сессию отменили на другом устройстве, —
+    // говорим об этом на первом экране, иначе непонятно, куда делся аккаунт
+    const sessionEnded = takeSessionEndedNotice();
     // Шаг «Забыли пароль?» в двух видах: сначала почта, после отправки
     // письма — код и новый пароль
     let resetCodeSent = false;
@@ -131,6 +135,7 @@ export function openAuthModal() {
     function renderStart() {
       overlay.innerHTML = `
         <div class="modal-box auth-box">
+          ${sessionEnded ? `<p class="auth-hint auth-ended">${escapeHtml(t("auth.sessionEnded"))}</p>` : ""}
           <button type="button" class="btn btn-accent auth-btn" data-action="go-login">${t("auth.loginRegister")}</button>
           <button type="button" class="btn auth-btn" data-action="guest">${t("auth.continueGuest")}</button>
         </div>

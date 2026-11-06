@@ -4,13 +4,38 @@ import { supabaseClient } from "../data/supabaseClient.js";
 // синхронно). Обновляется сам через onAuthStateChange, вручную нигде не пишем.
 let cachedSession = null;
 
-supabaseClient.auth.onAuthStateChange((_event, session) => {
+// Выход, который делаем мы сами (кнопка «Выйти», удаление аккаунта, сброс
+// пароля не удался). Любой другой выход — это Supabase не смог обновить
+// токен, потому что сессию отменили на другом устройстве
+let signingOutOnPurpose = false;
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  const wasSignedIn = cachedSession !== null;
   cachedSession = session;
+  if (event === "SIGNED_OUT" && wasSignedIn && !signingOutOnPurpose) {
+    markSessionEnded();
+    location.hash = "#/";
+    location.reload();
+  }
 });
+
+/** Выйти по своей воле — так, чтобы это не приняли за «выкинуло». */
+async function signOutOnPurpose(scope) {
+  signingOutOnPurpose = true;
+  try {
+    await supabaseClient.auth.signOut(scope ? { scope } : undefined);
+  } finally {
+    signingOutOnPurpose = false;
+  }
+}
 
 /** @returns {Promise<import("@supabase/supabase-js").Session|null>} */
 export async function getSession() {
-  const { data } = await supabaseClient.auth.getSession();
+  const { data, error } = await supabaseClient.auth.getSession();
+  // Страницу открыли, когда токен уже истёк, а обновить его сервер отказал —
+  // сессию отменили, пока сайт был закрыт. Не тихий гостевой режим, а вход
+  // с объяснением, как при выходе на открытой странице
+  if (!data.session && error?.code?.startsWith("refresh_token")) markSessionEnded();
   cachedSession = data.session;
   return cachedSession;
 }
@@ -65,7 +90,7 @@ export async function resetPasswordWithCode(email, code, password) {
     // Код уже принят и человек вошёл, а пароль не сменился (такой же, как
     // старый, слишком короткий). Выходим — иначе он остался бы в аккаунте
     // с тем паролем, который как раз забыл
-    await supabaseClient.auth.signOut({ scope: "local" });
+    await signOutOnPurpose("local");
   }
   return error;
 }
@@ -81,6 +106,7 @@ export async function setPasswordWithCode(email, code, password) {
   const verified = await supabaseClient.auth.verifyOtp({ email, token: code.trim(), type: "recovery" });
   if (verified.error) return { error: verified.error, codeAccepted: false };
   const updated = await supabaseClient.auth.updateUser({ password });
+  if (!updated.error) await signOutOtherDevices();
   return { error: updated.error, codeAccepted: true };
 }
 
@@ -107,6 +133,7 @@ export async function confirmEmailChange(oldEmail, oldCode, newEmail, newCode) {
   if (second.error) return { error: second.error, which: "new" };
   // Сессия со старой почтой — берём свежую, чтобы «Аккаунт» показал новую
   await supabaseClient.auth.refreshSession();
+  await signOutOtherDevices();
   return { error: null, which: null };
 }
 
@@ -122,7 +149,82 @@ export async function signInWithGoogle() {
 }
 
 export async function signOut() {
-  await supabaseClient.auth.signOut();
+  await signOutOnPurpose();
+}
+
+// --- Выход с других устройств -------------------------------------------------
+//
+// Сменили пароль или почту — остальные устройства выходят из аккаунта
+// (решение владельца). Само устройство, где меняли, остаётся.
+async function signOutOtherDevices() {
+  // Не вышло (нет сети) — пароль или почта всё равно уже сменились, это главное
+  await supabaseClient.auth.signOut({ scope: "others" }).catch(() => {});
+}
+
+// Флаг для окна входа: человек видит вход не просто так, а потому что его
+// выкинуло. Переживает перезагрузку страницы, которая идёт сразу после выхода
+const SESSION_ENDED_KEY = "app:sessionEnded";
+const SESSION_CHECK_MS = 60_000;
+
+/**
+ * Жива ли сессия на сервере. Сама страница этого не знает: токен в браузере
+ * выглядит действующим до часа и после того, как сессию отменили (сменили
+ * пароль или почту на другом устройстве, удалили аккаунт).
+ * @returns {Promise<boolean|null>} null — не удалось спросить (нет сети), это не «вышли»
+ */
+async function isSessionAlive() {
+  const { error } = await supabaseClient.auth.getUser();
+  if (!error) return true;
+  // Сервер ответил «такой сессии / такого человека нет». Остальное (нет
+  // сети, сервер недоступен) — не повод выкидывать
+  // 403 session_not_found — сессию отменили; токен истёк, а обновить его
+  // нечем — refresh_token_not_found
+  const ended =
+    error.status === 401 ||
+    error.status === 403 ||
+    ["session_not_found", "user_not_found", "bad_jwt", "refresh_token_not_found", "refresh_token_already_used"].includes(error.code);
+  return ended ? false : null;
+}
+
+// После перезагрузки — окно входа (а не тихий гостевой режим) и надпись, почему
+function markSessionEnded() {
+  clearGuestChosen();
+  localStorage.setItem(SESSION_ENDED_KEY, "1");
+}
+
+/**
+ * Сессию отменили на сервере — выходим и здесь. Окно входа после этого
+ * появится само (как после явного «Выйти») и скажет почему.
+ * @returns {Promise<boolean>} true — вышли
+ */
+export async function dropEndedSession() {
+  if (!cachedSession) return false;
+  if ((await isSessionAlive()) !== false) return false;
+  // Только у себя: на сервере сессии уже нет
+  await signOutOnPurpose("local").catch(() => {});
+  markSessionEnded();
+  return true;
+}
+
+/** Проверять сессию, пока страница открыта: раз в минуту и при возврате на вкладку. */
+export function watchSession() {
+  const check = async () => {
+    if (!(await dropEndedSession())) return;
+    // Как после «Выйти»: на главную и заново — там окно входа
+    location.hash = "#/";
+    location.reload();
+  };
+  setInterval(check, SESSION_CHECK_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") check();
+  });
+}
+
+/** Окно входа спрашивает один раз: выкинуло ли человека. Флаг после этого снят. */
+export function takeSessionEndedNotice() {
+  const ended = localStorage.getItem(SESSION_ENDED_KEY) === "1";
+  localStorage.removeItem(SESSION_ENDED_KEY);
+  return ended;
 }
 
 /**
@@ -197,7 +299,7 @@ export async function deleteAccount() {
   }
   const { error } = await supabaseClient.rpc("delete_my_account");
   if (error) return { error };
-  await supabaseClient.auth.signOut({ scope: "local" });
+  await signOutOnPurpose("local");
   return { error: null };
 }
 

@@ -15,7 +15,7 @@ import {
 } from "./search/searchBar.js";
 import { mountQuickNote } from "./search/quickNote.js";
 import { refreshActivePanelItems } from "./modules/shared/panelSection.js";
-import { getSession, hasChosenGuest } from "./auth/authService.js";
+import { dropEndedSession, getSession, hasChosenGuest, watchSession } from "./auth/authService.js";
 import { openAuthModal } from "./auth/authModal.js";
 import { mountSaveIndicator } from "./saveIndicator.js";
 
@@ -159,7 +159,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   // экран авторизации перекрывает страницу. Выбор гостя запоминается навсегда
   // (hasChosenGuest), поэтому повторно модалка не всплывает сама — вернуться
   // к ней можно только явной кнопкой "Log in" в настройках.
-  const session = await getSession();
+  let session = await getSession();
+  // Сессия в браузере могла пережить отмену на сервере (сменили пароль или
+  // почту на другом устройстве) — тогда выходим, и ниже покажется вход
+  if (session && (await dropEndedSession())) session = null;
   if (!session && !hasChosenGuest()) await openAuthModal();
+  watchSession();
   renderRoute();
 });
