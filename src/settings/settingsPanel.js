@@ -6,9 +6,9 @@ import { THEMES, getTheme, setTheme } from "./themeSetting.js";
 import { openConfirm, openPrompt } from "../utils/modal.js";
 import { pushLayer } from "../utils/escapeLayers.js";
 import { getStorage } from "../data/storageAdapter.js";
-import { getCachedSession, signOut, clearGuestChosen } from "../auth/authService.js";
-import { openAuthModal } from "../auth/authModal.js";
-import { escapeHtml } from "../utils/dom.js";
+import { getCachedSession } from "../auth/authService.js";
+import { renderAccountPage } from "./accountPage.js";
+import { escapeAttr, escapeHtml } from "../utils/dom.js";
 import { toCssPx } from "../utils/uiScale.js";
 import { buildExportFrom, circlesForItems, downloadJson, readJsonFile, importData, isValidExport } from "./dataTransfer.js";
 import { openTransferPicker } from "./transferPicker.js";
@@ -28,6 +28,11 @@ let panelEl = null;
 let isOpen = false;
 let unregisterLayer = null;
 let onLangChangeCallback = null;
+// Страницы внутри окна: снизу главная (сами настройки), сверху — открытые из
+// неё ("account", а из него "email" / "password" / "delete"). У каждой
+// открытой страницы свой слой Esc: Esc и стрелка назад возвращают на страницу
+// ниже, а не закрывают окно целиком.
+let pageStack = [];
 
 /** @param {{onLangChange: () => void}} options */
 export function mountSettings({ onLangChange }) {
@@ -68,6 +73,8 @@ function togglePanel() {
 }
 
 function openPanel() {
+  // Окно всегда открывается на главной, даже если закрыли его из «Аккаунта»
+  pageStack = [];
   renderPanel();
   isOpen = true;
   overlayEl.hidden = false;
@@ -83,6 +90,7 @@ function closePanel() {
     unregisterLayer();
     unregisterLayer = null;
   }
+  pageStack.forEach((entry) => entry.unregister());
   // Прячем окно только когда оно уже «втянулось» обратно в шестерёнку.
   playMorph("close", () => {
     overlayEl.hidden = true;
@@ -204,12 +212,35 @@ function playMorph(direction, onDone) {
     .catch(() => {});
 }
 
+function goToPage(page) {
+  pageStack.push({ page, unregister: pushLayer(goBack) });
+  renderPanel();
+}
+
+function goBack() {
+  const entry = pageStack.pop();
+  if (!entry) return;
+  // Если сюда пришли по Esc, слой уже снят — повторное снятие ничего не делает
+  entry.unregister();
+  renderPanel();
+}
+
 function renderPanel() {
+  const top = pageStack[pageStack.length - 1];
+  if (top) {
+    renderAccountPage(panelEl, top.page, { go: goToPage, back: goBack, close: closePanel });
+    return;
+  }
+  renderMainPage();
+}
+
+function renderMainPage() {
   const lang = getLang();
   const session = getCachedSession();
+  const accountLabel = session ? session.user.email : t("account.guest");
   // Раскладка — как окно настроек в прототипе редизайна: строки с тонким
   // разделителем сверху, сегментные переключатели языка и масштаба, тумблеры,
-  // внизу — опасное действие слева и вход/выход справа. Логика привязана к
+  // внизу — строка «Аккаунт», ведущая на его страницу. Логика привязана к
   // data-атрибутам (data-lang, data-zoom, data-role, data-action), а не к
   // классам, поэтому классы здесь только про вид.
   panelEl.innerHTML = `
@@ -217,14 +248,6 @@ function renderPanel() {
       <h2 class="settings-title">${t("settings.title")}</h2>
       <button type="button" class="settings-close" data-action="close" title="${t("settings.close")}"><i class="ph ph-x"></i></button>
     </div>
-    ${
-      session
-        ? `<div class="settings-row settings-account-row">
-            <i class="ph ph-user-circle settings-account-icon"></i>
-            <span class="settings-label settings-account-email" title="${escapeHtml(session.user.email)}">${escapeHtml(session.user.email)}</span>
-          </div>`
-        : ""
-    }
     <div class="settings-row settings-theme-row">
       <div class="settings-theme-head">
         <span class="settings-label">${t("settings.theme")}</span>
@@ -271,21 +294,22 @@ function renderPanel() {
       <span class="settings-label">${t("settings.toggleSaveIndicator")}</span>
       <input type="checkbox" class="settings-switch" data-role="save-indicator" ${getSaveIndicatorEnabled() ? "checked" : ""}>
     </label>
-    <div class="settings-row settings-row--last">
+    <div class="settings-row">
       <span class="settings-label">${t("settings.dataTransfer")}</span>
       <div class="settings-io">
         <button type="button" class="settings-link" data-action="export"><i class="ph ph-upload-simple"></i>${t("settings.export")}</button>
         <button type="button" class="settings-link" data-action="import"><i class="ph ph-download-simple"></i>${t("settings.import")}</button>
       </div>
     </div>
-    <div class="settings-footer">
-      <button type="button" class="btn btn-danger settings-footer-btn" data-action="clear-data">${t("settings.clearData")}</button>
-      ${
-        session
-          ? `<button type="button" class="btn btn-primary settings-footer-btn" data-action="logout">${t("auth.logout")}</button>`
-          : `<button type="button" class="btn btn-primary settings-footer-btn" data-action="login">${t("auth.login")}</button>`
-      }
-    </div>
+    <!-- Выход, очистка данных, смена почты и пароля, удаление аккаунта — на
+         отдельной странице «Аккаунт» (accountPage.js), здесь только вход в неё -->
+    <button type="button" class="settings-row settings-nav-row settings-row--last" data-action="account">
+      <span class="settings-nav-label"><i class="ph ph-user-circle"></i><span>${t("account.title")}</span></span>
+      <span class="settings-nav-value">
+        <span class="settings-account-email" title="${escapeAttr(accountLabel)}">${escapeHtml(accountLabel)}</span>
+        <i class="ph ph-caret-right settings-nav-chevron"></i>
+      </span>
+    </button>
   `;
 
   panelEl.querySelectorAll("[data-lang]").forEach((btn) => {
@@ -337,36 +361,7 @@ function renderPanel() {
 
   panelEl.querySelector('[data-action="import"]').addEventListener("click", runImport);
 
-  panelEl.querySelector('[data-action="clear-data"]').addEventListener("click", async () => {
-    closePanel();
-    const ok = await openConfirm({ message: t("settings.clearDataConfirm") });
-    if (!ok) return;
-    await getStorage().clearAll();
-    location.reload();
-  });
-
-  panelEl.querySelector('[data-action="logout"]')?.addEventListener("click", async () => {
-    closePanel();
-    await signOut();
-    // Явный логаут — единственное, что обязано снова показать экран
-    // авторизации при следующей загрузке, даже если раньше был выбран гость.
-    clearGuestChosen();
-    // Как и при логине — после выхода всегда на главную, а не там, где
-    // стояли настройки.
-    location.hash = "#/";
-    location.reload();
-  });
-
-  panelEl.querySelector('[data-action="login"]')?.addEventListener("click", async () => {
-    closePanel();
-    await openAuthModal();
-    if (getCachedSession()) {
-      // Владелец может залогиниться из любого раздела — после входа всегда
-      // должен оказаться на главной, а не там, где стояли настройки.
-      location.hash = "#/";
-      location.reload();
-    }
-  });
+  panelEl.querySelector('[data-action="account"]').addEventListener("click", () => goToPage("account"));
 }
 
 // Экспорт: открываем дерево «папки → заметки» с галочками и превью. Выбранное

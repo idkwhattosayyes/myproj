@@ -1,7 +1,33 @@
 import { t } from "../i18n/i18n.js";
 import { pushLayer } from "../utils/escapeLayers.js";
-import { escapeAttr } from "../utils/dom.js";
-import { signInWithPassword, signUp, signInWithGoogle, setGuestChosen } from "./authService.js";
+import { escapeAttr, escapeHtml } from "../utils/dom.js";
+import {
+  completeLoginEmail,
+  signInWithPassword,
+  signUp,
+  signInWithGoogle,
+  setGuestChosen,
+  sendResetCode,
+  resetPasswordWithCode,
+  confirmSignUp,
+} from "./authService.js";
+
+// Тот же минимум, что требует Supabase
+const MIN_PASSWORD_LENGTH = 6;
+
+// Ошибки «Забыли пароль?», для которых есть свой понятный текст. Остальные
+// (нет сети, сервер недоступен) — настоящим сообщением Supabase, как при входе
+function resetErrorText(error) {
+  const text = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+  // Писем можно отправить немного в час — ограничивают и Supabase, и Gmail
+  if (error.status === 429 || text.includes("rate limit") || text.includes("over_email_send_rate_limit")) {
+    return t("auth.forgot.rateLimit");
+  }
+  if (text.includes("otp_expired") || text.includes("token has expired")) return t("auth.forgot.badCode");
+  if (text.includes("same_password") || text.includes("different from the old")) return t("auth.forgot.samePassword");
+  if (text.includes("weak_password")) return t("auth.forgot.weak");
+  return error.message;
+}
 
 // Переключатель показать/скрыть пароль — общий на все поля пароля модалки
 // (login, register password, confirmPassword), у каждого своя кнопка внутри
@@ -60,6 +86,9 @@ export function openAuthModal() {
     let step = "start";
     // Email, введённый на шаге логина/регистрации, переживает переключение между ними.
     let email = "";
+    // Шаг «Забыли пароль?» в двух видах: сначала почта, после отправки
+    // письма — код и новый пароль
+    let resetCodeSent = false;
 
     function finish() {
       unwire();
@@ -119,7 +148,10 @@ export function openAuthModal() {
             <input type="password" class="modal-input" data-role="password" placeholder="${t("auth.password")}">
             <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}"><i class="ph ph-eye-slash"></i></button>
           </div>
-          <p class="auth-error" data-role="error" hidden></p>
+          <div class="auth-under-password">
+            <p class="auth-error" data-role="error" hidden></p>
+            <button type="button" class="auth-link" data-action="forgot">${t("auth.forgot.link")}</button>
+          </div>
           <button type="button" class="btn btn-accent auth-btn" data-action="login">${t("auth.login")}</button>
           <div class="auth-split-row">
             <button type="button" class="btn auth-google-btn" data-action="google">
@@ -137,8 +169,16 @@ export function openAuthModal() {
       const passwordInput = overlay.querySelector('[data-role="password"]');
       const errorEl = overlay.querySelector('[data-role="error"]');
 
-      const runLogin = async () => {
+      // Уже введённую почту берём с собой — второй раз не набирать
+      overlay.querySelector('[data-action="forgot"]').addEventListener("click", () => {
         email = emailInput.value.trim();
+        resetCodeSent = false;
+        goTo("forgot");
+      });
+
+      const runLogin = async () => {
+        // Можно ввести только имя Gmail — см. completeLoginEmail
+        email = completeLoginEmail(emailInput.value);
         const { session, error } = await signInWithPassword(email, passwordInput.value);
         if (error || !session) {
           // code "invalid_credentials" — Supabase реально отверг пару email/
@@ -174,7 +214,6 @@ export function openAuthModal() {
             <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}"><i class="ph ph-eye-slash"></i></button>
           </div>
           <p class="auth-error" data-role="error" hidden></p>
-          <p class="auth-hint" data-role="hint" hidden></p>
           <button type="button" class="btn btn-accent auth-btn" data-action="register">${t("auth.register")}</button>
           <div class="auth-split-row">
             <button type="button" class="btn auth-google-btn" data-action="google">
@@ -192,11 +231,9 @@ export function openAuthModal() {
       const passwordInput = overlay.querySelector('[data-role="password"]');
       const confirmInput = overlay.querySelector('[data-role="confirmPassword"]');
       const errorEl = overlay.querySelector('[data-role="error"]');
-      const hintEl = overlay.querySelector('[data-role="hint"]');
 
       overlay.querySelector('[data-action="register"]').addEventListener("click", async () => {
         errorEl.hidden = true;
-        hintEl.hidden = true;
         if (passwordInput.value !== confirmInput.value) {
           showAuthError(errorEl, t("auth.errorPasswordMismatch"));
           return;
@@ -208,10 +245,9 @@ export function openAuthModal() {
           return;
         }
         if (!session) {
-          // В Supabase включено подтверждение email — сразу войти не получится,
-          // пока пользователь не перейдёт по ссылке из письма.
-          hintEl.textContent = t("auth.checkEmailToConfirm");
-          hintEl.hidden = false;
+          // В Supabase включено подтверждение почты: аккаунт создан, но войти
+          // можно только с кодом из письма «Confirm signup»
+          goTo("confirm-signup");
           return;
         }
         finish();
@@ -229,9 +265,166 @@ export function openAuthModal() {
       showAuthError(overlay.querySelector('[data-role="error"]'), error.message);
     }
 
+    // «Забыли пароль?»: почта → письмо с кодом → код и новый пароль дважды →
+    // сразу вошёл. Как на телефоне (ForgotPasswordScreen.tsx)
+    function renderForgot() {
+      overlay.innerHTML = `
+        <div class="modal-box auth-box">
+          <button type="button" class="auth-back-btn" data-action="back" aria-label="${escapeAttr(t("auth.back"))}"><i class="ph ph-arrow-left"></i></button>
+          <h2 class="auth-title">${escapeHtml(t("auth.forgot.title"))}</h2>
+          ${resetCodeSent ? forgotCodeHtml() : forgotEmailHtml()}
+          <p class="auth-error" data-role="error" hidden></p>
+          <p class="auth-hint" data-role="hint" ${resetCodeSent ? "" : "hidden"}>${resetCodeSent ? escapeHtml(t("auth.forgot.codeSent").replace("{email}", email)) : ""}</p>
+          ${
+            resetCodeSent
+              ? `<button type="button" class="btn btn-accent auth-btn" data-action="save">${escapeHtml(t("auth.forgot.save"))}</button>
+                 <button type="button" class="btn auth-btn" data-action="send">${escapeHtml(t("auth.forgot.resend"))}</button>`
+              : `<button type="button" class="btn btn-accent auth-btn" data-action="send">${escapeHtml(t("auth.forgot.sendCode"))}</button>`
+          }
+          <button type="button" class="btn auth-btn" data-action="back-to-login">${escapeHtml(t("auth.backToLogin"))}</button>
+        </div>
+      `;
+      overlay.querySelector('[data-action="back"]').addEventListener("click", () => goTo("login"));
+      overlay.querySelector('[data-action="back-to-login"]').addEventListener("click", () => goTo("login"));
+
+      const errorEl = overlay.querySelector('[data-role="error"]');
+      const sendButton = overlay.querySelector('[data-action="send"]');
+      // Поле почты есть только на первом виде шага; на втором почта уже в email
+      const emailInput = overlay.querySelector('[data-role="email"]');
+
+      // «Отправить код» на первом виде и «Отправить ещё раз» на втором
+      const sendCode = async () => {
+        if (emailInput) email = completeLoginEmail(emailInput.value);
+        if (!email) {
+          showAuthError(errorEl, t("auth.forgot.emailEmpty"));
+          return;
+        }
+        sendButton.disabled = true;
+        const error = await sendResetCode(email);
+        sendButton.disabled = false;
+        if (error) {
+          showAuthError(errorEl, resetErrorText(error));
+          return;
+        }
+        resetCodeSent = true;
+        render();
+      };
+      sendButton.addEventListener("click", sendCode);
+
+      if (!resetCodeSent) {
+        emailInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") sendCode();
+        });
+        emailInput.focus();
+        return;
+      }
+
+      const codeInput = overlay.querySelector('[data-role="code"]');
+      const passwordInput = overlay.querySelector('[data-role="password"]');
+      const confirmInput = overlay.querySelector('[data-role="confirmPassword"]');
+      const saveButton = overlay.querySelector('[data-action="save"]');
+
+      const save = async () => {
+        if (!codeInput.value.trim()) {
+          showAuthError(errorEl, t("auth.forgot.codeEmpty"));
+          return;
+        }
+        // Проверяем до отправки: код одноразовый, и если пароль отвергнут уже
+        // после него, понадобится новый код
+        if (passwordInput.value.length < MIN_PASSWORD_LENGTH) {
+          showAuthError(errorEl, t("auth.forgot.weak"));
+          return;
+        }
+        if (passwordInput.value !== confirmInput.value) {
+          showAuthError(errorEl, t("auth.errorPasswordMismatch"));
+          return;
+        }
+        saveButton.disabled = true;
+        const error = await resetPasswordWithCode(email, codeInput.value, passwordInput.value);
+        saveButton.disabled = false;
+        if (error) {
+          showAuthError(errorEl, resetErrorText(error));
+          return;
+        }
+        // Вошёл с новым паролем — как после обычного входа
+        finish();
+      };
+      saveButton.addEventListener("click", save);
+      confirmInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") save();
+      });
+      wirePasswordToggles(overlay);
+      codeInput.focus();
+    }
+
+    function forgotEmailHtml() {
+      return `
+        <p class="auth-hint">${escapeHtml(t("auth.forgot.emailHint"))}</p>
+        <input type="email" class="modal-input" data-role="email" placeholder="${escapeAttr(t("auth.email"))}" value="${escapeAttr(email)}">
+      `;
+    }
+
+    function forgotCodeHtml() {
+      return `
+        <input type="text" class="modal-input" data-role="code" inputmode="numeric" autocomplete="one-time-code" placeholder="${escapeAttr(t("auth.forgot.code"))}">
+        <div class="auth-password-wrap">
+          <input type="password" class="modal-input" data-role="password" autocomplete="new-password" placeholder="${escapeAttr(t("auth.forgot.newPassword"))}">
+          <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}"><i class="ph ph-eye-slash"></i></button>
+        </div>
+        <div class="auth-password-wrap">
+          <input type="password" class="modal-input" data-role="confirmPassword" autocomplete="new-password" placeholder="${escapeAttr(t("auth.confirmPassword"))}">
+          <button type="button" class="auth-password-toggle" aria-label="${escapeAttr(t("auth.showPassword"))}" title="${escapeAttr(t("auth.showPassword"))}"><i class="ph ph-eye-slash"></i></button>
+        </div>
+      `;
+    }
+
+    // Регистрация, шаг 2: код из письма → аккаунт подтверждён и сразу вход.
+    // Код, а не ссылка: ссылка вела бы на адрес сайта, а с телефона его не открыть
+    function renderConfirmSignup() {
+      overlay.innerHTML = `
+        <div class="modal-box auth-box">
+          <button type="button" class="auth-back-btn" data-action="back" aria-label="${escapeAttr(t("auth.back"))}"><i class="ph ph-arrow-left"></i></button>
+          <h2 class="auth-title">${escapeHtml(t("auth.confirm.title"))}</h2>
+          <p class="auth-hint">${escapeHtml(t("auth.confirm.sent").replace("{email}", email))}</p>
+          <input type="text" class="modal-input" data-role="code" inputmode="numeric" autocomplete="one-time-code" placeholder="${escapeAttr(t("auth.forgot.code"))}">
+          <p class="auth-error" data-role="error" hidden></p>
+          <button type="button" class="btn btn-accent auth-btn" data-action="confirm">${escapeHtml(t("auth.confirm.button"))}</button>
+          <button type="button" class="btn auth-btn" data-action="back-to-login">${escapeHtml(t("auth.backToLogin"))}</button>
+        </div>
+      `;
+      overlay.querySelector('[data-action="back"]').addEventListener("click", () => goTo("register"));
+      overlay.querySelector('[data-action="back-to-login"]').addEventListener("click", () => goTo("login"));
+
+      const codeInput = overlay.querySelector('[data-role="code"]');
+      const errorEl = overlay.querySelector('[data-role="error"]');
+      const confirmButton = overlay.querySelector('[data-action="confirm"]');
+
+      const confirm = async () => {
+        if (!codeInput.value.trim()) {
+          showAuthError(errorEl, t("auth.forgot.codeEmpty"));
+          return;
+        }
+        confirmButton.disabled = true;
+        const error = await confirmSignUp(email, codeInput.value);
+        confirmButton.disabled = false;
+        if (error) {
+          showAuthError(errorEl, resetErrorText(error));
+          return;
+        }
+        finish();
+      };
+      confirmButton.addEventListener("click", confirm);
+      codeInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") confirm();
+      });
+      codeInput.focus();
+    }
+
     function render() {
       if (step === "start") renderStart();
       else if (step === "login") renderLogin();
+      else if (step === "forgot") renderForgot();
+      else if (step === "confirm-signup") renderConfirmSignup();
       else renderRegister();
     }
 

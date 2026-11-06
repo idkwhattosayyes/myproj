@@ -68,6 +68,7 @@
 .ph-clipboard-text::before { content: "\e198"; }
 .ph-copy::before { content: "\e1ca"; }
 .ph-download-simple::before { content: "\e20c"; }
+.ph-envelope-simple::before { content: "\e218"; }
 .ph-eraser::before { content: "\e21e"; }
 .ph-eye::before { content: "\e220"; }
 .ph-eye-slash::before { content: "\e224"; }
@@ -87,11 +88,14 @@
 .ph-minus::before { content: "\e32a"; }
 .ph-note-blank::before { content: "\e34a"; }
 .ph-paint-brush-broad::before { content: "\e590"; }
+.ph-password::before { content: "\e752"; }
 .ph-pencil-simple::before { content: "\e3b4"; }
 .ph-plus::before { content: "\e3d4"; }
 .ph-printer::before { content: "\e3dc"; }
 .ph-push-pin-simple::before { content: "\e65c"; }
 .ph-scissors::before { content: "\eae0"; }
+.ph-sign-in::before { content: "\e428"; }
+.ph-sign-out::before { content: "\e42a"; }
 .ph-table::before { content: "\e476"; }
 .ph-text-align-center::before { content: "\e480"; }
 .ph-text-align-left::before { content: "\e484"; }

@@ -539,17 +539,135 @@ input[type="checkbox"]:focus-visible {
   color: var(--text-accent);
 }
 
-.settings-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 22px;
+/* Строка-кнопка: «Аккаунт» на главной странице окна и пункты на его
+   странице. Выглядит как обычная строка настроек, только целиком нажимается. */
+.settings-nav-row {
+  width: 100%;
+  border-right: none;
+  border-bottom: none;
+  border-left: none;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: start;
+  cursor: pointer;
+  transition: color 0.15s;
 }
 
-.settings-footer-btn {
+.settings-nav-row.settings-row--last {
+  border-bottom: 1px solid var(--color-separator);
+}
+
+.settings-nav-row:hover {
+  color: var(--text-accent);
+}
+
+.settings-nav-row.is-danger {
+  color: var(--text-danger);
+}
+
+.settings-nav-row.is-danger:hover {
+  opacity: 0.75;
+}
+
+.settings-nav-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.settings-nav-label .ph {
+  font-size: 18px;
+}
+
+/* Почта справа может быть длинной — сжимается она, а не подпись слева */
+.settings-nav-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.settings-nav-chevron {
+  flex: none;
+  font-size: 14px;
+}
+
+/* Стрелка «назад» в шапке подстраницы — тот же вид, что у крестика справа */
+.settings-back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-segment);
+  background: none;
+  color: var(--text-primary);
+  font-size: 20px;
+  transition: opacity 0.15s;
+}
+
+.settings-back:hover {
+  opacity: 0.6;
+}
+
+/* Заголовок подстраницы — между стрелкой и крестиком, прижат к стрелке */
+.settings-title--sub {
+  flex: 1;
+  min-width: 0;
+  margin: 0 8px;
+  font-size: 22px;
+}
+
+.settings-account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-account-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Формы «сменить почту / пароль», «удалить аккаунт» */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.settings-form-hint {
+  margin-bottom: 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.settings-form-btn {
+  align-self: flex-start;
   height: 44px;
   padding: 0 22px;
   font-size: 13px;
+}
+
+/* Главная кнопка формы и «Отправить ещё раз» — в один ряд: вторая справа
+   от первой, на той же высоте. Не влезают по ширине — переносятся */
+.settings-form-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-form-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .placeholder {
