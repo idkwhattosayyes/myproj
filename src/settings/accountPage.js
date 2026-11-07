@@ -12,7 +12,8 @@ import {
   confirmEmailChange,
   sendResetCode,
   setPasswordWithCode,
-  deleteAccount,
+  sendDeleteCode,
+  deleteAccountWithCode,
   signOut,
   clearGuestChosen,
 } from "../auth/authService.js";
@@ -413,30 +414,66 @@ function renderDelete(panelEl, session, nav) {
       <p class="settings-form-hint">${escapeHtml(t("account.deleteTypeEmail").replace("{email}", email))}</p>
       <input type="email" class="modal-input" data-role="email" placeholder="${escapeAttr(email)}" autocomplete="off">
       <p class="auth-error" data-role="error" hidden></p>
-      <button type="button" class="btn btn-danger settings-form-btn" data-action="submit" disabled>${t("account.deleteForever")}</button>
+      <button type="button" class="btn btn-danger settings-form-btn" data-action="send" disabled>${escapeHtml(t("auth.forgot.sendCode"))}</button>
     </div>
   `;
 
   const input = panelEl.querySelector('[data-role="email"]');
   const errorEl = panelEl.querySelector('[data-role="error"]');
-  const submitBtn = panelEl.querySelector('[data-action="submit"]');
+  const sendBtn = panelEl.querySelector('[data-action="send"]');
   // Кнопка оживает, только когда почта введена точно — регистр не важен,
   // пробелы по краям тоже: их легко занести при копировании
   const matches = () => input.value.trim().toLowerCase() === email.toLowerCase();
   input.addEventListener("input", () => {
-    submitBtn.disabled = !matches();
+    sendBtn.disabled = !matches();
   });
 
-  async function submit() {
+  async function send() {
     if (!matches()) return;
+    sendBtn.disabled = true;
+    const error = await sendDeleteCode(email);
+    sendBtn.disabled = false;
+    if (error) return showError(errorEl, codeErrorText(error));
+    renderDeleteCode(panelEl, nav, email);
+  }
+
+  sendBtn.addEventListener("click", send);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") send();
+  });
+}
+
+// Удаление, шаг 2: код из письма — и только тогда «Удалить навсегда».
+// Код проверяет и сервер (миграция 015): без него удаление не пройдёт
+function renderDeleteCode(panelEl, nav, email) {
+  panelEl.innerHTML = `
+    ${headerHtml(t("account.delete"))}
+    <div class="settings-form">
+      <p class="settings-form-hint">${escapeHtml(t("account.deleteCodeSent").replace("{email}", email))}</p>
+      <input type="text" class="modal-input" data-role="code" inputmode="numeric" autocomplete="one-time-code" placeholder="${escapeAttr(t("auth.forgot.code"))}">
+      <p class="auth-error" data-role="error" hidden></p>
+      <div class="settings-form-buttons">
+        <button type="button" class="btn btn-danger settings-form-btn" data-action="submit">${escapeHtml(t("account.deleteForever"))}</button>
+        <button type="button" class="btn settings-form-btn" data-action="resend">${escapeHtml(t("auth.forgot.resend"))}</button>
+      </div>
+    </div>
+  `;
+  wireHeader(panelEl, nav);
+
+  const codeInput = panelEl.querySelector('[data-role="code"]');
+  const errorEl = panelEl.querySelector('[data-role="error"]');
+  const submitBtn = panelEl.querySelector('[data-action="submit"]');
+  const resendBtn = panelEl.querySelector('[data-action="resend"]');
+
+  async function submit() {
+    if (!codeInput.value.trim()) return showError(errorEl, t("auth.forgot.codeEmpty"));
     submitBtn.disabled = true;
-    errorEl.hidden = true;
     const hideLoading = showLoadingOverlay();
-    const { error } = await deleteAccount();
+    const { error, badCode } = await deleteAccountWithCode(email, codeInput.value);
     hideLoading();
     if (error) {
       submitBtn.disabled = false;
-      return showError(errorEl, t("account.deleteFailed"), error.message);
+      return badCode ? showError(errorEl, codeErrorText(error)) : showError(errorEl, t("account.deleteFailed"), error.message);
     }
     nav.close();
     // Как после выхода: при следующей загрузке снова экран входа, и на главную
@@ -445,10 +482,20 @@ function renderDelete(panelEl, session, nav) {
     location.reload();
   }
 
+  async function resend() {
+    resendBtn.disabled = true;
+    const error = await sendDeleteCode(email);
+    resendBtn.disabled = false;
+    if (error) return showError(errorEl, codeErrorText(error));
+    showHint(errorEl, t("account.codesResent"));
+  }
+
   submitBtn.addEventListener("click", submit);
-  input.addEventListener("keydown", (event) => {
+  resendBtn.addEventListener("click", resend);
+  codeInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") submit();
   });
+  codeInput.focus();
 }
 
 // Итог формы вместо самой формы — кнопка «Готово» возвращает в «Аккаунт»

@@ -284,12 +284,38 @@ async function deleteAllPhotos(userId) {
 }
 
 /**
+ * Удаление аккаунта, шаг 1: письмо с кодом (шаблон «Magic Link» — в нём
+ * код, а не ссылка). shouldCreateUser: false — это вход по коду только в
+ * существующий аккаунт, нового он не создаст.
+ * @returns {Promise<object|null>} ошибка Supabase или null
+ */
+export async function sendDeleteCode(email) {
+  const { error } = await supabaseClient.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+  return error;
+}
+
+/**
+ * Удаление аккаунта, шаг 2: код из письма, затем само удаление. Код
+ * проверяем ПЕРВЫМ — до фото: если сервер откажет, фото уже не вернуть.
+ * Принятый код — свежий вход «по коду», и функция удаления на сервере его
+ * видит (supabase/015_delete_account_requires_code.sql).
+ * @returns {Promise<{error: object|null, badCode: boolean}>}
+ */
+export async function deleteAccountWithCode(email, code) {
+  const verified = await supabaseClient.auth.verifyOtp({ email, token: code.trim(), type: "email" });
+  if (verified.error) return { error: verified.error, badCode: true };
+  const { error } = await deleteAccount();
+  return { error, badCode: false };
+}
+
+/**
  * Удаляет аккаунт насовсем: фото, затем всё остальное функцией
- * delete_my_account (supabase/014_delete_account.sql), затем выход. Выход
- * только локальный: аккаунта на сервере уже нет, выходить там не из чего.
+ * delete_my_account (supabase/014 и 015), затем выход. Выход только
+ * локальный: аккаунта на сервере уже нет, выходить там не из чего.
+ * Зовётся только из deleteAccountWithCode — без свежего кода сервер откажет.
  * @returns {Promise<{error: object|null}>}
  */
-export async function deleteAccount() {
+async function deleteAccount() {
   const session = cachedSession ?? (await getSession());
   if (!session) return { error: new Error("not authenticated") };
   try {
